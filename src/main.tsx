@@ -16,7 +16,7 @@ const darkTheme = createTheme({ palette: { mode: 'dark', background: { default: 
 
 const ModUpdater = () => {
 	const [update, setUpdate] = React.useState<null | Update>(null);
-	const [config, setConfig] = React.useState<Config>({} as Config);
+	const [config, setConfig] = React.useState<Config | null>(null);
 
 	if (typeof window !== 'undefined') {
 		document.onkeydown = function (e) {
@@ -45,27 +45,26 @@ const ModUpdater = () => {
 		};
 	}, []);
 
-	const isConfigEmpty = Object.keys(config).length === 0;
+	if (!config) {
+		return (
+			<ThemeProvider theme={darkTheme}>
+				<CssBaseline />
+				<div style={{ padding: 20, color: '#fff' }}>Loading...</div>
+			</ThemeProvider>
+		);
+	}
 
 	return (
 		<BrowserRouter>
 			<ThemeProvider theme={darkTheme}>
 				<CssBaseline />
-				{!isConfigEmpty && !!config.repoUrl && (
-					<AppProviders data={config} update={update}>
-						<TitleBar />
-						<Routes>
-							<Route path="/" Component={Home} />
-							<Route path="/settings" Component={Settings} />
-						</Routes>
-					</AppProviders>
-				)}
-				{isConfigEmpty && !config.repoUrl && (
-					<AppProviders data={config} update={update}>
-						<TitleBar />
-						<Settings refresh />
-					</AppProviders>
-				)}
+				<AppProviders data={config} update={update}>
+					<TitleBar />
+					<Routes>
+						<Route path="/" Component={Home} />
+						<Route path="/settings" Component={Settings} />
+					</Routes>
+				</AppProviders>
 			</ThemeProvider>
 		</BrowserRouter>
 	);

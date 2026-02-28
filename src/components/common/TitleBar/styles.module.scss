@@ -64,4 +64,66 @@
 		@include iconButton;
 		padding-left: 9px;
 	}
+
+	.shareJoinButton {
+		width: 45px;
+		height: 24px;
+		font-size: 11px;
+		padding: 0 6px;
+
+		&:disabled {
+			color: #666;
+			cursor: not-allowed;
+
+			&:hover {
+				background-color: #323232;
+			}
+		}
+	}
+
+	.sharing {
+		position: relative;
+
+		&::after {
+			content: '';
+			position: absolute;
+			top: 4px;
+			right: 4px;
+			width: 6px;
+			height: 6px;
+			background-color: #4caf50;
+			border-radius: 50%;
+		}
+	}
+
+	.configureButton {
+		width: 65px;
+		height: 24px;
+		font-size: 11px;
+		padding: 0 6px;
+
+		&:disabled {
+			color: #666;
+			cursor: not-allowed;
+
+			&:hover {
+				background-color: #323232;
+			}
+		}
+	}
+
+	.profileButton {
+		min-width: 60px;
+		max-width: 100px;
+		height: 24px;
+		font-size: 11px;
+		padding: 0 8px;
+		text-overflow: ellipsis;
+		overflow: hidden;
+		white-space: nowrap;
+
+		&:hover {
+			background-color: #404040;
+		}
+	}
 }

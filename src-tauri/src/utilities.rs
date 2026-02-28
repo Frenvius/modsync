@@ -18,8 +18,8 @@ pub async fn play_text(message: String, window: Window) {
 }
 
 #[tauri::command]
-pub async fn git_progress(message: u32, window: Window) {
-    window.emit("git_progress", message).unwrap();
+pub async fn sync_progress(message: u32, window: Window) {
+    window.emit("sync_progress", message).unwrap();
 }
 
 #[tauri::command]

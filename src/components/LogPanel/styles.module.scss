@@ -3,6 +3,7 @@
 	width: 100%;
 	height: 135px;
 	white-space: pre-line;
+	word-break: break-all;
 	font-size: 12px;
 	letter-spacing: -0.2px;
 	line-height: 13px;
@@ -14,6 +15,32 @@
 
 		p {
 			margin: 0;
+		}
+	}
+}
+
+.logLine {
+	display: flex;
+	align-items: flex-start;
+	gap: 4px;
+
+	.copyButton {
+		flex-shrink: 0;
+		padding: 0;
+		min-width: 16px;
+		width: 16px;
+		height: 13px;
+		color: #888;
+		cursor: pointer;
+		background: none;
+		border: none;
+
+		&:hover {
+			color: #fff;
+		}
+
+		svg {
+			font-size: 12px;
 		}
 	}
 }

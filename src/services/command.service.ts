@@ -8,6 +8,10 @@ class CommandService {
 		if (path) await Command.create('explorer', [path]).execute();
 	}
 
+	async openFolder(path: string) {
+		if (path) await Command.create('explorer', [path]).execute();
+	}
+
 	async startGame() {
 		await invoke('run_game_windows').then(async () => {
 			await invoke('set_log', { window: getCurrent(), message: `-> Starting Valheim...` });
