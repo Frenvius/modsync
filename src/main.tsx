@@ -9,7 +9,9 @@ import "./styles/globals.css";
 import AppProviders from "~/context";
 import Home from "~/components/Home";
 import Settings from "~/components/Settings";
+import ModBrowser from "~/components/ModBrowser";
 import { Config } from "~/context/AppState/types";
+import ConfigEditor from "~/components/ConfigEditor";
 import { AppLayout } from "~/components/layout/AppLayout";
 
 const ModUpdater = () => {
@@ -61,6 +63,8 @@ const ModUpdater = () => {
 					<AppLayout>
 						<Routes>
 							<Route path="/" Component={Home} />
+							<Route path="/browse" Component={ModBrowser} />
+							<Route path="/config" Component={ConfigEditor} />
 							<Route path="/settings" Component={Settings} />
 						</Routes>
 					</AppLayout>

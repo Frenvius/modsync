@@ -7,12 +7,20 @@ use std::io::Write;
 use sysinfo::System;
 use tauri::{AppHandle, Manager, Window};
 
+mod cache;
 mod config;
+mod config_editor;
+mod game;
 mod modpack;
 mod profile;
 mod server;
 mod sync;
+mod thunderstore;
+mod util;
 mod utilities;
+
+#[allow(unused_imports)]
+use util::{AppError, AppResult, IoResultExt, OptionExt};
 
 use modpack::{scan_bepinex_directory, scan_bepinex_directory_with_progress, Modpack};
 use server::ServerStatus;
@@ -33,8 +41,6 @@ fn main() {
             config::config_folder,
             config::get_config_data,
             config::reset_config_file,
-            utilities::set_log,
-            utilities::uninstall,
             utilities::play_locked,
             utilities::play_text,
             utilities::sync_progress,
@@ -42,6 +48,17 @@ fn main() {
             utilities::needs_update,
             utilities::progress_type,
             utilities::status_text,
+            profile::create_profile,
+            profile::get_profiles,
+            profile::get_profile,
+            profile::delete_profile,
+            profile::rename_profile,
+            profile::duplicate_profile,
+            profile::set_active_profile,
+            profile::get_active_profile,
+            profile::get_active_bepinex_path,
+            profile::discover_tmm_profiles_for_import,
+            profile::import_from_tmm,
             profile::discover_tmm_profiles,
             profile::get_tmm_bepinex_path,
             profile::create_tmm_profile,
@@ -58,6 +75,24 @@ fn main() {
             detect_valheim_path,
             is_valid_valheim_path,
             join_modpack,
+            cache::get_cache_stats_cmd,
+            cache::clear_cache_cmd,
+            cache::clear_unused_cache_cmd,
+            thunderstore::thunderstore_search,
+            thunderstore::thunderstore_get_package,
+            thunderstore::thunderstore_get_packages_bulk,
+            thunderstore::thunderstore_get_categories,
+            thunderstore::thunderstore_refresh_cache,
+            thunderstore::thunderstore_install_package,
+            thunderstore::thunderstore_get_games,
+            config_editor::get_config_files,
+            config_editor::get_profile_config_files,
+            config_editor::parse_config_file,
+            config_editor::set_config_entry,
+            config_editor::reset_config_entry,
+            config_editor::get_config_summaries,
+            game::get_games,
+            game::get_game,
         ])
         .setup(|app| {
             #[cfg(desktop)]
@@ -87,18 +122,43 @@ fn read_config() -> Result<serde_json::Value, String> {
     serde_json::from_str(&content).map_err(|e| format!("Failed to parse config: {}", e))
 }
 
-fn get_active_tmm_profile_name() -> Result<String, String> {
+fn get_active_game_id() -> Result<String, String> {
     let config = read_config()?;
     config
-        .get("activeTmmProfile")
+        .get("activeGame")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or("No active TMM profile set".to_string())
+        .ok_or_else(|| "valheim".to_string()) // Default to valheim
+        .or(Ok("valheim".to_string()))
 }
 
-fn get_active_bepinex_path() -> Result<String, String> {
-    let profile_name = get_active_tmm_profile_name()?;
-    profile::get_tmm_bepinex_path(profile_name)
+fn get_active_profile_id() -> Result<String, String> {
+    let config = read_config()?;
+    config
+        .get("activeProfileId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or("No active profile set".to_string())
+}
+
+fn get_active_bepinex_path_internal() -> Result<String, String> {
+    // First try the new profile system
+    let game_id = get_active_game_id().unwrap_or_else(|_| "valheim".to_string());
+
+    if let Ok(manager) = profile::ProfileManager::new() {
+        if let Ok(Some(profile)) = manager.get_active_profile(&game_id) {
+            let bepinex_path = profile.path.join("BepInEx");
+            return Ok(bepinex_path.to_string_lossy().to_string());
+        }
+    }
+
+    // Fall back to legacy TMM profile system
+    let config = read_config()?;
+    if let Some(profile_name) = config.get("activeTmmProfile").and_then(|v| v.as_str()) {
+        return profile::get_tmm_bepinex_path(profile_name.to_string());
+    }
+
+    Err("No active profile set".to_string())
 }
 
 fn find_bepinex_preloader(bepinex_path: &str) -> Result<String, String> {
@@ -194,7 +254,7 @@ fn get_steam_process_path() -> Option<String> {
 async fn run_game_windows() -> Result<(), String> {
     let steam_path = get_steam_process_path().ok_or("Steam is not running")?;
 
-    let bepinex_path = get_active_bepinex_path()?;
+    let bepinex_path = get_active_bepinex_path_internal()?;
 
     let preloader_path = find_bepinex_preloader(&bepinex_path)?;
 
@@ -232,7 +292,7 @@ async fn sys_user_name() -> Result<String, Error> {
 
 #[tauri::command]
 async fn get_mods_path() -> Result<String, String> {
-    let bepinex_path = get_active_bepinex_path()?;
+    let bepinex_path = get_active_bepinex_path_internal()?;
     let path = std::path::Path::new(&bepinex_path);
     let parent = path
         .parent()
@@ -270,7 +330,7 @@ async fn start_sharing(
     modpack_id: String,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    let bepinex_path_str = get_active_bepinex_path()?;
+    let bepinex_path_str = get_active_bepinex_path_internal()?;
     let bepinex_path = std::path::PathBuf::from(&bepinex_path_str);
     let mods_path = bepinex_path.clone();
 
@@ -319,7 +379,7 @@ fn decode_share_code_cmd(code: String) -> Result<ShareCode, String> {
 
 #[tauri::command]
 async fn scan_local_mods(modpack_name: String, modpack_id: String) -> Result<Modpack, String> {
-    let bepinex_path_str = get_active_bepinex_path()?;
+    let bepinex_path_str = get_active_bepinex_path_internal()?;
     let bepinex_path = std::path::PathBuf::from(&bepinex_path_str);
 
     if !bepinex_path.exists() {
@@ -342,7 +402,7 @@ async fn sync_mods(
     modpack_id: String,
     window: Window,
 ) -> Result<SyncResult, String> {
-    let bepinex_path_str = get_active_bepinex_path()?;
+    let bepinex_path_str = get_active_bepinex_path_internal()?;
     let bepinex_path = std::path::PathBuf::from(&bepinex_path_str);
 
     fs::create_dir_all(&bepinex_path).map_err(|e| format!("Failed to create BepInEx directory: {}", e))?;
@@ -376,7 +436,7 @@ async fn get_sync_status_cmd(
     modpack_name: String,
     modpack_id: String,
 ) -> SyncStatus {
-    let bepinex_path_str = match get_active_bepinex_path() {
+    let bepinex_path_str = match get_active_bepinex_path_internal() {
         Ok(path) => path,
         Err(_) => return SyncStatus::NotConnected,
     };

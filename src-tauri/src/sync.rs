@@ -2,10 +2,11 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 use tauri::{Manager, Window};
 
+use crate::cache;
 use crate::modpack::{compare_modpacks, scan_bepinex_directory, ModEntry, Modpack};
 use crate::server::{ServerStatus, StatusResponse};
 
@@ -161,32 +162,50 @@ pub async fn download_from_thunderstore(
     let author = parts[0];
     let mod_name = parts[1];
 
-    let url = format!(
-        "https://thunderstore.io/package/download/{}/{}/{}/",
-        author, mod_name, version
-    );
+    let zip_data = if cache::is_cached(thunderstore_id, version) {
+        cache::read_cached_mod(thunderstore_id, version)?
+    } else {
+        let url = format!(
+            "https://thunderstore.io/package/download/{}/{}/{}/",
+            author, mod_name, version
+        );
 
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to download from Thunderstore: {}", e))?;
+        let response = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to download from Thunderstore: {}", e))?;
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "Thunderstore returned error for {}: {}",
-            thunderstore_id,
-            response.status()
-        ));
-    }
+        if !response.status().is_success() {
+            return Err(format!(
+                "Thunderstore returned error for {}: {}",
+                thunderstore_id,
+                response.status()
+            ));
+        }
 
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read Thunderstore response: {}", e))?;
+
+        let data = bytes.to_vec();
+        if let Err(e) = cache::cache_mod(thunderstore_id, version, &data) {
+            eprintln!("Warning: Failed to cache mod: {}", e);
+        }
+
+        data
+    };
+
+    extract_zip_data(&zip_data, target_dir, mod_name)?;
+
+    Ok(())
+}
+
+fn extract_zip_data(data: &[u8], target_dir: &Path, mod_name: &str) -> Result<(), String> {
     let zip_path = target_dir.join(format!("{}.zip", mod_name));
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read Thunderstore response: {}", e))?;
 
-    fs::write(&zip_path, &bytes).map_err(|e| format!("Failed to save zip file: {}", e))?;
+    fs::write(&zip_path, data).map_err(|e| format!("Failed to save zip file: {}", e))?;
 
     let file = File::open(&zip_path).map_err(|e| format!("Failed to open zip: {}", e))?;
 

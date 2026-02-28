@@ -15,6 +15,8 @@ export interface ModEntry {
 	sha256: string;
 	filename: string;
 	is_custom: boolean;
+	name: null | string;
+	author: null | string;
 	thunderstore_id: null | string;
 	thunderstore_version: null | string;
 }
@@ -56,6 +58,10 @@ class SyncService {
 
 	async decodeShareCode(code: string): Promise<ShareCode> {
 		return await invoke('decode_share_code_cmd', { code });
+	}
+
+	async scanLocalMods(modpackName: string, modpackId: string): Promise<Modpack> {
+		return await invoke('scan_local_mods', { modpackId, modpackName });
 	}
 
 	async getShareCode(host: string, port: number, modpackId: string): Promise<string> {

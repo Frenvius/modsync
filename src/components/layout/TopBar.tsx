@@ -1,32 +1,36 @@
-import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
 import { getCurrent } from '@tauri-apps/api/window';
+import { X, Copy, Minus, Square } from 'lucide-react';
 import { useState, useEffect, useContext } from 'react';
-import { X, Copy, Minus, Square, Settings2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectItem, SelectValue, SelectContent, SelectTrigger } from '@/components/ui/select';
 
 import JoinDialog from '~/components/JoinDialog';
 import { stateService } from '~/services/state.service';
+import { commandService } from '~/services/command.service';
 import { Modpack, syncService } from '~/services/sync.service';
 import { AppStateContext } from '~/context/AppState/constants';
 
 export function TopBar() {
 	const [isMaximized, setIsMaximized] = useState(false);
 	const [joinDialogOpen, setJoinDialogOpen] = useState(false);
-	const [isConfiguring, setIsConfiguring] = useState(false);
-	const [isPathValid, setIsPathValid] = useState(false);
 	const appWindow = getCurrent();
 
 	const {
 		config,
+		playText,
 		publicIp,
 		hostPort,
 		isHosting,
 		modpackId,
+		isReadOnly,
+		syncStatus,
+		needsUpdate,
 		modpackName,
 		tmmProfiles,
+		hostAddress,
 		setHostPort,
+		playDisabled,
 		setIsHosting,
 		setShareCode,
 		setModpackId,
@@ -54,36 +58,6 @@ export function TopBar() {
 		};
 	}, []);
 
-	useEffect(() => {
-		const checkPath = async () => {
-			if (config.valheimPath) {
-				const valid = await invoke<boolean>('is_valid_valheim_path', { path: config.valheimPath });
-				setIsPathValid(valid);
-			} else {
-				setIsPathValid(false);
-			}
-		};
-		checkPath();
-	}, [config.valheimPath]);
-
-	const handleConfigure = async () => {
-		setIsConfiguring(true);
-		try {
-			const detectedPath = await invoke<null | string>('detect_valheim_path');
-			if (detectedPath) {
-				await invoke('set_config', { key: 'valheimPath', value: detectedPath });
-				await stateService.dispatch('set_log', `-> Valheim folder configured: ${detectedPath}`);
-			} else {
-				await stateService.dispatch('set_log', '-> Could not find Valheim in default location. Please set path in Settings.');
-			}
-		} catch (error) {
-			console.error('Failed to detect Valheim path:', error);
-			await stateService.dispatch('set_log', '-> Failed to detect Valheim path.');
-		} finally {
-			setIsConfiguring(false);
-		}
-	};
-
 	const handleProfileChange = async (name: string) => {
 		if (name) {
 			await setActiveTmmProfile(name);
@@ -98,9 +72,8 @@ export function TopBar() {
 				setIsHosting(false);
 				setShareCode('');
 				setSyncStatus('NotConnected');
-				await stateService.dispatch('set_log', '-> Stopped sharing');
 			} catch (err) {
-				await stateService.dispatch('set_log', `-> Error stopping: ${err}`);
+				console.error('Error stopping share:', err);
 			} finally {
 				setIsShareStarting(false);
 			}
@@ -108,27 +81,24 @@ export function TopBar() {
 			const port = hostPort || 7878;
 
 			if (!publicIp) {
-				await stateService.dispatch('set_log', '-> Please set your Public IP in Settings first');
 				return;
 			}
 
 			setIsShareStarting(true);
 			try {
-				await stateService.dispatch('set_log', '-> Starting share server...');
 				await syncService.startSharing(port, modpackName, modpackId);
 				const code = await syncService.getShareCode(publicIp, port, modpackId);
 				setShareCode(code);
 				setIsHosting(true);
 				setSyncStatus('Host');
-				await stateService.dispatch('set_log', `-> Sharing! Code: ${code}`);
 			} catch (err) {
-				await stateService.dispatch('set_log', `-> Error starting share: ${err}`);
+				console.error('Error starting share:', err);
 				setIsShareStarting(false);
 			}
 		}
 	};
 
-	const handleJoined = async (code: string, host: string, port: number, modpack: Modpack, profileName: string) => {
+	const handleJoined = async (code: string, host: string, port: number, modpack: Modpack, _profileName: string) => {
 		try {
 			setShareCode(code);
 			setHostAddress(host);
@@ -136,21 +106,50 @@ export function TopBar() {
 			setModpackId(modpack.id);
 			setModpackName(modpack.name);
 
-			await stateService.dispatch('set_log', `-> Joining modpack: ${modpack.name}`);
-			await stateService.dispatch('set_log', `-> Syncing to profile: ${profileName}`);
-
 			await stateService.setUpdating();
 			const result = await syncService.syncMods(host, port, modpack.name, modpack.id);
 
 			if (result.success) {
 				await stateService.setInstalled();
 				setSyncStatus('Synced');
-				await stateService.dispatch('set_log', `-> ${result.message}`);
 			}
 		} catch (err) {
-			await stateService.dispatch('set_log', `-> Error joining: ${err}`);
+			console.error('Error joining:', err);
 			setSyncStatus('OutOfSync');
 		}
+	};
+
+	const getPlayButtonText = () => {
+		if (playText !== 'Play') return playText;
+		if (syncStatus === 'OutOfSync') return 'Update';
+		return 'Play';
+	};
+
+	const handleSync = async () => {
+		if (!hostAddress || !hostPort) {
+			return;
+		}
+
+		try {
+			await stateService.setUpdating();
+			const result = await syncService.syncMods(hostAddress, hostPort, modpackName, modpackId);
+
+			if (result.success) {
+				await stateService.setInstalled();
+				setSyncStatus('Synced');
+			}
+		} catch (err) {
+			await stateService.setReady();
+		}
+	};
+
+	const playButton = async () => {
+		if (needsUpdate || syncStatus === 'OutOfSync') {
+			await handleSync();
+			return;
+		}
+
+		await commandService.startGame();
 	};
 
 	const isConfigEmpty = Object.keys(config).length === 0;
@@ -164,24 +163,35 @@ export function TopBar() {
 				<div data-tauri-drag-region className="h-full flex items-center justify-between px-4">
 					<div className="flex items-center gap-2">
 						{!isConfigEmpty && (
-							<Select value={activeTmmProfile || ''} onValueChange={handleProfileChange} disabled={tmmProfiles.length === 0}>
-								<SelectTrigger className="h-8 min-w-[120px] max-w-[180px] bg-secondary border-border text-sm rounded-lg">
-									<SelectValue placeholder="No profiles" />
-								</SelectTrigger>
-								<SelectContent>
-									{tmmProfiles.length === 0 ? (
-										<SelectItem value="" disabled>
-											No profiles
-										</SelectItem>
-									) : (
-										tmmProfiles.map((p) => (
-											<SelectItem key={p.name} value={p.name}>
-												{p.name}
+							<>
+								<Select value={activeTmmProfile || ''} onValueChange={handleProfileChange} disabled={tmmProfiles.length === 0 || isReadOnly}>
+									<SelectTrigger className="h-8 min-w-[120px] max-w-[180px] bg-secondary border-border text-sm rounded-lg">
+										<SelectValue placeholder="No profiles" />
+									</SelectTrigger>
+									<SelectContent>
+										{tmmProfiles.length === 0 ? (
+											<SelectItem value="" disabled>
+												No profiles
 											</SelectItem>
-										))
-									)}
-								</SelectContent>
-							</Select>
+										) : (
+											tmmProfiles.map((p) => (
+												<SelectItem key={p.name} value={p.name}>
+													{p.name}
+												</SelectItem>
+											))
+										)}
+									</SelectContent>
+								</Select>
+								<Button
+									size="sm"
+									variant="glow"
+									onClick={playButton}
+									className="h-8 px-4"
+									disabled={playDisabled || isShareStarting}
+								>
+									{getPlayButtonText()}
+								</Button>
+							</>
 						)}
 					</div>
 					<div className="flex items-center gap-2">
@@ -191,32 +201,17 @@ export function TopBar() {
 									<TooltipTrigger asChild>
 										<Button
 											size="sm"
-											variant="ghost"
 											className="h-8 px-3"
-											onClick={handleConfigure}
-											disabled={isConfiguring || isPathValid}
-										>
-											<Settings2 className="w-4 h-4 mr-1.5" />
-											{isConfiguring ? '...' : 'Configure'}
-										</Button>
-									</TooltipTrigger>
-									<TooltipContent>{isPathValid ? 'Valheim configured' : 'Auto-detect Valheim path'}</TooltipContent>
-								</Tooltip>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<Button
-											size="sm"
-											className="h-8 px-3"
-											disabled={isShareStarting}
 											onClick={handleShareToggle}
+											disabled={isShareStarting || isReadOnly}
 											variant={isHosting ? 'default' : 'outline'}
 										>
 											{isShareStarting ? '...' : isHosting ? 'Stop' : 'Share'}
 										</Button>
 									</TooltipTrigger>
-									<TooltipContent>{isHosting ? 'Stop sharing' : 'Start sharing'}</TooltipContent>
+									<TooltipContent>{isReadOnly ? 'Read-only mode' : isHosting ? 'Stop sharing' : 'Start sharing'}</TooltipContent>
 								</Tooltip>
-								<Button size="sm" variant="outline" disabled={isHosting} className="h-8 px-3" onClick={() => setJoinDialogOpen(true)}>
+								<Button size="sm" variant="outline" className="h-8 px-3" disabled={isHosting || isReadOnly} onClick={() => setJoinDialogOpen(true)}>
 									Join
 								</Button>
 							</>

@@ -27,6 +27,8 @@ pub struct Modpack {
 pub struct ModEntry {
     pub path: String,
     pub filename: String,
+    pub name: Option<String>,
+    pub author: Option<String>,
     pub thunderstore_id: Option<String>,
     pub thunderstore_version: Option<String>,
     pub sha256: String,
@@ -44,6 +46,7 @@ pub struct ConfigEntry {
 #[derive(Debug, Deserialize)]
 pub struct ThunderstoreManifest {
     pub name: String,
+    pub author: Option<String>,
     pub version_number: String,
     pub website_url: Option<String>,
     pub description: Option<String>,
@@ -66,31 +69,99 @@ pub fn calculate_file_hash(path: &Path) -> Result<String, std::io::Error> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-pub fn parse_thunderstore_manifest(manifest_path: &Path) -> Option<(String, String)> {
+pub struct ParsedManifest {
+    pub name: String,
+    pub author: Option<String>,
+    pub package_id: String,
+    pub version: String,
+}
+
+pub fn parse_thunderstore_manifest(manifest_path: &Path) -> Option<ParsedManifest> {
     let content = fs::read_to_string(manifest_path).ok()?;
     let manifest: ThunderstoreManifest = serde_json::from_str(&content).ok()?;
 
-    let author = if let Some(url) = &manifest.website_url {
-        url.split('/').find(|s| !s.is_empty() && s != &"https:" && s != &"thunderstore.io" && s != &"c" && s != &"valheim" && s != &"p")
-    } else if let Some(deps) = &manifest.dependencies {
-        deps.first().and_then(|d| d.split('-').next())
-    } else {
-        None
-    };
+    let author = manifest.author.clone().or_else(|| {
+        if let Some(url) = &manifest.website_url {
+            url.split('/')
+                .find(|s| !s.is_empty() && *s != "https:" && *s != "thunderstore.io" && *s != "c" && *s != "valheim" && *s != "p")
+                .map(|s| s.to_string())
+        } else if let Some(deps) = &manifest.dependencies {
+            deps.first().and_then(|d| d.split('-').next()).map(|s| s.to_string())
+        } else {
+            None
+        }
+    });
 
-    let package_id = match author {
+    let package_id = match &author {
         Some(a) => format!("{}-{}", a, manifest.name),
         None => manifest.name.clone(),
     };
 
-    Some((package_id, manifest.version_number))
+    Some(ParsedManifest {
+        name: manifest.name,
+        author,
+        package_id,
+        version: manifest.version_number,
+    })
 }
 
 pub fn scan_plugins_directory(plugins_path: &Path) -> Result<Vec<ModEntry>, String> {
+    use std::collections::HashSet;
+
     let mut mods = Vec::new();
 
     if !plugins_path.exists() {
         return Ok(mods);
+    }
+
+    let mut processed_mod_dirs: HashSet<std::path::PathBuf> = HashSet::new();
+
+    for entry in WalkDir::new(plugins_path)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        if !path.is_file() {
+            continue;
+        }
+
+        if path.file_name().map(|n| n == "manifest.json").unwrap_or(false) {
+            if let Some(mod_dir) = path.parent() {
+                if let Some(parsed) = parse_thunderstore_manifest(path) {
+                    let (combined_hash, total_size) = calculate_folder_hash_and_size(mod_dir)?;
+
+                    let main_dll = find_main_dll(mod_dir);
+
+                    let relative_path = mod_dir
+                        .strip_prefix(plugins_path)
+                        .map_err(|e| e.to_string())?
+                        .to_string_lossy()
+                        .to_string()
+                        .replace('\\', "/");
+
+                    let folder_name = mod_dir
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+
+                    mods.push(ModEntry {
+                        path: relative_path,
+                        filename: main_dll.unwrap_or(folder_name),
+                        name: Some(parsed.name),
+                        author: parsed.author,
+                        thunderstore_id: Some(parsed.package_id),
+                        thunderstore_version: Some(parsed.version),
+                        sha256: combined_hash,
+                        size: total_size,
+                        is_custom: false,
+                    });
+
+                    processed_mod_dirs.insert(mod_dir.to_path_buf());
+                }
+            }
+        }
     }
 
     for entry in WalkDir::new(plugins_path)
@@ -100,7 +171,20 @@ pub fn scan_plugins_directory(plugins_path: &Path) -> Result<Vec<ModEntry>, Stri
     {
         let path = entry.path();
 
-        if path.is_dir() {
+        if !path.is_file() {
+            continue;
+        }
+
+        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if extension != "dll" {
+            continue;
+        }
+
+        let is_in_processed_dir = processed_mod_dirs.iter().any(|mod_dir| {
+            path.starts_with(mod_dir)
+        });
+
+        if is_in_processed_dir {
             continue;
         }
 
@@ -116,52 +200,84 @@ pub fn scan_plugins_directory(plugins_path: &Path) -> Result<Vec<ModEntry>, Stri
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !matches!(extension, "dll" | "json" | "cfg" | "txt" | "png" | "jpg" | "xml") {
-            continue;
-        }
-
         let sha256 = calculate_file_hash(path).map_err(|e| e.to_string())?;
         let size = path.metadata().map_err(|e| e.to_string())?.len();
 
-        let mut thunderstore_id = None;
-        let mut thunderstore_version = None;
-        let mut is_custom = true;
-
-        if let Some(parent) = path.parent() {
-            let manifest_path = parent.join("manifest.json");
-            if manifest_path.exists() {
-                if let Some((id, version)) = parse_thunderstore_manifest(&manifest_path) {
-                    thunderstore_id = Some(id);
-                    thunderstore_version = Some(version);
-                    is_custom = false;
-                }
-            }
-
-            if let Some(grandparent) = parent.parent() {
-                let manifest_path = grandparent.join("manifest.json");
-                if manifest_path.exists() && thunderstore_id.is_none() {
-                    if let Some((id, version)) = parse_thunderstore_manifest(&manifest_path) {
-                        thunderstore_id = Some(id);
-                        thunderstore_version = Some(version);
-                        is_custom = false;
-                    }
-                }
-            }
-        }
+        let name_from_filename = extract_name_from_dll_filename(&filename);
 
         mods.push(ModEntry {
             path: relative_path,
-            filename,
-            thunderstore_id,
-            thunderstore_version,
+            filename: filename.clone(),
+            name: name_from_filename,
+            author: None,
+            thunderstore_id: None,
+            thunderstore_version: None,
             sha256,
             size,
-            is_custom,
+            is_custom: true,
         });
     }
 
     Ok(mods)
+}
+
+fn calculate_folder_hash_and_size(folder_path: &Path) -> Result<(String, u64), String> {
+    let mut hasher = Sha256::new();
+    let mut total_size: u64 = 0;
+
+    let mut files: Vec<_> = WalkDir::new(folder_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .collect();
+    files.sort_by(|a, b| a.path().cmp(b.path()));
+
+    for entry in files {
+        let path = entry.path();
+        let file_hash = calculate_file_hash(path).map_err(|e| e.to_string())?;
+        let size = path.metadata().map_err(|e| e.to_string())?.len();
+
+        hasher.update(file_hash.as_bytes());
+        total_size += size;
+    }
+
+    Ok((hex::encode(hasher.finalize()), total_size))
+}
+
+fn find_main_dll(folder_path: &Path) -> Option<String> {
+    for entry in WalkDir::new(folder_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                if ext == "dll" {
+                    return path.file_name().map(|n| n.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_name_from_dll_filename(filename: &str) -> Option<String> {
+    let name = filename.trim_end_matches(".dll");
+    if name.is_empty() {
+        return None;
+    }
+
+    let parts: Vec<&str> = name.split('-').collect();
+    if parts.len() >= 2 {
+        return Some(parts[1].to_string());
+    }
+
+    let parts: Vec<&str> = name.split('_').collect();
+    if parts.len() >= 2 {
+        return Some(parts[1..].join("_"));
+    }
+
+    Some(name.to_string())
 }
 
 pub fn scan_config_directory(config_path: &Path) -> Result<Vec<ConfigEntry>, String> {
@@ -237,12 +353,58 @@ fn chrono_timestamp() -> String {
     format!("{}", secs)
 }
 
-fn count_scannable_files(dir_path: &Path, extensions: &[&str]) -> usize {
-    if !dir_path.exists() {
+fn count_mods_in_plugins_dir(plugins_path: &Path) -> usize {
+    use std::collections::HashSet;
+
+    if !plugins_path.exists() {
         return 0;
     }
 
-    WalkDir::new(dir_path)
+    let mut processed_mod_dirs: HashSet<std::path::PathBuf> = HashSet::new();
+    let mut count = 0;
+
+    for entry in WalkDir::new(plugins_path)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if path.is_file() && path.file_name().map(|n| n == "manifest.json").unwrap_or(false) {
+            if let Some(mod_dir) = path.parent() {
+                processed_mod_dirs.insert(mod_dir.to_path_buf());
+                count += 1;
+            }
+        }
+    }
+
+    for entry in WalkDir::new(plugins_path)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if path.is_file() {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext == "dll" {
+                let is_in_processed_dir = processed_mod_dirs.iter().any(|mod_dir| {
+                    path.starts_with(mod_dir)
+                });
+                if !is_in_processed_dir {
+                    count += 1;
+                }
+            }
+        }
+    }
+
+    count
+}
+
+fn count_config_files(config_path: &Path, extensions: &[&str]) -> usize {
+    if !config_path.exists() {
+        return 0;
+    }
+
+    WalkDir::new(config_path)
         .min_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -266,30 +428,29 @@ pub fn scan_bepinex_directory_with_progress(
     let plugins_path = bepinex_path.join("plugins");
     let config_path = bepinex_path.join("config");
 
-    let plugin_extensions = ["dll", "json", "cfg", "txt", "png", "jpg", "xml"];
     let config_extensions = ["cfg", "json", "txt", "xml", "yaml", "yml", "ini"];
 
-    let total_plugins = count_scannable_files(&plugins_path, &plugin_extensions);
-    let total_configs = count_scannable_files(&config_path, &config_extensions);
-    let total_files = total_plugins + total_configs;
+    let total_mods = count_mods_in_plugins_dir(&plugins_path);
+    let total_configs = count_config_files(&config_path, &config_extensions);
+    let total_items = total_mods + total_configs;
 
     let _ = app_handle.emit(
         "scanning-progress",
         ScanningProgress {
             current: 0,
-            total: total_files,
+            total: total_items,
             filename: "Starting scan...".to_string(),
             phase: "counting".to_string(),
         },
     );
 
-    let mods = scan_plugins_directory_with_progress(&plugins_path, app_handle, 0, total_files)?;
+    let mods = scan_plugins_directory_with_progress(&plugins_path, app_handle, 0, total_items)?;
 
     let configs = scan_config_directory_with_progress(
         &config_path,
         app_handle,
         mods.len(),
-        total_files,
+        total_items,
     )?;
 
     let updated_at = chrono_timestamp();
@@ -311,6 +472,8 @@ fn scan_plugins_directory_with_progress(
     offset: usize,
     total: usize,
 ) -> Result<Vec<ModEntry>, String> {
+    use std::collections::HashSet;
+
     let mut mods = Vec::new();
 
     if !plugins_path.exists() {
@@ -318,6 +481,7 @@ fn scan_plugins_directory_with_progress(
     }
 
     let mut current = offset;
+    let mut processed_mod_dirs: HashSet<std::path::PathBuf> = HashSet::new();
 
     for entry in WalkDir::new(plugins_path)
         .min_depth(1)
@@ -326,20 +490,89 @@ fn scan_plugins_directory_with_progress(
     {
         let path = entry.path();
 
-        if path.is_dir() {
+        if !path.is_file() {
+            continue;
+        }
+
+        if path.file_name().map(|n| n == "manifest.json").unwrap_or(false) {
+            if let Some(mod_dir) = path.parent() {
+                if let Some(parsed) = parse_thunderstore_manifest(path) {
+                    current += 1;
+
+                    let _ = app_handle.emit(
+                        "scanning-progress",
+                        ScanningProgress {
+                            current,
+                            total,
+                            filename: parsed.name.clone(),
+                            phase: "scanning".to_string(),
+                        },
+                    );
+
+                    let (combined_hash, total_size) = calculate_folder_hash_and_size(mod_dir)?;
+
+                    let main_dll = find_main_dll(mod_dir);
+
+                    let relative_path = mod_dir
+                        .strip_prefix(plugins_path)
+                        .map_err(|e| e.to_string())?
+                        .to_string_lossy()
+                        .to_string()
+                        .replace('\\', "/");
+
+                    let folder_name = mod_dir
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+
+                    mods.push(ModEntry {
+                        path: relative_path,
+                        filename: main_dll.unwrap_or(folder_name),
+                        name: Some(parsed.name),
+                        author: parsed.author,
+                        thunderstore_id: Some(parsed.package_id),
+                        thunderstore_version: Some(parsed.version),
+                        sha256: combined_hash,
+                        size: total_size,
+                        is_custom: false,
+                    });
+
+                    processed_mod_dirs.insert(mod_dir.to_path_buf());
+                }
+            }
+        }
+    }
+
+    for entry in WalkDir::new(plugins_path)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        if !path.is_file() {
             continue;
         }
 
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !matches!(extension, "dll" | "json" | "cfg" | "txt" | "png" | "jpg" | "xml") {
+        if extension != "dll" {
             continue;
         }
 
-        current += 1;
+        let is_in_processed_dir = processed_mod_dirs.iter().any(|mod_dir| {
+            path.starts_with(mod_dir)
+        });
+
+        if is_in_processed_dir {
+            continue;
+        }
+
         let filename = path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
+
+        current += 1;
 
         let _ = app_handle.emit(
             "scanning-progress",
@@ -361,40 +594,18 @@ fn scan_plugins_directory_with_progress(
         let sha256 = calculate_file_hash(path).map_err(|e| e.to_string())?;
         let size = path.metadata().map_err(|e| e.to_string())?.len();
 
-        let mut thunderstore_id = None;
-        let mut thunderstore_version = None;
-        let mut is_custom = true;
-
-        if let Some(parent) = path.parent() {
-            let manifest_path = parent.join("manifest.json");
-            if manifest_path.exists() {
-                if let Some((id, version)) = parse_thunderstore_manifest(&manifest_path) {
-                    thunderstore_id = Some(id);
-                    thunderstore_version = Some(version);
-                    is_custom = false;
-                }
-            }
-
-            if let Some(grandparent) = parent.parent() {
-                let manifest_path = grandparent.join("manifest.json");
-                if manifest_path.exists() && thunderstore_id.is_none() {
-                    if let Some((id, version)) = parse_thunderstore_manifest(&manifest_path) {
-                        thunderstore_id = Some(id);
-                        thunderstore_version = Some(version);
-                        is_custom = false;
-                    }
-                }
-            }
-        }
+        let name_from_filename = extract_name_from_dll_filename(&filename);
 
         mods.push(ModEntry {
             path: relative_path,
-            filename,
-            thunderstore_id,
-            thunderstore_version,
+            filename: filename.clone(),
+            name: name_from_filename,
+            author: None,
+            thunderstore_id: None,
+            thunderstore_version: None,
             sha256,
             size,
-            is_custom,
+            is_custom: true,
         });
     }
 

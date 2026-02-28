@@ -1,12 +1,23 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Trash2, Loader2, HardDrive } from 'lucide-react';
 import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '@/components/ui/card';
 
+import { useToast } from '~/components/Toast';
+import { formatBytes } from '~/usecase/utils/stringUtils';
 import { AppStateContext } from '~/context/AppState/constants';
+
+interface CacheStats {
+	total_size: number;
+	entry_count: number;
+	oldest_entry: null | number;
+	newest_entry: null | number;
+}
+
 
 interface SettingsProps {
 	refresh?: boolean;
@@ -14,11 +25,39 @@ interface SettingsProps {
 
 const Settings = ({ refresh }: SettingsProps) => {
 	const navigate = useNavigate();
+	const toast = useToast();
 	const { config, hostPort, setConfig } = React.useContext(AppStateContext);
 	const [publicIp, setPublicIp] = React.useState<string>(config.publicIp || '');
 	const [port, setPort] = React.useState<number>(hostPort || 7878);
-	const [valheimFolder, setValheimFolder] = React.useState<string>(config.valheimPath || '');
 	const [isLoading, setIsLoading] = React.useState<boolean>(false);
+	const [cacheStats, setCacheStats] = React.useState<null | CacheStats>(null);
+	const [isClearingCache, setIsClearingCache] = React.useState<boolean>(false);
+
+	const loadCacheStats = async () => {
+		try {
+			const stats = await invoke<CacheStats>('get_cache_stats_cmd');
+			setCacheStats(stats);
+		} catch (err) {
+			console.error('Failed to load cache stats:', err);
+		}
+	};
+
+	React.useEffect(() => {
+		loadCacheStats();
+	}, []);
+
+	const handleClearCache = async () => {
+		setIsClearingCache(true);
+		try {
+			const clearedSize = await invoke<number>('clear_cache_cmd');
+			toast.success('Cache cleared', `Freed ${formatBytes(clearedSize)}`);
+			await loadCacheStats();
+		} catch (err) {
+			toast.error('Failed to clear cache', String(err));
+		} finally {
+			setIsClearingCache(false);
+		}
+	};
 
 	const handlePublicIpChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		setPublicIp(event.target.value);
@@ -28,15 +67,10 @@ const Settings = ({ refresh }: SettingsProps) => {
 		setPort(Number(event.target.value));
 	};
 
-	const handleValheimFolderChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-		setValheimFolder(event.target.value);
-	};
-
 	const saveSettings = async () => {
 		setIsLoading(true);
 		await setConfig('publicIp', publicIp);
 		await setConfig('hostPort', port);
-		await setConfig('valheimPath', valheimFolder);
 		navigate('/');
 		refresh && navigate(0);
 	};
@@ -69,19 +103,35 @@ const Settings = ({ refresh }: SettingsProps) => {
 
 			<Card className="glass">
 				<CardHeader>
-					<CardTitle className="text-lg">Game Settings</CardTitle>
-					<CardDescription>Configure your Valheim installation</CardDescription>
+					<CardTitle className="text-lg">Download Cache</CardTitle>
+					<CardDescription>Manage cached mod downloads</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="space-y-2">
-						<Label htmlFor="valheimPath">Valheim Folder</Label>
-						<Input
-							id="valheimPath"
-							disabled={isLoading}
-							value={valheimFolder}
-							onChange={handleValheimFolderChange}
-							placeholder="C:\Program Files (x86)\Steam\steamapps\common\Valheim"
-						/>
+					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-3">
+							<HardDrive className="h-8 w-8 text-muted-foreground" />
+							<div>
+								<p className="font-medium">
+									{cacheStats ? formatBytes(cacheStats.total_size) : 'Loading...'}
+								</p>
+								<p className="text-sm text-muted-foreground">
+									{cacheStats ? `${cacheStats.entry_count} cached mods` : ''}
+								</p>
+							</div>
+						</div>
+						<Button
+							size="sm"
+							variant="destructive"
+							onClick={handleClearCache}
+							disabled={isClearingCache || !cacheStats || cacheStats.entry_count === 0}
+						>
+							{isClearingCache ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : (
+								<Trash2 className="mr-2 h-4 w-4" />
+							)}
+							Clear Cache
+						</Button>
 					</div>
 				</CardContent>
 			</Card>

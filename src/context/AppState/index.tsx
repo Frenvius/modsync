@@ -6,7 +6,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { profileService } from '~/services/profile.service';
 import { AppStateContext } from '~/context/AppState/constants';
 import { SyncStatus, syncService } from '~/services/sync.service';
-import { TmmProfile, ProgressType, AppStateProviderProps } from '~/context/AppState/types';
+import { Profile, TmmProfile, ProgressType, ProfileSummary, AppStateProviderProps } from '~/context/AppState/types';
 
 const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, updateData }) => {
 	const [playText, setPlayText] = React.useState('Play');
@@ -27,23 +27,30 @@ const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, u
 	const [modpackId, setModpackIdState] = React.useState(config.modpackId || '');
 	const [modpackName, setModpackNameState] = React.useState(config.modpackName || '');
 
+	const [profiles, setProfiles] = React.useState<ProfileSummary[]>([]);
+	const [activeProfile, setActiveProfileState] = React.useState<null | Profile>(null);
+	const [activeProfileId, setActiveProfileIdState] = React.useState<null | string>(config.activeProfileId || null);
+
 	const [activeTmmProfile, setActiveTmmProfileState] = React.useState<null | string>(config.activeTmmProfile || null);
 	const [tmmProfiles, setTmmProfiles] = React.useState<TmmProfile[]>(config.tmmProfiles || []);
-
-	const [valheimPath, setValheimPath] = React.useState(config.valheimPath || '');
+	const [activeGame, setActiveGameState] = React.useState(config.activeGame || 'valheim');
 
 	const computeIsInstalled = React.useCallback(() => {
-		const activeProfile = tmmProfiles.find((p) => p.name === activeTmmProfile);
-		return !!(activeProfile?.hasMods && valheimPath);
-	}, [tmmProfiles, activeTmmProfile, valheimPath]);
+		if (activeProfile) {
+			return activeProfile.mods.length > 0;
+		}
+		const tmmProfile = tmmProfiles.find((p) => p.name === activeTmmProfile);
+		return !!tmmProfile?.hasMods;
+	}, [activeProfile, tmmProfiles, activeTmmProfile]);
 
 	const [isInstalled, setIsInstalled] = React.useState(() => computeIsInstalled());
 
+	const isReadOnly = React.useMemo(() => {
+		return !isHosting && !!hostAddress && syncStatus !== 'NotConnected';
+	}, [isHosting, hostAddress, syncStatus]);
+
 	const setConfigValue = async (key: string, value: null | string | number | boolean): Promise<void> => {
 		await invoke('set_config', { key, value });
-		if (key === 'valheimPath' && typeof value === 'string') {
-			setValheimPath(value);
-		}
 		if (key === 'publicIp' && typeof value === 'string') {
 			setPublicIp(value);
 		}
@@ -56,10 +63,63 @@ const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, u
 		setIsInstalled(computeIsInstalled());
 	}, [computeIsInstalled]);
 
+	const refreshProfiles = async () => {
+		try {
+			const profileList = await profileService.getProfiles(activeGame);
+			setProfiles(profileList);
+
+			if (activeProfileId) {
+				const profile = await profileService.getProfile(activeProfileId);
+				setActiveProfileState(profile);
+			}
+		} catch (err) {
+			console.error('Failed to refresh profiles:', err);
+		}
+	};
+
+	const setActiveProfile = async (profileId: string) => {
+		try {
+			if (isHosting) {
+				await invoke('stop_sharing');
+				setIsHosting(false);
+			}
+
+			await profileService.setActiveProfile(activeGame, profileId);
+			await setConfigValue('activeProfileId', profileId);
+			setActiveProfileIdState(profileId);
+
+			const profile = await profileService.getProfile(profileId);
+			setActiveProfileState(profile);
+
+			setModpackNameState(profile.name);
+			setConfigValue('modpackName', profile.name);
+		} catch (err) {
+			console.error('Failed to set active profile:', err);
+		}
+	};
+
+	const createProfile = async (name: string): Promise<Profile> => {
+		const profile = await profileService.createProfile(activeGame, name);
+		await refreshProfiles();
+		return profile;
+	};
+
+	const deleteProfile = async (profileId: string): Promise<void> => {
+		await profileService.deleteProfile(profileId);
+
+		if (activeProfileId === profileId) {
+			setActiveProfileIdState(null);
+			setActiveProfileState(null);
+			await setConfigValue('activeProfileId', null);
+		}
+
+		await refreshProfiles();
+	};
+
 	const refreshTmmProfiles = async () => {
 		try {
-			const profiles = await profileService.discoverTmmProfiles();
-			setTmmProfiles(profiles);
+			const tmmProfileList = await profileService.discoverTmmProfiles();
+			setTmmProfiles(tmmProfileList);
 		} catch (err) {
 			console.error('Failed to refresh TMM profiles:', err);
 		}
@@ -169,6 +229,10 @@ const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, u
 		}
 	}, []);
 
+	React.useEffect(() => {
+		refreshProfiles();
+	}, [activeGame]);
+
 	return (
 		<AppStateContext.Provider
 			value={{
@@ -176,11 +240,14 @@ const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, u
 				playText,
 				hostPort,
 				publicIp,
+				profiles,
 				isHosting,
 				shareCode,
 				modpackId,
+				isReadOnly,
 				statusText,
 				appVersion,
+				activeGame,
 				syncStatus,
 				isInstalled,
 				needsUpdate,
@@ -191,7 +258,13 @@ const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, u
 				playDisabled,
 				progressType,
 				setSyncStatus,
+				activeProfile,
+				createProfile,
+				deleteProfile,
 				isShareStarting,
+				activeProfileId,
+				refreshProfiles,
+				setActiveProfile,
 				activeTmmProfile,
 				update: updateData,
 				refreshTmmProfiles,
@@ -214,6 +287,10 @@ const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, u
 				setShareCode: (code: string) => {
 					setShareCodeState(code);
 					setConfigValue('shareCode', code);
+				},
+				setActiveGame: (game: string) => {
+					setActiveGameState(game);
+					setConfigValue('activeGame', game);
 				},
 				setModpackName: (name: string) => {
 					setModpackNameState(name);

@@ -10,7 +10,6 @@ import {
 	DialogDescription,
 } from "@/components/ui/dialog";
 
-import { stateService } from "~/services/state.service";
 import { profileService } from "~/services/profile.service";
 import { AppStateContext } from "~/context/AppState/constants";
 import { Modpack, ShareCode, syncService } from "~/services/sync.service";
@@ -38,16 +37,13 @@ const JoinDialog = ({ open, onClose, onJoined }: JoinDialogProps) => {
 
 		try {
 			const info: ShareCode = await syncService.decodeShareCode(shareCode);
-			await stateService.dispatch("set_log", `-> Connecting to ${info.host}:${info.port}...`);
 
 			handleClose();
 
 			const modpack: Modpack = await syncService.joinModpack(shareCode);
-			await stateService.dispatch("set_log", `-> Found: ${modpack.name} (${modpack.mods.length} mods)`);
 
 			let profileToUse = activeTmmProfile;
 			if (!profileToUse) {
-				await stateService.dispatch("set_log", `-> Creating profile: ${modpack.name}...`);
 				const newProfile = await profileService.createTmmProfile(modpack.name);
 				await refreshTmmProfiles();
 				await setActiveTmmProfile(newProfile.name);
@@ -56,7 +52,6 @@ const JoinDialog = ({ open, onClose, onJoined }: JoinDialogProps) => {
 
 			onJoined(shareCode, info.host, info.port, modpack, profileToUse);
 		} catch (err) {
-			await stateService.dispatch("set_log", `-> Join failed: ${err}`);
 			setIsJoining(false);
 		}
 	};
