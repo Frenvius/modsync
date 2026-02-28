@@ -1,36 +1,180 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 @import "tailwindcss";
 
 @theme {
-	--color-border: hsl(0 0% 39%);
-	--color-input: hsl(0 0% 39%);
-	--color-ring: hsl(209 79% 55%);
-	--color-background: hsl(0 0% 15%);
-	--color-foreground: hsl(0 0% 82%);
+	/* Blue primary (keep from current app) */
 	--color-primary: hsl(209 79% 55%);
 	--color-primary-foreground: hsl(0 0% 100%);
-	--color-secondary: hsl(0 0% 20%);
-	--color-secondary-foreground: hsl(0 0% 82%);
-	--color-destructive: hsl(0 84% 60%);
-	--color-destructive-foreground: hsl(0 0% 100%);
-	--color-muted: hsl(0 0% 25%);
-	--color-muted-foreground: hsl(0 0% 55%);
-	--color-accent: hsl(0 0% 25%);
-	--color-accent-foreground: hsl(0 0% 82%);
-	--color-popover: hsl(0 0% 20%);
-	--color-popover-foreground: hsl(0 0% 82%);
-	--color-card: hsl(0 0% 20%);
-	--color-card-foreground: hsl(0 0% 82%);
-	--radius-lg: 0px;
-	--radius-md: 0px;
-	--radius-sm: 0px;
+	--color-primary-glow: hsl(209 79% 55%);
+
+	/* Dark backgrounds (modpack-companion style) */
+	--color-background: hsl(220 20% 6%);
+	--color-foreground: hsl(210 20% 95%);
+	--color-card: hsl(220 18% 10%);
+	--color-card-hover: hsl(220 18% 13%);
+	--color-card-foreground: hsl(210 20% 95%);
+
+	--color-popover: hsl(220 20% 8%);
+	--color-popover-foreground: hsl(210 20% 95%);
+
+	--color-secondary: hsl(220 15% 15%);
+	--color-secondary-foreground: hsl(210 20% 85%);
+
+	--color-muted: hsl(220 15% 18%);
+	--color-muted-foreground: hsl(215 15% 55%);
+
+	--color-accent: hsl(220 15% 20%);
+	--color-accent-foreground: hsl(210 20% 95%);
+
+	--color-destructive: hsl(0 72% 55%);
+	--color-destructive-foreground: hsl(210 40% 98%);
+
+	--color-warning: hsl(38 92% 50%);
+	--color-warning-foreground: hsl(220 20% 6%);
+
+	--color-success: hsl(152 76% 48%);
+	--color-success-foreground: hsl(220 20% 6%);
+
+	--color-border: hsl(220 15% 18%);
+	--color-input: hsl(220 15% 15%);
+	--color-ring: hsl(209 79% 55%);
+
+	/* Sidebar */
+	--color-sidebar: hsl(220 20% 5%);
+	--color-sidebar-foreground: hsl(210 20% 85%);
+	--color-sidebar-primary: hsl(209 79% 55%);
+	--color-sidebar-primary-foreground: hsl(0 0% 100%);
+	--color-sidebar-accent: hsl(220 15% 12%);
+	--color-sidebar-accent-foreground: hsl(210 20% 95%);
+	--color-sidebar-border: hsl(220 15% 15%);
+	--color-sidebar-ring: hsl(209 79% 55%);
+
+	/* Rounded corners (12px base) */
+	--radius-lg: 0.75rem;
+	--radius-md: 0.5rem;
+	--radius-sm: 0.375rem;
+
+	/* Custom design tokens */
+	--shadow-sm: 0 2px 8px hsl(0 0% 0% / 0.3);
+	--shadow-md: 0 4px 16px hsl(0 0% 0% / 0.4);
+	--shadow-lg: 0 8px 32px hsl(0 0% 0% / 0.5);
+	--shadow-glow: 0 0 40px hsl(209 79% 55% / 0.3);
+	--shadow-glow-sm: 0 0 20px hsl(209 79% 55% / 0.2);
 }
 
 @layer base {
 	* {
-		border-color: var(--color-border);
+		@apply border-border;
 	}
+
 	body {
-		background-color: var(--color-background);
-		color: var(--color-foreground);
+		@apply bg-background text-foreground font-sans antialiased;
+		font-feature-settings: "rlig" 1, "calt" 1;
+		font-family: 'Inter', sans-serif;
 	}
+
+	/* Custom scrollbar */
+	::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+
+	::-webkit-scrollbar-track {
+		@apply bg-background;
+	}
+
+	::-webkit-scrollbar-thumb {
+		@apply bg-muted rounded-full;
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		@apply bg-muted-foreground/50;
+	}
+}
+
+@layer utilities {
+	.glass {
+		@apply bg-card/80 backdrop-blur-xl border border-border/50;
+	}
+
+	.glow-primary {
+		box-shadow: var(--shadow-glow);
+	}
+
+	.glow-primary-sm {
+		box-shadow: var(--shadow-glow-sm);
+	}
+
+	.text-gradient {
+		@apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400;
+	}
+
+	.animate-pulse-glow {
+		animation: pulse-glow 2s ease-in-out infinite;
+	}
+
+	.animate-float {
+		animation: float 3s ease-in-out infinite;
+	}
+
+	.animate-slide-up {
+		animation: slide-up 0.3s ease-out;
+	}
+
+	.animate-fade-in {
+		animation: fade-in 0.2s ease-out;
+	}
+}
+
+@keyframes pulse-glow {
+	0%, 100% {
+		box-shadow: 0 0 20px hsl(209 79% 55% / 0.2);
+	}
+	50% {
+		box-shadow: 0 0 40px hsl(209 79% 55% / 0.4);
+	}
+}
+
+@keyframes float {
+	0%, 100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-10px);
+	}
+}
+
+@keyframes slide-up {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* Sync animation */
+@keyframes sync-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.animate-sync {
+	animation: sync-spin 1s linear infinite;
 }

@@ -14,10 +14,13 @@
 			{
 				"decorations": false,
 				"fullscreen": false,
-				"resizable": false,
+				"resizable": true,
+				"maximizable": true,
 				"title": "mod-updater",
-				"width": 420,
-				"height": 228
+				"width": 900,
+				"height": 650,
+				"minWidth": 900,
+				"minHeight": 650
 			}
 		],
 		"security": {

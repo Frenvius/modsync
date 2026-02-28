@@ -1,16 +1,15 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-import styles from './styles.module.scss';
 import LogPanel from '~/components/LogPanel';
 import SyncStatus from '~/components/SyncStatus';
 import { syncService } from '~/services/sync.service';
 import { stateService } from '~/services/state.service';
 import { commandService } from '~/services/command.service';
 import { AppStateContext } from '~/context/AppState/constants';
-import LinearProgressWithLabel from '~/components/common/LinearProgressWithLabel';
 
 const Home = () => {
 	const { update, playText, appVersion, statusText, isInstalled, needsUpdate, syncProgress, playDisabled, progressType, activeTmmProfile } =
@@ -86,41 +85,42 @@ const Home = () => {
 	};
 
 	return (
-		<div className={styles.container}>
-			<LogPanel />
-			<div className="grid grid-cols-12 gap-1">
-				<div className="col-span-12 flex items-center justify-between text-xs">
-					<div className="flex items-center gap-2">
-						<div>
-							{activeTmmProfile && <span style={{ color: '#888' }}>[{activeTmmProfile}]</span>} Status: {statusText}
-						</div>
-						{isInstalled && <SyncStatus status={syncStatus} onClick={handleSync} />}
-					</div>
-					<div onClick={handleUpdate} className={styles.updateButton}>
+		<div className="flex flex-col h-full gap-4">
+			<div className="flex items-center justify-between">
+				<div>
+					<h1 className="text-2xl font-bold text-foreground">Mod Updater</h1>
+					<p className="text-sm text-muted-foreground">
+						{activeTmmProfile && <span className="text-primary">[{activeTmmProfile}]</span>} {statusText}
+					</p>
+				</div>
+				<div className="flex items-center gap-3">
+					{isInstalled && <SyncStatus status={syncStatus} onClick={handleSync} />}
+					<div onClick={handleUpdate} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer">
 						{hasUpdate ? (
 							<Tooltip>
 								<TooltipTrigger asChild>
-									<div className={styles.link}>
-										{appVersion} &#8594; {update?.version}
+									<div className="text-primary hover:underline">
+										{appVersion} &rarr; {update?.version}
 									</div>
 								</TooltipTrigger>
-								<TooltipContent side="top">
-									Click to update
-								</TooltipContent>
+								<TooltipContent side="top">Click to update</TooltipContent>
 							</Tooltip>
 						) : (
-							appVersion
+							<span>{appVersion}</span>
 						)}
 					</div>
 				</div>
-				<div className="col-span-9">
-					<LinearProgressWithLabel value={syncProgress} variant={progressType} />
+			</div>
+			<div className="flex-1 min-h-0">
+				<LogPanel />
+			</div>
+			<div className="flex items-center gap-4">
+				<div className="flex-1">
+					<Progress glow={syncProgress > 0 && syncProgress < 100} value={progressType === 'indeterminate' ? undefined : syncProgress} />
 				</div>
-				<div className="col-span-3">
-					<Button onClick={playButton} className={styles.playButton} disabled={playDisabled || isShareStarting}>
-						{getPlayButtonText()}
-					</Button>
-				</div>
+				<Button size="lg" variant="glow" onClick={playButton} className="min-w-[120px]" disabled={playDisabled || isShareStarting}>
+					{getPlayButtonText()}
+				</Button>
 			</div>
 		</div>
 	);
