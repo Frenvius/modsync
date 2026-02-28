@@ -1,5 +1,10 @@
 import React from 'react';
-import { Dialog } from '@mui/material';
+import {
+	Dialog,
+	DialogTitle,
+	DialogHeader,
+	DialogContent,
+} from '@/components/ui/dialog';
 
 import styles from './styles.module.scss';
 import { stateService } from '~/services/state.service';
@@ -69,38 +74,33 @@ const JoinDialog = ({ open, onClose, onJoined }: JoinDialogProps) => {
 	};
 
 	return (
-		<Dialog
-			open={open}
-			onClose={handleClose}
-			PaperProps={{
-				className: styles.dialog
-			}}
-			BackdropProps={{
-				className: styles.backdrop
-			}}
-		>
-			<div className={styles.content}>
-				<span className={styles.label}>Join Modpack</span>
-				<input
-					autoFocus
-					type="text"
-					value={shareCode}
-					disabled={isJoining}
-					className={styles.input}
-					onKeyDown={handleKeyDown}
-					placeholder="Paste share code"
-					onChange={(e) => setShareCode(e.target.value)}
-				/>
-				{error && <span className={styles.error}>{error}</span>}
-				<div className={styles.actions}>
-					<button onClick={handleClose} className={styles.btn}>
-						Cancel
-					</button>
-					<button onClick={handleJoin} disabled={isJoining || !shareCode.trim()} className={`${styles.btn} ${styles.primary}`}>
-						{isJoining ? '...' : 'Join'}
-					</button>
+		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
+			<DialogContent className={styles.dialog}>
+				<DialogHeader>
+					<DialogTitle className={styles.label}>Join Modpack</DialogTitle>
+				</DialogHeader>
+				<div className={styles.content}>
+					<input
+						autoFocus
+						type="text"
+						value={shareCode}
+						disabled={isJoining}
+						className={styles.input}
+						onKeyDown={handleKeyDown}
+						placeholder="Paste share code"
+						onChange={(e) => setShareCode(e.target.value)}
+					/>
+					{error && <span className={styles.error}>{error}</span>}
+					<div className={styles.actions}>
+						<button onClick={handleClose} className={styles.btn}>
+							Cancel
+						</button>
+						<button onClick={handleJoin} disabled={isJoining || !shareCode.trim()} className={`${styles.btn} ${styles.primary}`}>
+							{isJoining ? '...' : 'Join'}
+						</button>
+					</div>
 				</div>
-			</div>
+			</DialogContent>
 		</Dialog>
 	);
 };

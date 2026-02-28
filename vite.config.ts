@@ -1,3 +1,4 @@
+import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -9,10 +10,11 @@ export default defineConfig(async () => ({
 	// Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
 	//
 	resolve: {
+		extensions: ['.ts', '.tsx', '.js', '.css', '.scss'],
 		alias: {
-			'~': '/src'
-		},
-		extensions: ['.ts', '.tsx', '.js', '.css', '.scss']
+			'~': '/src',
+			'@': path.resolve(__dirname, './src')
+		}
 	},
 	// 2. tauri expects a fixed port, fail if that port is not available
 	server: {

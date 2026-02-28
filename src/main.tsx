@@ -1,10 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { Route, Routes, BrowserRouter } from 'react-router-dom';
-import { createTheme, CssBaseline, ThemeProvider } from '@mui/material';
 
+import './styles/globals.css';
 import './styles/global.scss';
 import AppProviders from '~/context';
 import Home from '~/components/Home';
@@ -12,11 +13,9 @@ import Settings from '~/components/Settings';
 import { Config } from '~/context/AppState/types';
 import TitleBar from '~/components/common/TitleBar';
 
-const darkTheme = createTheme({ palette: { mode: 'dark', background: { default: '#262626' } } });
-
 const ModUpdater = () => {
 	const [update, setUpdate] = React.useState<null | Update>(null);
-	const [config, setConfig] = React.useState<Config | null>(null);
+	const [config, setConfig] = React.useState<null | Config>(null);
 
 	if (typeof window !== 'undefined') {
 		document.onkeydown = function (e) {
@@ -46,18 +45,12 @@ const ModUpdater = () => {
 	}, []);
 
 	if (!config) {
-		return (
-			<ThemeProvider theme={darkTheme}>
-				<CssBaseline />
-				<div style={{ padding: 20, color: '#fff' }}>Loading...</div>
-			</ThemeProvider>
-		);
+		return <div className="dark bg-[#262626] p-5 text-white">Loading...</div>;
 	}
 
 	return (
 		<BrowserRouter>
-			<ThemeProvider theme={darkTheme}>
-				<CssBaseline />
+			<TooltipProvider>
 				<AppProviders data={config} update={update}>
 					<TitleBar />
 					<Routes>
@@ -65,9 +58,11 @@ const ModUpdater = () => {
 						<Route path="/settings" Component={Settings} />
 					</Routes>
 				</AppProviders>
-			</ThemeProvider>
+			</TooltipProvider>
 		</BrowserRouter>
 	);
 };
+
+document.documentElement.classList.add('dark');
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(<ModUpdater />);

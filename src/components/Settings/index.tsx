@@ -1,7 +1,9 @@
 import React from 'react';
-import { LoadingButton } from '@mui/lab';
+import { Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useNavigate } from 'react-router-dom';
-import { Grid, TextField, Typography } from '@mui/material';
+import { Button } from '@/components/ui/button';
 
 import styles from './styles.module.scss';
 import { AppStateContext } from '~/context/AppState/constants';
@@ -41,55 +43,59 @@ const Settings = ({ refresh }: SettingsProps) => {
 
 	return (
 		<div className={styles.container}>
-			<Grid container spacing={0.5} sx={{ height: '100%' }}>
-				<Grid item xs={12} display="flex" alignItems="center" className={styles.header} justifyContent="space-between">
-					<Typography className={styles.title}>Settings</Typography>
-				</Grid>
+			<div className="grid gap-2 h-full">
+				<div className="flex items-center justify-between">
+					<span className={styles.title}>Settings</span>
+				</div>
 
-				<Grid item xs={8}>
-					<TextField
-						fullWidth
-						size="small"
-						value={publicIp}
-						label="Public IP"
-						variant="outlined"
-						disabled={isLoading}
-						placeholder="123.45.67.89"
-						onChange={handlePublicIpChange}
-					/>
-				</Grid>
-				<Grid item xs={4}>
-					<TextField
-						fullWidth
-						size="small"
-						value={port}
-						label="Port"
-						type="number"
-						variant="outlined"
-						disabled={isLoading}
-						onChange={handlePortChange}
-					/>
-				</Grid>
+				<div className="grid grid-cols-12 gap-2">
+					<div className="col-span-8 space-y-1">
+						<Label htmlFor="publicIp" className="text-xs text-[#d2d2d2]">Public IP</Label>
+						<Input
+							id="publicIp"
+							value={publicIp}
+							disabled={isLoading}
+							className="h-8 text-xs"
+							placeholder="123.45.67.89"
+							onChange={handlePublicIpChange}
+						/>
+					</div>
+					<div className="col-span-4 space-y-1">
+						<Label htmlFor="port" className="text-xs text-[#d2d2d2]">Port</Label>
+						<Input
+							id="port"
+							value={port}
+							type="number"
+							disabled={isLoading}
+							className="h-8 text-xs"
+							onChange={handlePortChange}
+						/>
+					</div>
+				</div>
 
-				<Grid item xs={12}>
-					<TextField
-						fullWidth
-						size="small"
-						variant="outlined"
+				<div className="space-y-1">
+					<Label htmlFor="valheimPath" className="text-xs text-[#d2d2d2]">Valheim Folder</Label>
+					<Input
+						id="valheimPath"
 						disabled={isLoading}
 						value={valheimFolder}
-						label="Valheim Folder"
+						className="h-8 text-xs"
 						onChange={handleValheimFolderChange}
 						placeholder="C:\Program Files (x86)\Steam\steamapps\common\Valheim"
 					/>
-				</Grid>
+				</div>
 
-				<Grid item xs={12} display="flex" alignItems="flex-end" justifyContent="flex-end">
-					<LoadingButton loading={isLoading} className={styles.saveButton} onClick={async () => await saveSettings()}>
+				<div className="flex items-end justify-end">
+					<Button
+						disabled={isLoading}
+						className={styles.saveButton}
+						onClick={async () => await saveSettings()}
+					>
+						{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						Save
-					</LoadingButton>
-				</Grid>
-			</Grid>
+					</Button>
+				</div>
+			</div>
 		</div>
 	);
 };

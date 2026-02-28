@@ -1,11 +1,16 @@
-import React, { MouseEvent } from 'react';
+import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import CloseIcon from '@mui/icons-material/Close';
 import { getCurrent } from '@tauri-apps/api/window';
-import SettingsIcon from '@mui/icons-material/Settings';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { Select, Tooltip, MenuItem } from '@mui/material';
+import { X, Settings, ArrowLeft } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+	Select,
+	SelectItem,
+	SelectValue,
+	SelectContent,
+	SelectTrigger,
+} from '@/components/ui/select';
 
 import MenuOptions from './Menu';
 import styles from './styles.module.scss';
@@ -37,10 +42,11 @@ const TitleBar: React.FC = () => {
 		setIsShareStarting,
 		setActiveTmmProfile
 	} = React.useContext(AppStateContext);
-	const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+	const [menuOpen, setMenuOpen] = React.useState(false);
 	const [joinDialogOpen, setJoinDialogOpen] = React.useState(false);
 	const [isConfiguring, setIsConfiguring] = React.useState(false);
 	const [isPathValid, setIsPathValid] = React.useState(false);
+	const triggerRef = React.useRef<HTMLButtonElement>(null);
 
 	React.useEffect(() => {
 		const checkPath = async () => {
@@ -72,8 +78,8 @@ const TitleBar: React.FC = () => {
 		}
 	};
 
-	const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-		setAnchorEl(event.currentTarget);
+	const handleClick = () => {
+		setMenuOpen(true);
 	};
 
 	const handleOpenSettings = () => {
@@ -84,8 +90,7 @@ const TitleBar: React.FC = () => {
 		navigate('/');
 	};
 
-	const handleProfileChange = async (event: any) => {
-		const name = event.target.value;
+	const handleProfileChange = async (name: string) => {
 		if (name) {
 			await setActiveTmmProfile(name);
 		}
@@ -167,110 +172,66 @@ const TitleBar: React.FC = () => {
 							Options
 						</button>
 						<Select
-							size="small"
-							displayEmpty
 							value={activeTmmProfile || ''}
-							onChange={handleProfileChange}
-							className={styles.profileSelect}
+							onValueChange={handleProfileChange}
 							disabled={tmmProfiles.length === 0}
-							MenuProps={{
-								PaperProps: {
-									sx: {
-										backgroundColor: '#323232',
-										'& .MuiList-root': {
-											padding: '4px 0'
-										},
-										'& .MuiMenuItem-root': {
-											fontSize: 11,
-											color: '#d2d2d2',
-											minHeight: 'unset',
-											padding: '4px 12px',
-											'&:hover': {
-												backgroundColor: '#404040'
-											},
-											'&.Mui-selected': {
-												backgroundColor: '#505050',
-												'&:hover': {
-													backgroundColor: '#505050'
-												}
-											}
-										}
-									}
-								}
-							}}
-							sx={{
-								height: 24,
-								minWidth: 80,
-								fontSize: 11,
-								maxWidth: 120,
-								color: '#d2d2d2',
-								backgroundColor: '#323232',
-								'&:hover': {
-									backgroundColor: '#404040'
-								},
-								'& .MuiOutlinedInput-notchedOutline': {
-									border: 'none'
-								},
-								'& .MuiSvgIcon-root': {
-									right: 4,
-									fontSize: 16,
-									color: '#d2d2d2'
-								},
-								'& .MuiSelect-select': {
-									height: '24px',
-									display: 'flex',
-									lineHeight: '24px',
-									alignItems: 'center',
-									padding: '0 24px 0 8px !important'
-								}
-							}}
 						>
-							{tmmProfiles.length === 0 ? (
-								<MenuItem value="" disabled>
-									No profiles
-								</MenuItem>
-							) : (
-								tmmProfiles.map((p) => (
-									<MenuItem key={p.name} value={p.name}>
-										{p.name}
-									</MenuItem>
-								))
-							)}
+							<SelectTrigger className={`${styles.profileSelect} min-w-[80px] max-w-[120px]`}>
+								<SelectValue placeholder="No profiles" />
+							</SelectTrigger>
+							<SelectContent>
+								{tmmProfiles.length === 0 ? (
+									<SelectItem value="" disabled>
+										No profiles
+									</SelectItem>
+								) : (
+									tmmProfiles.map((p) => (
+										<SelectItem key={p.name} value={p.name}>
+											{p.name}
+										</SelectItem>
+									))
+								)}
+							</SelectContent>
 						</Select>
 					</>
 				) : (
 					<button onClick={handleBack} className={`${styles.btn} ${styles.backButton}`}>
-						<ArrowBackIcon sx={{ fontSize: 15, color: '#d2d2d2' }} />
+						<ArrowLeft className="h-[15px] w-[15px] text-[#d2d2d2]" />
 					</button>
 				)
 			) : null}
-			<MenuOptions anchorEl={anchorEl} setAnchorEl={setAnchorEl} />
+			<MenuOptions open={menuOpen} triggerRef={triggerRef} onOpenChange={setMenuOpen} />
 			<div data-tauri-drag-region className={styles.titleBar}></div>
 			{isHomePage && !isConfigEmpty && (
 				<>
 					<button onClick={handleConfigure} disabled={isConfiguring || isPathValid} className={`${styles.btn} ${styles.configureButton}`}>
 						{isConfiguring ? '...' : 'Configure'}
 					</button>
-					<Tooltip title={isHosting ? 'Stop sharing' : 'Start sharing'}>
-						<button
-							disabled={isShareStarting}
-							onClick={handleShareToggle}
-							className={`${styles.btn} ${styles.shareJoinButton} ${isHosting ? styles.sharing : ''}`}
-						>
-							{isShareStarting ? '...' : 'Share'}
-						</button>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								disabled={isShareStarting}
+								onClick={handleShareToggle}
+								className={`${styles.btn} ${styles.shareJoinButton} ${isHosting ? styles.sharing : ''}`}
+							>
+								{isShareStarting ? '...' : 'Share'}
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>
+							{isHosting ? 'Stop sharing' : 'Start sharing'}
+						</TooltipContent>
 					</Tooltip>
 					<button disabled={isHosting} onClick={() => setJoinDialogOpen(true)} className={`${styles.btn} ${styles.shareJoinButton}`}>
 						Join
 					</button>
 					<button onClick={handleOpenSettings} className={`${styles.btn} ${styles.settingsButton}`}>
-						<SettingsIcon sx={{ fontSize: 15, color: '#d2d2d2' }} />
+						<Settings className="h-[15px] w-[15px] text-[#d2d2d2]" />
 					</button>
 				</>
 			)}
 			{!isSubPage && (
 				<button onClick={() => getCurrent().close()} className={`${styles.btn} ${styles.closeButton}`}>
-					<CloseIcon sx={{ fontSize: 15, color: '#d2d2d2' }} />
+					<X className="h-[15px] w-[15px] text-[#d2d2d2]" />
 				</button>
 			)}
 

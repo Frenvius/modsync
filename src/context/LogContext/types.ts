@@ -6,6 +6,6 @@ export interface LogProviderProps {
 
 export interface LogContextType {
 	logs: string[];
-	setLog: (str: string) => void;
 	cleanLogs: () => void;
+	setLog: (str: string) => void;
 }

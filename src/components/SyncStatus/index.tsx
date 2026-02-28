@@ -1,4 +1,4 @@
-import { Tooltip, Typography } from '@mui/material';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { SyncStatus as SyncStatusType } from '~/services/sync.service';
 
@@ -47,19 +47,19 @@ const SyncStatusComponent = ({ status, onClick }: SyncStatusProps) => {
 	const config = getStatusConfig();
 
 	return (
-		<Tooltip placement="top" title={config.tooltip}>
-			<Typography
-				component="span"
-				onClick={status === 'OutOfSync' ? onClick : undefined}
-				sx={{
-					fontSize: 11,
-					color: config.color,
-					cursor: status === 'OutOfSync' ? 'pointer' : 'default',
-					'&:hover': status === 'OutOfSync' ? { textDecoration: 'underline' } : {}
-				}}
-			>
-				{config.label}
-			</Typography>
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span
+					style={{ fontSize: 11, color: config.color }}
+					onClick={status === 'OutOfSync' ? onClick : undefined}
+					className={status === 'OutOfSync' ? 'cursor-pointer hover:underline' : 'cursor-default'}
+				>
+					{config.label}
+				</span>
+			</TooltipTrigger>
+			<TooltipContent side="top">
+				{config.tooltip}
+			</TooltipContent>
 		</Tooltip>
 	);
 };

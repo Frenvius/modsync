@@ -1,6 +1,7 @@
 import React from 'react';
+import { Button } from '@/components/ui/button';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { Box, Grid, Button, Tooltip } from '@mui/material';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import styles from './styles.module.scss';
 import LogPanel from '~/components/LogPanel';
@@ -87,35 +88,40 @@ const Home = () => {
 	return (
 		<div className={styles.container}>
 			<LogPanel />
-			<Grid container spacing={0.5}>
-				<Grid item xs={12} className={styles.statusText}>
-					<Box sx={{ gap: 1, display: 'flex', alignItems: 'center' }}>
+			<div className="grid grid-cols-12 gap-1">
+				<div className="col-span-12 flex items-center justify-between text-xs">
+					<div className="flex items-center gap-2">
 						<div>
 							{activeTmmProfile && <span style={{ color: '#888' }}>[{activeTmmProfile}]</span>} Status: {statusText}
 						</div>
 						{isInstalled && <SyncStatus status={syncStatus} onClick={handleSync} />}
-					</Box>
+					</div>
 					<div onClick={handleUpdate} className={styles.updateButton}>
 						{hasUpdate ? (
-							<Tooltip placement="top" title="Click to update">
-								<div className={styles.link}>
-									{appVersion} &#8594; {update?.version}
-								</div>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<div className={styles.link}>
+										{appVersion} &#8594; {update?.version}
+									</div>
+								</TooltipTrigger>
+								<TooltipContent side="top">
+									Click to update
+								</TooltipContent>
 							</Tooltip>
 						) : (
 							appVersion
 						)}
 					</div>
-				</Grid>
-				<Grid item xs={8.5}>
+				</div>
+				<div className="col-span-9">
 					<LinearProgressWithLabel value={syncProgress} variant={progressType} />
-				</Grid>
-				<Grid item xs={3.5}>
+				</div>
+				<div className="col-span-3">
 					<Button onClick={playButton} className={styles.playButton} disabled={playDisabled || isShareStarting}>
 						{getPlayButtonText()}
 					</Button>
-				</Grid>
-			</Grid>
+				</div>
+			</div>
 		</div>
 	);
 };

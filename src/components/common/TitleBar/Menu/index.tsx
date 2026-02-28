@@ -1,6 +1,10 @@
 import React from 'react';
-import { Menu } from '@mui/material';
-import MenuItem from '@mui/material/MenuItem';
+import {
+	DropdownMenu,
+	DropdownMenuItem,
+	DropdownMenuContent,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 import styles from './styles.module.scss';
 import { MenuOptionsProps } from './types';
@@ -9,12 +13,17 @@ import { commandService } from '~/services/command.service';
 import { profileService } from '~/services/profile.service';
 import { AppStateContext } from '~/context/AppState/constants';
 
-const MenuOptions: React.FC<MenuOptionsProps> = ({ anchorEl, setAnchorEl }) => {
-	const open = Boolean(anchorEl);
+interface Props extends Omit<MenuOptionsProps, 'anchorEl' | 'setAnchorEl'> {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	triggerRef: React.RefObject<HTMLButtonElement>;
+}
+
+const MenuOptions: React.FC<Props> = ({ open, triggerRef, onOpenChange }) => {
 	const { config, isInstalled, activeTmmProfile } = React.useContext(AppStateContext);
 
 	const handleClose = () => {
-		setAnchorEl(null);
+		onOpenChange(false);
 	};
 
 	const handleOpenProfileFolder = async () => {
@@ -37,29 +46,34 @@ const MenuOptions: React.FC<MenuOptionsProps> = ({ anchorEl, setAnchorEl }) => {
 	};
 
 	return (
-		<Menu
-			open={open}
-			anchorEl={anchorEl}
-			onClose={handleClose}
-			anchorOrigin={{
-				vertical: 'top',
-				horizontal: 'left'
-			}}
-			transformOrigin={{
-				vertical: 'top',
-				horizontal: 'left'
-			}}
-		>
-			<MenuItem disabled={!isInstalled} onClick={handleUninstall} className={styles.menuItem}>
-				Uninstall mods
-			</MenuItem>
-			<MenuItem className={styles.menuItem} disabled={!activeTmmProfile} onClick={handleOpenProfileFolder}>
-				Open profile folder
-			</MenuItem>
-			<MenuItem className={styles.menuItem} disabled={!config.valheimPath} onClick={handleOpenValheimFolder}>
-				Open Valheim folder
-			</MenuItem>
-		</Menu>
+		<DropdownMenu open={open} onOpenChange={onOpenChange}>
+			<DropdownMenuTrigger asChild>
+				<span ref={triggerRef as React.RefObject<HTMLSpanElement>} />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start" className={styles.menuContent}>
+				<DropdownMenuItem
+					disabled={!isInstalled}
+					onClick={handleUninstall}
+					className={styles.menuItem}
+				>
+					Uninstall mods
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					className={styles.menuItem}
+					disabled={!activeTmmProfile}
+					onClick={handleOpenProfileFolder}
+				>
+					Open profile folder
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					className={styles.menuItem}
+					disabled={!config.valheimPath}
+					onClick={handleOpenValheimFolder}
+				>
+					Open Valheim folder
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 };
 
