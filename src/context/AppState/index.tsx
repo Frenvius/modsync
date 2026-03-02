@@ -32,7 +32,7 @@ const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, u
 	const [activeProfile, setActiveProfileState] = React.useState<null | Profile>(null);
 	const [activeProfileId, setActiveProfileIdState] = React.useState<null | string>(config.activeProfileId || null);
 
-	const [activeGame, setActiveGameState] = React.useState(config.activeGame || 'valheim');
+	const [activeGame, setActiveGameState] = React.useState(config.activeGame || '');
 
 	const computeIsInstalled = React.useCallback(() => {
 		return activeProfile ? activeProfile.mods.length > 0 : false;
@@ -194,8 +194,10 @@ const AppStateProvider: React.FC<AppStateProviderProps> = ({ config, children, u
 	}, []);
 
 	React.useEffect(() => {
-		thunderstoreService.preWarmCache('valheim');
-	}, []);
+		if (activeGame) {
+			thunderstoreService.preWarmCache(activeGame);
+		}
+	}, [activeGame]);
 
 	React.useEffect(() => {
 		syncService.isHosting().then((hosting) => {

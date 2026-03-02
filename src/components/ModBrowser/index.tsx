@@ -15,6 +15,7 @@ import { SortBy, PackageInfo, SearchResult, thunderstoreService } from '~/servic
 const ITEMS_PER_PAGE = 20;
 
 interface BrowserState {
+	game: string;
 	sortBy: SortBy;
 	category: string;
 	searchQuery: string;
@@ -27,23 +28,25 @@ let _browserState: null | BrowserState = null;
 
 const ModBrowser: React.FC = () => {
 	const toast = useToast();
-	const { isReadOnly } = React.useContext(AppStateContext);
+	const { activeGame, isReadOnly } = React.useContext(AppStateContext);
 
-	const [searchQuery, setSearchQuery] = React.useState(_browserState?.searchQuery ?? '');
-	const [category, setCategory] = React.useState<string>(_browserState?.category ?? 'all');
-	const [sortBy, setSortBy] = React.useState<SortBy>(_browserState?.sortBy ?? 'downloads');
-	const [currentPage, setCurrentPage] = React.useState(_browserState?.currentPage ?? 0);
-	const [results, setResults] = React.useState<null | SearchResult>(_browserState?.results ?? null);
-	const [categories, setCategories] = React.useState<string[]>(_browserState?.categories ?? []);
+	const cachedState = _browserState?.game === activeGame ? _browserState : null;
+
+	const [searchQuery, setSearchQuery] = React.useState(cachedState?.searchQuery ?? '');
+	const [category, setCategory] = React.useState<string>(cachedState?.category ?? 'all');
+	const [sortBy, setSortBy] = React.useState<SortBy>(cachedState?.sortBy ?? 'downloads');
+	const [currentPage, setCurrentPage] = React.useState(cachedState?.currentPage ?? 0);
+	const [results, setResults] = React.useState<null | SearchResult>(cachedState?.results ?? null);
+	const [categories, setCategories] = React.useState<string[]>(cachedState?.categories ?? []);
 	const [isLoading, setIsLoading] = React.useState(false);
 	const [isRefreshing, setIsRefreshing] = React.useState(false);
 	const [installingPackage, setInstallingPackage] = React.useState<null | string>(null);
 	const [selectedPackage, setSelectedPackage] = React.useState<null | PackageInfo>(null);
 
-	const game = 'valheim'; // TODO: Make this dynamic with multi-game support
+	const game = activeGame;
 
-	const stateRef = React.useRef<BrowserState>({ sortBy, results, category, categories, searchQuery, currentPage });
-	stateRef.current = { sortBy, results, category, categories, searchQuery, currentPage };
+	const stateRef = React.useRef<BrowserState>({ game, sortBy, results, category, categories, searchQuery, currentPage });
+	stateRef.current = { game, sortBy, results, category, categories, searchQuery, currentPage };
 
 	React.useEffect(() => {
 		return () => {

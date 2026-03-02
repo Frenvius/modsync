@@ -30,7 +30,7 @@ impl Default for CacheIndex {
 pub fn cache_dir() -> Result<PathBuf, String> {
     let app_data = dirs::data_dir()
         .ok_or("Could not find AppData directory")?;
-    Ok(app_data.join("Valheim Mod Updater").join("cache"))
+    Ok(app_data.join("Mod Updater").join("cache"))
 }
 
 fn cache_index_path() -> Result<PathBuf, String> {

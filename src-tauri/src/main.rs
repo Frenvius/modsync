@@ -77,8 +77,8 @@ fn main() {
             check_host_online_cmd,
             get_sync_status_cmd,
             get_mods_path,
-            detect_valheim_path,
-            is_valid_valheim_path,
+            detect_game_path,
+            is_valid_game_path,
             join_modpack,
             cache::get_cache_stats_cmd,
             cache::clear_cache_cmd,
@@ -116,7 +116,7 @@ fn main() {
 
 fn get_app_data_dir() -> Result<std::path::PathBuf, String> {
     dirs::data_dir()
-        .map(|d| d.join("Valheim Mod Updater"))
+        .map(|d| d.join("Mod Updater"))
         .ok_or("Could not find AppData directory".to_string())
 }
 
@@ -130,18 +130,26 @@ fn read_config() -> Result<serde_json::Value, String> {
     serde_json::from_str(&content).map_err(|e| format!("Failed to parse config: {}", e))
 }
 
+fn get_default_game_id() -> String {
+    game::get_supported_games()
+        .into_iter()
+        .next()
+        .map(|g| g.id)
+        .unwrap_or_default()
+}
+
 fn get_active_game_id() -> Result<String, String> {
+    let default = get_default_game_id();
     let config = read_config()?;
-    config
+    Ok(config
         .get("activeGame")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| "valheim".to_string()) // Default to valheim
-        .or(Ok("valheim".to_string()))
+        .unwrap_or(default))
 }
 
 fn get_active_bepinex_path_internal() -> Result<String, String> {
-    let game_id = get_active_game_id().unwrap_or_else(|_| "valheim".to_string());
+    let game_id = get_active_game_id().unwrap_or_else(|_| get_default_game_id());
 
     if let Ok(manager) = profile::ProfileManager::new() {
         if let Ok(Some(profile)) = manager.get_active_profile(&game_id) {
@@ -179,7 +187,7 @@ fn find_bepinex_preloader(bepinex_path: &str) -> Result<String, String> {
 #[tauri::command]
 fn get_initial_data() -> Result<String, String> {
     let app_data_dir = dirs::data_dir().ok_or("Could not find AppData directory")?;
-    let dir_path = app_data_dir.join("Valheim Mod Updater");
+    let dir_path = app_data_dir.join("Mod Updater");
     let file_path = dir_path.join("mod_updater_data.json");
 
     match fs::create_dir_all(&dir_path) {
@@ -191,7 +199,7 @@ fn get_initial_data() -> Result<String, String> {
 
     if !config_exists {
         let default_config = serde_json::json!({
-            "valheimPath": "",
+            "gamePath": "",
             "hostPort": 7878,
             "activeProfileId": null
         });
@@ -206,7 +214,11 @@ fn get_initial_data() -> Result<String, String> {
     let mut config: serde_json::Value =
         serde_json::from_str(&config_data).map_err(|e| e.to_string())?;
 
-    let active_game_id = config.get("activeGame").and_then(|v| v.as_str()).unwrap_or("valheim").to_string();
+    let default_game = game::get_supported_games().into_iter().next().map(|g| g.id).unwrap_or_default();
+    let active_game_id = config.get("activeGame")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or(default_game);
     let has_active_native_profile = if let Ok(manager) = profile::ProfileManager::new() {
         manager.get_active_profile(&active_game_id)
             .ok()
@@ -216,8 +228,8 @@ fn get_initial_data() -> Result<String, String> {
     } else {
         false
     };
-    let valheim_path = config.get("valheimPath").and_then(|v| v.as_str()).unwrap_or("");
-    config["installed"] = serde_json::Value::Bool(has_active_native_profile && !valheim_path.is_empty());
+    let game_path = config.get("gamePath").and_then(|v| v.as_str()).unwrap_or("");
+    config["installed"] = serde_json::Value::Bool(has_active_native_profile && !game_path.is_empty());
 
     Ok(serde_json::to_string(&config).unwrap())
 }
@@ -289,21 +301,21 @@ async fn get_mods_path() -> Result<String, String> {
 }
 
 #[tauri::command]
-fn is_valid_valheim_path(path: String) -> bool {
-    let valheim_dir = std::path::Path::new(&path);
-    valheim_dir.join("valheim.exe").exists()
+fn is_valid_game_path(path: String, game_id: String) -> bool {
+    game::get_game_by_id(&game_id)
+        .map(|g| std::path::Path::new(&path).join(&g.exe_name).exists())
+        .unwrap_or(false)
 }
 
 #[tauri::command]
-fn detect_valheim_path() -> Option<String> {
+fn detect_game_path(game_id: String) -> Option<String> {
+    let game = game::get_game_by_id(&game_id)?;
     let steam_exe_path = get_steam_process_path()?;
-
     let steam_dir = std::path::Path::new(&steam_exe_path).parent()?;
-
-    let valheim_path = steam_dir.join("steamapps").join("common").join("Valheim");
-
-    if is_valid_valheim_path(valheim_path.to_string_lossy().to_string()) {
-        Some(valheim_path.to_string_lossy().to_string())
+    let game_path = steam_dir.join("steamapps").join("common").join(&game.name);
+    let path_str = game_path.to_string_lossy().to_string();
+    if is_valid_game_path(path_str.clone(), game_id) {
+        Some(path_str)
     } else {
         None
     }

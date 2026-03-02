@@ -4,13 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Loader2, FolderOpen } from 'lucide-react';
-import {
-	Dialog,
-	DialogTitle,
-	DialogHeader,
-	DialogContent,
-	DialogDescription,
-} from '@/components/ui/dialog';
+import { Dialog, DialogTitle, DialogHeader, DialogContent, DialogDescription } from '@/components/ui/dialog';
 
 import { Profile } from '~/types/profile';
 import { profileService } from '~/services/profile.service';
@@ -31,7 +25,7 @@ const ProfileCreateDialog: React.FC<ProfileCreateDialogProps> = ({ gameId, onClo
 	const handleBrowse = async () => {
 		const selected = await open({
 			directory: true,
-			title: 'Select profile folder',
+			title: 'Select profile folder'
 		});
 		if (selected) {
 			setCustomPath(selected as string);
@@ -106,19 +100,11 @@ const ProfileCreateDialog: React.FC<ProfileCreateDialogProps> = ({ gameId, onClo
 								placeholder="Default location"
 								onChange={(e) => setCustomPath(e.target.value)}
 							/>
-							<Button
-								size="sm"
-								variant="outline"
-								className="shrink-0"
-								disabled={isCreating}
-								onClick={handleBrowse}
-							>
+							<Button size="sm" variant="outline" className="shrink-0" disabled={isCreating} onClick={handleBrowse}>
 								<FolderOpen className="w-4 h-4" />
 							</Button>
 						</div>
-						<p className="text-xs text-muted-foreground">
-							Leave empty to use default: %appdata%\Valheim Mod Updater\profiles\
-						</p>
+						<p className="text-xs text-muted-foreground">Leave empty to use default: %appdata%\Mod Updater\profiles\</p>
 					</div>
 
 					{error && <p className="text-sm text-destructive">{error}</p>}

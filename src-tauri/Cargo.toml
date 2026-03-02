@@ -1,5 +1,5 @@
 [package]
-name = "valheim-mod-updater"
+name = "mod-updater"
 version = "1.0.8"
 description = "Mod Updater"
 authors = ["Frenvius"]

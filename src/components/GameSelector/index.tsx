@@ -10,7 +10,12 @@ const GameSelector: React.FC = () => {
 	const [games, setGames] = React.useState<GameInfo[]>([]);
 
 	React.useEffect(() => {
-		gameService.getGames().then(setGames).catch(console.error);
+		gameService.getGames().then((loadedGames) => {
+			setGames(loadedGames);
+			if (!activeGame && loadedGames.length > 0) {
+				handleGameChange(loadedGames[0].id);
+			}
+		}).catch(console.error);
 	}, []);
 
 	const handleGameChange = (gameId: string) => {
@@ -25,7 +30,7 @@ const GameSelector: React.FC = () => {
 
 	return (
 		<div className="px-3 py-2">
-			<Select value={activeGame || 'valheim'} onValueChange={handleGameChange}>
+			<Select value={activeGame} onValueChange={handleGameChange}>
 				<SelectTrigger className="w-full bg-sidebar-accent border-sidebar-border">
 					<div className="flex items-center gap-2">
 						<Gamepad2 className="h-4 w-4" />

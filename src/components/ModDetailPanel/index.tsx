@@ -11,6 +11,7 @@ import { X, Lock, Star, Loader2, Download, ChevronDown, ChevronRight, ExternalLi
 
 import { ModEntry } from '~/services/sync.service';
 import { commandService } from '~/services/command.service';
+import { AppStateContext } from '~/context/AppState/constants';
 import { PackageInfo, thunderstoreService } from '~/services/thunderstore.service';
 
 export interface ModWithInfo extends ModEntry {
@@ -46,6 +47,7 @@ const formatNumber = (num: number): string => {
 
 const ModDetailPanel: React.FC<Props> = (props) => {
 	const { onClose } = props;
+	const { activeGame } = React.useContext(AppStateContext);
 	const [depsOpen, setDepsOpen] = React.useState(false);
 	const [activeTab, setActiveTab] = React.useState('readme');
 	const [readme, setReadme] = React.useState<null | string | undefined>(undefined);
@@ -89,7 +91,7 @@ const ModDetailPanel: React.FC<Props> = (props) => {
 	const info: null | undefined | PackageInfo = props.mode === 'browse' ? props.pkg : props.mod.packageInfo;
 	const namespace = props.mode === 'browse' ? props.pkg.owner : props.mod.packageInfo?.owner ?? props.mod.author ?? null;
 	const pkgName = props.mode === 'browse' ? props.pkg.name : props.mod.packageInfo?.name ?? props.mod.name ?? null;
-	const game = props.mode === 'browse' ? props.game : 'valheim';
+	const game = props.mode === 'browse' ? props.game : activeGame;
 	const isCustom = props.mode === 'installed' && props.mod.is_custom;
 
 	const pkgVersion = props.mode === 'browse' ? props.pkg.version : props.mod.packageInfo?.version ?? props.mod.thunderstore_version ?? null;

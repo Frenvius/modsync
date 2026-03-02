@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 pub fn get_app_data_dir() -> Result<PathBuf, String> {
     dirs::data_dir()
-        .map(|d| d.join("Valheim Mod Updater"))
+        .map(|d| d.join("Mod Updater"))
         .ok_or_else(|| "Could not find AppData directory".to_string())
 }
 

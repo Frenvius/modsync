@@ -71,7 +71,7 @@ async function persistModsToYml(profileId: string, mods: ModWithInfo[], _isPendi
 	} catch {}
 }
 
-async function refreshModsYmlInBackground(profileId: string, modpackName: string, modpackId: string): Promise<void> {
+async function refreshModsYmlInBackground(profileId: string, modpackName: string, modpackId: string, game: string): Promise<void> {
 	try {
 		const modpack = await syncService.scanLocalMods(modpackName, modpackId);
 		if (modpack.mods.length === 0) return;
@@ -80,7 +80,7 @@ async function refreshModsYmlInBackground(profileId: string, modpackName: string
 		let packageMap: Record<string, PackageInfo> = {};
 		if (thunderstoreIds.length > 0) {
 			try {
-				packageMap = await thunderstoreService.getPackagesBulk('valheim', thunderstoreIds);
+				packageMap = await thunderstoreService.getPackagesBulk(game, thunderstoreIds);
 			} catch {}
 		}
 
@@ -181,7 +181,7 @@ const ManageProfile = () => {
 					setMods(modsFromYml);
 					_profileModCache.set(activeProfile.id, { mods: modsFromYml, cachedAt: Date.now(), isPendingInstall: false });
 
-					refreshModsYmlInBackground(activeProfile.id, modpackName || activeProfile.name, modpackId || '');
+					refreshModsYmlInBackground(activeProfile.id, modpackName || activeProfile.name, modpackId || '', activeGame);
 					return;
 				}
 
@@ -197,7 +197,7 @@ const ManageProfile = () => {
 					let packageMap: Record<string, PackageInfo> = {};
 					if (thunderstoreIds.length > 0) {
 						try {
-							packageMap = await thunderstoreService.getPackagesBulk('valheim', thunderstoreIds);
+							packageMap = await thunderstoreService.getPackagesBulk(activeGame, thunderstoreIds);
 						} catch {}
 					}
 					finalMods = dbMods.map((mod) => ({
@@ -209,7 +209,7 @@ const ManageProfile = () => {
 					let packageMap: Record<string, PackageInfo> = {};
 					if (thunderstoreIds.length > 0) {
 						try {
-							packageMap = await thunderstoreService.getPackagesBulk('valheim', thunderstoreIds);
+							packageMap = await thunderstoreService.getPackagesBulk(activeGame, thunderstoreIds);
 						} catch {}
 					}
 					finalMods = modpack.mods.map((mod) => ({
@@ -249,7 +249,7 @@ const ManageProfile = () => {
 
 		(async () => {
 			try {
-				const updates = await profileService.checkProfileUpdates(activeProfile.id, activeGame || 'valheim');
+				const updates = await profileService.checkProfileUpdates(activeProfile.id, activeGame);
 				const updatable = updates.filter((u) => u.hasUpdate);
 				if (updatable.length > 0) {
 					setModsWithUpdates(updatable);
@@ -320,7 +320,7 @@ const ManageProfile = () => {
 		const packageId = mod.thunderstore_id;
 		setUpdatingMods((prev) => new Set(prev).add(packageId));
 		try {
-			await profileService.updateMod(activeProfile.id, packageId, mod.latestVersion, activeGame || 'valheim');
+			await profileService.updateMod(activeProfile.id, packageId, mod.latestVersion, activeGame);
 			setMods((prev) => prev.map((m) => (m === mod ? { ...m, hasUpdate: false, thunderstore_version: mod.latestVersion } : m)));
 			setModsWithUpdates((prev) => prev.filter((u) => u.packageId !== packageId));
 			_profileModCache.delete(activeProfile.id);
@@ -346,7 +346,7 @@ const ManageProfile = () => {
 		});
 
 		try {
-			const failedIds = await profileService.updateAllMods(activeProfile.id, activeGame || 'valheim', modsWithUpdates);
+			const failedIds = await profileService.updateAllMods(activeProfile.id, activeGame, modsWithUpdates);
 			const failedSet = new Set(failedIds);
 			const updateMap = new Map(modsWithUpdates.map((u) => [u.packageId, u]));
 			setMods((prev) =>

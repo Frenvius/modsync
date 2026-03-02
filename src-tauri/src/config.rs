@@ -4,7 +4,7 @@ use std::io::{self, Write};
 
 async fn config_file() -> Result<String, String> {
 	let app_data_dir = dirs::data_dir().ok_or("Could not find AppData directory")?;
-	let dir_path = app_data_dir.join("Valheim Mod Updater");
+	let dir_path = app_data_dir.join("Mod Updater");
 	let file_path = dir_path.join("mod_updater_data.json");
 	Ok(file_path.to_str().unwrap().to_string())
 }
@@ -12,7 +12,7 @@ async fn config_file() -> Result<String, String> {
 #[tauri::command]
 pub async fn config_folder() -> Result<String, String> {
 	let app_data_dir = dirs::data_dir().ok_or("Could not find AppData directory")?;
-	let dir_path = app_data_dir.join("Valheim Mod Updater");
+	let dir_path = app_data_dir.join("Mod Updater");
 	Ok(dir_path.to_str().unwrap().to_string())
 }
 

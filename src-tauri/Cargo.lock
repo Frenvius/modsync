@@ -2427,6 +2427,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "mod-updater"
+version = "1.0.8"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "dirs",
+ "futures",
+ "hex",
+ "html_parser",
+ "once_cell",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "sysinfo",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-process",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+ "thiserror",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "uuid",
+ "walkdir",
+ "whoami",
+ "zip 0.6.6",
+]
+
+[[package]]
 name = "muda"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5216,43 +5253,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88ad59a7560b41a70d191093a945f0b87bc1deeda46fb237479708a1d6b6cdfc"
 dependencies = [
  "getrandom 0.2.10",
-]
-
-[[package]]
-name = "valheim-mod-updater"
-version = "1.0.8"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "chrono",
- "dirs",
- "futures",
- "hex",
- "html_parser",
- "once_cell",
- "reqwest 0.11.27",
- "rusqlite",
- "semver",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "sysinfo",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-process",
- "tauri-plugin-shell",
- "tauri-plugin-updater",
- "thiserror",
- "tokio",
- "tower-http",
- "tracing",
- "uuid",
- "walkdir",
- "whoami",
- "zip 0.6.6",
 ]
 
 [[package]]

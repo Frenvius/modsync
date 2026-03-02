@@ -126,8 +126,19 @@ pub fn parse_thunderstore_manifest(manifest_path: &Path, folder_name: &str, yml_
             (format!("{}-{}", owner, pkg_name), Some(owner))
         } else {
             let author = if let Some(url) = &website_url {
+                let game_ids: Vec<String> = crate::game::get_supported_games()
+                    .into_iter()
+                    .map(|g| g.thunderstore_id)
+                    .collect();
                 url.split('/')
-                    .find(|s| !s.is_empty() && *s != "https:" && *s != "thunderstore.io" && *s != "c" && *s != "valheim" && *s != "p")
+                    .find(|s| {
+                        !s.is_empty()
+                            && *s != "https:"
+                            && *s != "thunderstore.io"
+                            && *s != "c"
+                            && *s != "p"
+                            && !game_ids.iter().any(|id| id.as_str() == *s)
+                    })
                     .map(|s| s.to_string())
             } else if let Some(deps) = &dependencies {
                 deps.first().and_then(|d| d.split('-').next()).map(|s| s.to_string())
