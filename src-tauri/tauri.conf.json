@@ -17,8 +17,8 @@
 				"resizable": true,
 				"maximizable": true,
 				"title": "mod-updater",
-				"width": 900,
-				"height": 650,
+				"width": 1300,
+				"height": 840,
 				"minWidth": 900,
 				"minHeight": 650
 			}

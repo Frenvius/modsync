@@ -1,7 +1,5 @@
-use flate2::read::GzDecoder;
 use reqwest::Client;
 use std::collections::HashMap;
-use std::io::Read;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 use once_cell::sync::Lazy;
@@ -26,10 +24,30 @@ impl CacheEntry {
 
 fn create_client() -> Result<Client, String> {
     Client::builder()
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_secs(180))
+        .connect_timeout(Duration::from_secs(30))
+        .tcp_keepalive(Duration::from_secs(30))
         .gzip(true)
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))
+}
+
+async fn fetch_with_retry<F, Fut, T>(max_retries: u32, operation: F) -> Result<T, String>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let mut last_error = String::new();
+    for attempt in 0..=max_retries {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_secs(1 << (attempt - 1))).await;
+        }
+        match operation().await {
+            Ok(result) => return Ok(result),
+            Err(e) => last_error = e,
+        }
+    }
+    Err(last_error)
 }
 
 pub async fn fetch_packages(game: &ThunderstoreGame) -> Result<Vec<PackageListing>, String> {
@@ -48,43 +66,33 @@ pub async fn fetch_packages(game: &ThunderstoreGame) -> Result<Vec<PackageListin
         game.api_name()
     );
 
-    let response = client
-        .get(&url)
-        .header("Accept-Encoding", "gzip")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch packages: {}", e))?;
+    let packages: Vec<PackageListing> = fetch_with_retry(2, || {
+        let client = client.clone();
+        let url = url.clone();
+        async move {
+            let response = client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| format!("Failed to fetch packages: {}", e))?;
 
-    if !response.status().is_success() {
-        return Err(format!("Thunderstore API error: {}", response.status()));
-    }
+            if !response.status().is_success() {
+                return Err(format!("Thunderstore API error: {}", response.status()));
+            }
 
-    let content_encoding = response
-        .headers()
-        .get("content-encoding")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_default();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
+            let json_str = String::from_utf8(bytes.to_vec())
+                .map_err(|e| format!("Invalid UTF-8 response: {}", e))?;
 
-    let json_str = if content_encoding.contains("gzip") {
-        let mut decoder = GzDecoder::new(&bytes[..]);
-        let mut decompressed = String::new();
-        decoder
-            .read_to_string(&mut decompressed)
-            .map_err(|e| format!("Failed to decompress response: {}", e))?;
-        decompressed
-    } else {
-        String::from_utf8(bytes.to_vec())
-            .map_err(|e| format!("Invalid UTF-8 response: {}", e))?
-    };
-
-    let packages: Vec<PackageListing> = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Failed to parse packages: {}", e))?;
+            serde_json::from_str(&json_str)
+                .map_err(|e| format!("Failed to parse packages: {}", e))
+        }
+    })
+    .await?;
 
     {
         let mut cache = PACKAGE_CACHE.write().map_err(|e| e.to_string())?;
@@ -204,18 +212,81 @@ pub async fn get_categories(game: &ThunderstoreGame) -> Result<Vec<String>, Stri
     Ok(categories)
 }
 
+pub async fn fetch_package_readme(namespace: &str, name: &str, version: &str) -> Result<Option<String>, String> {
+    let client = create_client()?;
+    let url = format!(
+        "https://thunderstore.io/api/experimental/package/{}/{}/{}/readme/",
+        namespace, name, version
+    );
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch README: {}", e))?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse README response: {}", e))?;
+
+    Ok(json.get("markdown").and_then(|v| v.as_str()).map(|s| s.to_string()))
+}
+
+pub async fn fetch_package_changelog(namespace: &str, name: &str, version: &str) -> Result<Option<String>, String> {
+    let client = create_client()?;
+    let url = format!(
+        "https://thunderstore.io/api/experimental/package/{}/{}/{}/changelog/",
+        namespace, name, version
+    );
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch changelog: {}", e))?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse changelog response: {}", e))?;
+
+    Ok(json.get("markdown").and_then(|v| v.as_str()).map(|s| s.to_string()))
+}
+
 pub async fn get_packages_bulk(
     game: &ThunderstoreGame,
     full_names: &[String],
 ) -> Result<HashMap<String, PackageInfo>, String> {
     let packages = fetch_packages(game).await?;
 
-    let requested: std::collections::HashSet<&String> = full_names.iter().collect();
+    let requested_map: std::collections::HashMap<String, &String> =
+        full_names.iter().map(|s| (s.to_lowercase(), s)).collect();
 
     let result: HashMap<String, PackageInfo> = packages
         .iter()
-        .filter(|p| requested.contains(&p.full_name))
-        .map(|p| (p.full_name.clone(), PackageInfo::from(p)))
+        .filter_map(|p| {
+            let lower = p.full_name.to_lowercase();
+            requested_map.get(&lower).map(|original_id| {
+                ((*original_id).clone(), PackageInfo::from(p))
+            })
+        })
         .collect();
 
     Ok(result)

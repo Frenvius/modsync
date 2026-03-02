@@ -1,18 +1,11 @@
-import React from "react";
-import { Loader2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-	Dialog,
-	DialogTitle,
-	DialogHeader,
-	DialogContent,
-	DialogDescription,
-} from "@/components/ui/dialog";
+import React from 'react';
+import { Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogTitle, DialogHeader, DialogContent, DialogDescription } from '@/components/ui/dialog';
 
-import { profileService } from "~/services/profile.service";
-import { AppStateContext } from "~/context/AppState/constants";
-import { Modpack, ShareCode, syncService } from "~/services/sync.service";
+import { AppStateContext } from '~/context/AppState/constants';
+import { Modpack, ShareCode, syncService } from '~/services/sync.service';
 
 interface JoinDialogProps {
 	open: boolean;
@@ -21,19 +14,19 @@ interface JoinDialogProps {
 }
 
 const JoinDialog = ({ open, onClose, onJoined }: JoinDialogProps) => {
-	const { activeTmmProfile, refreshTmmProfiles, setActiveTmmProfile } = React.useContext(AppStateContext);
-	const [shareCode, setShareCode] = React.useState("");
+	const { activeProfile, createProfile, activeProfileId } = React.useContext(AppStateContext);
+	const [shareCode, setShareCode] = React.useState('');
 	const [isJoining, setIsJoining] = React.useState(false);
-	const [error, setError] = React.useState("");
+	const [error, setError] = React.useState('');
 
 	const handleJoin = async () => {
 		if (!shareCode.trim()) {
-			setError("Enter a share code");
+			setError('Enter a share code');
 			return;
 		}
 
 		setIsJoining(true);
-		setError("");
+		setError('');
 
 		try {
 			const info: ShareCode = await syncService.decodeShareCode(shareCode);
@@ -42,31 +35,29 @@ const JoinDialog = ({ open, onClose, onJoined }: JoinDialogProps) => {
 
 			const modpack: Modpack = await syncService.joinModpack(shareCode);
 
-			let profileToUse = activeTmmProfile;
-			if (!profileToUse) {
-				const newProfile = await profileService.createTmmProfile(modpack.name);
-				await refreshTmmProfiles();
-				await setActiveTmmProfile(newProfile.name);
-				profileToUse = newProfile.name;
+			let profileName = activeProfile?.name ?? modpack.name;
+			if (!activeProfileId) {
+				const newProfile = await createProfile(modpack.name);
+				profileName = newProfile.name;
 			}
 
-			onJoined(shareCode, info.host, info.port, modpack, profileToUse);
+			onJoined(shareCode, info.host, info.port, modpack, profileName);
 		} catch (err) {
 			setIsJoining(false);
 		}
 	};
 
 	const handleClose = () => {
-		setShareCode("");
-		setError("");
+		setShareCode('');
+		setError('');
 		setIsJoining(false);
 		onClose();
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {
-		if (e.key === "Enter" && shareCode.trim() && !isJoining) {
+		if (e.key === 'Enter' && shareCode.trim() && !isJoining) {
 			handleJoin();
-		} else if (e.key === "Escape") {
+		} else if (e.key === 'Escape') {
 			handleClose();
 		}
 	};
@@ -76,9 +67,7 @@ const JoinDialog = ({ open, onClose, onJoined }: JoinDialogProps) => {
 			<DialogContent className="sm:max-w-md glass">
 				<DialogHeader>
 					<DialogTitle>Join Modpack</DialogTitle>
-					<DialogDescription>
-						Enter the share code to join a modpack from a host
-					</DialogDescription>
+					<DialogDescription>Enter the share code to join a modpack from a host</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4 pt-4">
 					<Input
@@ -97,7 +86,7 @@ const JoinDialog = ({ open, onClose, onJoined }: JoinDialogProps) => {
 						</Button>
 						<Button variant="glow" onClick={handleJoin} disabled={isJoining || !shareCode.trim()}>
 							{isJoining && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-							{isJoining ? "Joining..." : "Join"}
+							{isJoining ? 'Joining...' : 'Join'}
 						</Button>
 					</div>
 				</div>

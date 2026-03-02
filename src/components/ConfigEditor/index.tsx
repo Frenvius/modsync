@@ -10,28 +10,29 @@ import { ConfigFile, ConfigSection, configService, ConfigFileSummary } from '~/s
 
 const ConfigEditor: React.FC = () => {
 	const toast = useToast();
-	const { isReadOnly, activeTmmProfile } = React.useContext(AppStateContext);
+	const { isReadOnly, activeProfile } = React.useContext(AppStateContext);
 
 	const [configFiles, setConfigFiles] = React.useState<ConfigFileSummary[]>([]);
 	const [selectedFile, setSelectedFile] = React.useState<null | ConfigFile>(null);
 	const [expandedSections, setExpandedSections] = React.useState<Set<string>>(new Set());
+	const [fileFilter, setFileFilter] = React.useState('');
 	const [searchQuery, setSearchQuery] = React.useState('');
 	const [isLoading, setIsLoading] = React.useState(false);
 	const [isLoadingFile, setIsLoadingFile] = React.useState(false);
 
 	const loadConfigFiles = React.useCallback(async () => {
-		if (!activeTmmProfile) return;
+		if (!activeProfile) return;
 
 		setIsLoading(true);
 		try {
-			const summaries = await configService.getConfigSummaries(activeTmmProfile);
+			const summaries = await configService.getConfigSummaries(activeProfile.path);
 			setConfigFiles(summaries);
 		} catch (err) {
 			toast.error('Failed to load configs', String(err));
 		} finally {
 			setIsLoading(false);
 		}
-	}, [activeTmmProfile, toast]);
+	}, [activeProfile?.path, toast]);
 
 	React.useEffect(() => {
 		loadConfigFiles();
@@ -105,9 +106,24 @@ const ConfigEditor: React.FC = () => {
 			.filter((section) => section.entries.length > 0);
 	};
 
-	if (!activeTmmProfile) {
+	const filteredConfigFiles = React.useMemo(() => {
+		if (!fileFilter) return configFiles;
+		const query = fileFilter.toLowerCase();
+		return configFiles.filter(
+			(file) =>
+				file.filename.toLowerCase().includes(query) ||
+				(file.mod_name && file.mod_name.toLowerCase().includes(query))
+		);
+	}, [configFiles, fileFilter]);
+
+	React.useEffect(() => {
+		setFileFilter('');
+		setSelectedFile(null);
+	}, [activeProfile?.id]);
+
+	if (!activeProfile) {
 		return (
-			<div className="flex flex-col h-full items-center justify-center text-muted-foreground">
+			<div className="flex flex-col h-full items-center justify-center text-muted-foreground pl-6 pt-6">
 				<FileText className="h-12 w-12 mb-2" />
 				<p>No profile selected</p>
 				<p className="text-sm">Select a profile to edit configs</p>
@@ -116,7 +132,7 @@ const ConfigEditor: React.FC = () => {
 	}
 
 	return (
-		<div className="flex flex-col h-full gap-4">
+		<div className="flex flex-col h-full gap-4 pl-6 pt-6">
 			<div>
 				<h1 className="text-2xl font-bold text-foreground">Config Editor</h1>
 				<p className="text-sm text-muted-foreground">Edit BepInEx mod configuration files</p>
@@ -135,16 +151,29 @@ const ConfigEditor: React.FC = () => {
 						<CardHeader className="py-3 px-4">
 							<CardTitle className="text-sm">Config Files</CardTitle>
 						</CardHeader>
+						<div className="px-3 pb-2">
+							<div className="relative">
+								<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+								<Input
+									value={fileFilter}
+									className="pl-8 h-8 text-sm"
+									placeholder="Filter files..."
+									onChange={(e) => setFileFilter(e.target.value)}
+								/>
+							</div>
+						</div>
 						<CardContent className="p-0 overflow-y-auto max-h-[calc(100vh-280px)]">
 							{isLoading ? (
 								<div className="flex items-center justify-center p-4">
 									<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 								</div>
-							) : configFiles.length === 0 ? (
-								<p className="p-4 text-sm text-muted-foreground">No config files found</p>
+							) : filteredConfigFiles.length === 0 ? (
+								<p className="p-4 text-sm text-muted-foreground">
+									{configFiles.length === 0 ? 'No config files found' : 'No matching files'}
+								</p>
 							) : (
 								<div className="divide-y divide-border">
-									{configFiles.map((file) => (
+									{filteredConfigFiles.map((file) => (
 										<button
 											key={file.path}
 											onClick={() => handleSelectFile(file.path)}

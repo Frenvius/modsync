@@ -55,6 +55,8 @@
 		"window:allow-minimize",
 		"window:allow-maximize",
 		"window:allow-unmaximize",
+		"window:allow-toggle-maximize",
+		"window:allow-is-maximized",
 		"window:allow-close",
 		"window:allow-start-dragging",
 		"fs:default",
@@ -68,6 +70,9 @@
 		"fs:allow-data-read-recursive",
 		"fs:allow-app-read-recursive",
 		"fs:allow-resource-read-recursive",
-		"fs:allow-resource-write-recursive"
+		"fs:allow-resource-write-recursive",
+		"dialog:default",
+		"dialog:allow-open",
+		"dialog:allow-save"
 	]
 }

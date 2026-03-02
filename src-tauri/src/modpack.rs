@@ -53,6 +53,24 @@ pub struct ThunderstoreManifest {
     pub dependencies: Option<Vec<String>>,
 }
 
+#[derive(Debug, Deserialize)]
+struct MmV2VersionNumber {
+    major: u32,
+    minor: u32,
+    patch: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MmV2Manifest {
+    name: String,
+    author_name: Option<String>,
+    display_name: Option<String>,
+    version_number: MmV2VersionNumber,
+    website_url: Option<String>,
+    dependencies: Option<Vec<String>>,
+}
+
 pub fn calculate_file_hash(path: &Path) -> Result<String, std::io::Error> {
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
@@ -76,43 +94,84 @@ pub struct ParsedManifest {
     pub version: String,
 }
 
-pub fn parse_thunderstore_manifest(manifest_path: &Path) -> Option<ParsedManifest> {
+pub fn parse_thunderstore_manifest(manifest_path: &Path, folder_name: &str, yml_author: Option<&str>) -> Option<ParsedManifest> {
     let content = fs::read_to_string(manifest_path).ok()?;
-    let manifest: ThunderstoreManifest = serde_json::from_str(&content).ok()?;
+    let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
 
-    let author = manifest.author.clone().or_else(|| {
-        if let Some(url) = &manifest.website_url {
-            url.split('/')
-                .find(|s| !s.is_empty() && *s != "https:" && *s != "thunderstore.io" && *s != "c" && *s != "valheim" && *s != "p")
-                .map(|s| s.to_string())
-        } else if let Some(deps) = &manifest.dependencies {
-            deps.first().and_then(|d| d.split('-').next()).map(|s| s.to_string())
+    let (raw_name, manifest_author, version, website_url, dependencies) =
+        if let Ok(m) = serde_json::from_str::<ThunderstoreManifest>(content) {
+            (m.name, m.author, m.version_number, m.website_url, m.dependencies)
+        } else if let Ok(m) = serde_json::from_str::<MmV2Manifest>(content) {
+            let version = format!("{}.{}.{}", m.version_number.major, m.version_number.minor, m.version_number.patch);
+            let name = m.display_name.unwrap_or(m.name);
+            (name, m.author_name, version, m.website_url, m.dependencies)
         } else {
-            None
-        }
-    });
+            return None;
+        };
 
-    let package_id = match &author {
-        Some(a) => format!("{}-{}", a, manifest.name),
-        None => manifest.name.clone(),
+    let parts: Vec<&str> = folder_name.splitn(3, '-').collect();
+
+    let (package_id, author) = if let Some(author) = manifest_author {
+        (format!("{}-{}", author, raw_name), Some(author))
+    } else if let Some(author) = yml_author {
+        (format!("{}-{}", author, raw_name), Some(author.to_string()))
+    } else {
+        let suffix = format!("-{}", raw_name);
+        if folder_name.ends_with(&suffix) && folder_name.len() > suffix.len() {
+            let author = folder_name[..folder_name.len() - suffix.len()].to_string();
+            (format!("{}-{}", author, raw_name), Some(author))
+        } else if parts.len() >= 2 {
+            let owner = parts[0].to_string();
+            let pkg_name = parts[1].to_string();
+            (format!("{}-{}", owner, pkg_name), Some(owner))
+        } else {
+            let author = if let Some(url) = &website_url {
+                url.split('/')
+                    .find(|s| !s.is_empty() && *s != "https:" && *s != "thunderstore.io" && *s != "c" && *s != "valheim" && *s != "p")
+                    .map(|s| s.to_string())
+            } else if let Some(deps) = &dependencies {
+                deps.first().and_then(|d| d.split('-').next()).map(|s| s.to_string())
+            } else {
+                None
+            };
+
+            let package_id = match &author {
+                Some(a) => format!("{}-{}", a, raw_name),
+                None => raw_name.clone(),
+            };
+
+            (package_id, author)
+        }
     };
 
     Some(ParsedManifest {
-        name: manifest.name,
+        name: raw_name,
         author,
         package_id,
-        version: manifest.version_number,
+        version,
     })
 }
 
 pub fn scan_plugins_directory(plugins_path: &Path) -> Result<Vec<ModEntry>, String> {
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     let mut mods = Vec::new();
 
     if !plugins_path.exists() {
         return Ok(mods);
     }
+
+    let mods_yml_path = plugins_path.parent()
+        .and_then(|bepinex| bepinex.parent())
+        .map(|profile| profile.join("mods.yml"));
+
+    let author_map: HashMap<String, String> = mods_yml_path
+        .and_then(|p| std::fs::read_to_string(&p).ok())
+        .and_then(|content| serde_yaml::from_str::<Vec<crate::profile::models::YmlMod>>(&content).ok())
+        .map(|mods| mods.into_iter()
+            .filter_map(|m| m.author.map(|a| (m.package_id, a)))
+            .collect())
+        .unwrap_or_default();
 
     let mut processed_mod_dirs: HashSet<std::path::PathBuf> = HashSet::new();
 
@@ -127,9 +186,19 @@ pub fn scan_plugins_directory(plugins_path: &Path) -> Result<Vec<ModEntry>, Stri
             continue;
         }
 
-        if path.file_name().map(|n| n == "manifest.json").unwrap_or(false) {
+        let is_manifest = path.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.ends_with("manifest.json"))
+            .unwrap_or(false);
+        if is_manifest {
             if let Some(mod_dir) = path.parent() {
-                if let Some(parsed) = parse_thunderstore_manifest(path) {
+                let folder_name = mod_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                let yml_author = author_map.get(&folder_name).map(|s| s.as_str());
+                if let Some(parsed) = parse_thunderstore_manifest(path, &folder_name, yml_author) {
                     let (combined_hash, total_size) = calculate_folder_hash_and_size(mod_dir)?;
 
                     let main_dll = find_main_dll(mod_dir);
@@ -140,11 +209,6 @@ pub fn scan_plugins_directory(plugins_path: &Path) -> Result<Vec<ModEntry>, Stri
                         .to_string_lossy()
                         .to_string()
                         .replace('\\', "/");
-
-                    let folder_name = mod_dir
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
 
                     mods.push(ModEntry {
                         path: relative_path,
@@ -369,7 +433,11 @@ fn count_mods_in_plugins_dir(plugins_path: &Path) -> usize {
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if path.is_file() && path.file_name().map(|n| n == "manifest.json").unwrap_or(false) {
+        let is_manifest = path.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.ends_with("manifest.json"))
+            .unwrap_or(false);
+        if path.is_file() && is_manifest {
             if let Some(mod_dir) = path.parent() {
                 processed_mod_dirs.insert(mod_dir.to_path_buf());
                 count += 1;
@@ -472,13 +540,25 @@ fn scan_plugins_directory_with_progress(
     offset: usize,
     total: usize,
 ) -> Result<Vec<ModEntry>, String> {
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     let mut mods = Vec::new();
 
     if !plugins_path.exists() {
         return Ok(mods);
     }
+
+    let mods_yml_path = plugins_path.parent()
+        .and_then(|bepinex| bepinex.parent())
+        .map(|profile| profile.join("mods.yml"));
+
+    let author_map: HashMap<String, String> = mods_yml_path
+        .and_then(|p| std::fs::read_to_string(&p).ok())
+        .and_then(|content| serde_yaml::from_str::<Vec<crate::profile::models::YmlMod>>(&content).ok())
+        .map(|mods| mods.into_iter()
+            .filter_map(|m| m.author.map(|a| (m.package_id, a)))
+            .collect())
+        .unwrap_or_default();
 
     let mut current = offset;
     let mut processed_mod_dirs: HashSet<std::path::PathBuf> = HashSet::new();
@@ -494,9 +574,19 @@ fn scan_plugins_directory_with_progress(
             continue;
         }
 
-        if path.file_name().map(|n| n == "manifest.json").unwrap_or(false) {
+        let is_manifest = path.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.ends_with("manifest.json"))
+            .unwrap_or(false);
+        if is_manifest {
             if let Some(mod_dir) = path.parent() {
-                if let Some(parsed) = parse_thunderstore_manifest(path) {
+                let folder_name = mod_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                let yml_author = author_map.get(&folder_name).map(|s| s.as_str());
+                if let Some(parsed) = parse_thunderstore_manifest(path, &folder_name, yml_author) {
                     current += 1;
 
                     let _ = app_handle.emit(
@@ -519,11 +609,6 @@ fn scan_plugins_directory_with_progress(
                         .to_string_lossy()
                         .to_string()
                         .replace('\\', "/");
-
-                    let folder_name = mod_dir
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
 
                     mods.push(ModEntry {
                         path: relative_path,

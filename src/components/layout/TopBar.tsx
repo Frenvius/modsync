@@ -1,19 +1,39 @@
 import { Button } from '@/components/ui/button';
 import { getCurrent } from '@tauri-apps/api/window';
-import { X, Copy, Minus, Square } from 'lucide-react';
 import { useState, useEffect, useContext } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { X, Copy, Minus, Square, Trash2, Settings2, FolderOpen } from 'lucide-react';
 import { Select, SelectItem, SelectValue, SelectContent, SelectTrigger } from '@/components/ui/select';
+import {
+	Dialog,
+	DialogTitle,
+	DialogHeader,
+	DialogFooter,
+	DialogContent,
+	DialogDescription,
+} from '@/components/ui/dialog';
+import {
+	DropdownMenu,
+	DropdownMenuItem,
+	DropdownMenuContent,
+	DropdownMenuTrigger,
+	DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 import JoinDialog from '~/components/JoinDialog';
 import { stateService } from '~/services/state.service';
+import R2zImportDialog from '~/components/R2zImportDialog';
 import { commandService } from '~/services/command.service';
 import { Modpack, syncService } from '~/services/sync.service';
 import { AppStateContext } from '~/context/AppState/constants';
+import ProfileCreateDialog from '~/components/ProfileCreateDialog';
 
 export function TopBar() {
 	const [isMaximized, setIsMaximized] = useState(false);
 	const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+	const [createDialogOpen, setCreateDialogOpen] = useState(false);
+	const [r2zDialogOpen, setR2zDialogOpen] = useState(false);
+	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 	const appWindow = getCurrent();
 
 	const {
@@ -21,13 +41,14 @@ export function TopBar() {
 		playText,
 		publicIp,
 		hostPort,
+		profiles,
 		isHosting,
 		modpackId,
 		isReadOnly,
 		syncStatus,
+		activeGame,
 		needsUpdate,
 		modpackName,
-		tmmProfiles,
 		hostAddress,
 		setHostPort,
 		playDisabled,
@@ -35,12 +56,15 @@ export function TopBar() {
 		setShareCode,
 		setModpackId,
 		setSyncStatus,
+		activeProfile,
+		deleteProfile,
 		setHostAddress,
 		setModpackName,
 		isShareStarting,
-		activeTmmProfile,
+		activeProfileId,
+		refreshProfiles,
+		setActiveProfile,
 		setIsShareStarting,
-		setActiveTmmProfile
 	} = useContext(AppStateContext);
 
 	useEffect(() => {
@@ -58,9 +82,9 @@ export function TopBar() {
 		};
 	}, []);
 
-	const handleProfileChange = async (name: string) => {
-		if (name) {
-			await setActiveTmmProfile(name);
+	const handleProfileChange = async (profileId: string) => {
+		if (profileId) {
+			await setActiveProfile(profileId);
 		}
 	};
 
@@ -158,30 +182,66 @@ export function TopBar() {
 		<>
 			<header
 				data-tauri-drag-region
-				className="h-12 border-b border-border bg-background/80 backdrop-blur-xl sticky top-0 z-40 select-none"
+				className="h-[50px] border-b border-border bg-background/80 backdrop-blur-xl sticky top-0 z-40 select-none"
 			>
 				<div data-tauri-drag-region className="h-full flex items-center justify-between px-4">
 					<div className="flex items-center gap-2">
 						{!isConfigEmpty && (
 							<>
-								<Select value={activeTmmProfile || ''} onValueChange={handleProfileChange} disabled={tmmProfiles.length === 0 || isReadOnly}>
+								<Select
+									onValueChange={handleProfileChange}
+									value={activeProfileId ?? undefined}
+									disabled={profiles.length === 0 || isReadOnly}
+								>
 									<SelectTrigger className="h-8 min-w-[120px] max-w-[180px] bg-secondary border-border text-sm rounded-lg">
 										<SelectValue placeholder="No profiles" />
 									</SelectTrigger>
 									<SelectContent>
-										{tmmProfiles.length === 0 ? (
-											<SelectItem value="" disabled>
-												No profiles
+										{profiles.map((p) => (
+											<SelectItem key={p.id} value={p.id}>
+												{p.name}
 											</SelectItem>
-										) : (
-											tmmProfiles.map((p) => (
-												<SelectItem key={p.name} value={p.name}>
-													{p.name}
-												</SelectItem>
-											))
-										)}
+										))}
 									</SelectContent>
 								</Select>
+
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button
+											size="sm"
+											variant="ghost"
+											disabled={isReadOnly}
+											className="h-8 w-8 p-0"
+										>
+											<Settings2 className="w-4 h-4" />
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="start">
+										<DropdownMenuItem onClick={() => setCreateDialogOpen(true)}>
+											Create empty profile
+										</DropdownMenuItem>
+										<DropdownMenuItem onClick={() => setR2zDialogOpen(true)}>
+											Import R2Z profile
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											disabled={!activeProfile?.path}
+											onClick={() => commandService.openFolder(activeProfile!.path)}
+										>
+											<FolderOpen className="w-4 h-4 mr-2" />
+											Open profile folder
+										</DropdownMenuItem>
+										<DropdownMenuSeparator />
+										<DropdownMenuItem
+											disabled={!activeProfileId}
+											onClick={() => setDeleteDialogOpen(true)}
+											className="text-destructive focus:text-destructive"
+										>
+											<Trash2 className="w-4 h-4 mr-2" />
+											Delete profile
+										</DropdownMenuItem>
+									</DropdownMenuContent>
+								</DropdownMenu>
+
 								<Button
 									size="sm"
 									variant="glow"
@@ -216,16 +276,16 @@ export function TopBar() {
 								</Button>
 							</>
 						)}
-						<div className="flex items-center ml-2 -mr-4">
+						<div data-tauri-drag-region="false" className="flex items-center ml-2 -mr-4">
 							<button
 								onClick={() => appWindow.minimize()}
-								className="h-12 px-4 hover:bg-muted/50 transition-colors flex items-center justify-center"
+								className="h-[50px] px-4 hover:bg-muted/50 transition-colors flex items-center justify-center"
 							>
 								<Minus className="w-4 h-4 text-muted-foreground" />
 							</button>
 							<button
-								onClick={() => appWindow.toggleMaximize()}
-								className="h-12 px-4 hover:bg-muted/50 transition-colors flex items-center justify-center"
+								onClick={() => isMaximized ? appWindow.unmaximize() : appWindow.maximize()}
+								className="h-[50px] px-4 hover:bg-muted/50 transition-colors flex items-center justify-center"
 							>
 								{isMaximized ? (
 									<Copy className="w-3.5 h-3.5 text-muted-foreground rotate-180" />
@@ -245,6 +305,55 @@ export function TopBar() {
 			</header>
 
 			<JoinDialog open={joinDialogOpen} onJoined={handleJoined} onClose={() => setJoinDialogOpen(false)} />
+
+			<ProfileCreateDialog
+				gameId={activeGame}
+				open={createDialogOpen}
+				onClose={() => setCreateDialogOpen(false)}
+				onCreated={async (profile) => {
+					setCreateDialogOpen(false);
+					await refreshProfiles();
+					await setActiveProfile(profile.id);
+				}}
+			/>
+
+			<R2zImportDialog
+				gameId={activeGame}
+				open={r2zDialogOpen}
+				onClose={() => setR2zDialogOpen(false)}
+				onImported={async (profile) => {
+					setR2zDialogOpen(false);
+					await refreshProfiles();
+					await setActiveProfile(profile.id);
+				}}
+			/>
+
+			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+				<DialogContent className="max-w-sm">
+					<DialogHeader>
+						<DialogTitle>Delete profile</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to delete this profile? This action cannot be undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={async () => {
+								if (activeProfileId) {
+									await deleteProfile(activeProfileId);
+								}
+								setDeleteDialogOpen(false);
+							}}
+						>
+							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</>
 	);
 }

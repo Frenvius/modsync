@@ -192,6 +192,44 @@ impl ProfileDb {
         Ok(())
     }
 
+    pub fn add_mods_batch(&self, profile_id: &str, mods: &[ProfileMod]) -> Result<(), String> {
+        let mut conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+        for mod_entry in mods {
+            let (kind_str, kind_data) = serialize_mod_kind(&mod_entry.kind);
+            tx.execute(
+                "INSERT INTO profile_mods (id, profile_id, package_id, version, enabled, kind, kind_data, install_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    mod_entry.id,
+                    profile_id,
+                    mod_entry.package_id,
+                    mod_entry.version,
+                    mod_entry.enabled as i32,
+                    kind_str,
+                    kind_data,
+                    mod_entry.install_time,
+                ],
+            )
+            .map_err(|e| format!("Failed to add mod '{}': {}", mod_entry.package_id, e))?;
+        }
+
+        let now = chrono::Utc::now().timestamp();
+        tx.execute(
+            "UPDATE profiles SET updated_at = ?1 WHERE id = ?2",
+            params![now, profile_id],
+        )
+        .map_err(|e| format!("Failed to update profile timestamp: {}", e))?;
+
+        tx.commit()
+            .map_err(|e| format!("Failed to commit transaction: {}", e))?;
+
+        Ok(())
+    }
+
     pub fn add_mod(&self, profile_id: &str, mod_entry: &ProfileMod) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
@@ -266,6 +304,44 @@ impl ProfileDb {
             .map_err(|e| format!("Failed to get active profile: {}", e))?;
 
         Ok(result)
+    }
+
+    pub fn set_mod_enabled(&self, profile_id: &str, package_id: &str, enabled: bool) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        conn.execute(
+            "UPDATE profile_mods SET enabled = ?1 WHERE profile_id = ?2 AND package_id = ?3",
+            params![enabled as i32, profile_id, package_id],
+        )
+        .map_err(|e| format!("Failed to update mod enabled state: {}", e))?;
+
+        let now = chrono::Utc::now().timestamp();
+        conn.execute(
+            "UPDATE profiles SET updated_at = ?1 WHERE id = ?2",
+            params![now, profile_id],
+        )
+        .map_err(|e| format!("Failed to update profile timestamp: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn update_mod_version(&self, profile_id: &str, package_id: &str, version: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        conn.execute(
+            "UPDATE profile_mods SET version = ?1 WHERE profile_id = ?2 AND package_id = ?3",
+            params![version, profile_id, package_id],
+        )
+        .map_err(|e| format!("Failed to update mod version: {}", e))?;
+
+        let now = chrono::Utc::now().timestamp();
+        conn.execute(
+            "UPDATE profiles SET updated_at = ?1 WHERE id = ?2",
+            params![now, profile_id],
+        )
+        .map_err(|e| format!("Failed to update profile timestamp: {}", e))?;
+
+        Ok(())
     }
 
     pub fn profile_name_exists(&self, game_id: &str, name: &str) -> Result<bool, String> {

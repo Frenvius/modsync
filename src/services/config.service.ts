@@ -45,8 +45,8 @@ class ConfigService {
 		return invoke<string>('reset_config_entry', { key, path, section });
 	}
 
-	async getConfigSummaries(profileName: string): Promise<ConfigFileSummary[]> {
-		return invoke<ConfigFileSummary[]>('get_config_summaries', { profileName });
+	async getConfigSummaries(profilePath: string): Promise<ConfigFileSummary[]> {
+		return invoke<ConfigFileSummary[]>('get_config_summaries', { profilePath });
 	}
 
 	async setConfigEntry(path: string, section: string, key: string, value: string): Promise<void> {

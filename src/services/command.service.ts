@@ -1,7 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Command } from '@tauri-apps/plugin-shell';
+import { open, Command } from '@tauri-apps/plugin-shell';
 
 class CommandService {
+	async openExternal(url: string) {
+		await open(url);
+	}
+
 	async startGame() {
 		await invoke('run_game_windows');
 	}

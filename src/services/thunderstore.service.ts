@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+let _preWarmTriggered = false;
+
 export interface PackageInfo {
 	name: string;
 	icon: string;
@@ -55,8 +57,16 @@ class ThunderstoreService {
 	async getPackage(game: string, fullName: string): Promise<null | PackageInfo> {
 		return invoke<null | PackageInfo>('thunderstore_get_package', {
 			game,
-			fullName,
+			fullName
 		});
+	}
+
+	async getPackageReadme(namespace: string, name: string, version: string): Promise<null | string> {
+		return invoke<null | string>('thunderstore_get_package_readme', { name, version, namespace });
+	}
+
+	async getPackageChangelog(namespace: string, name: string, version: string): Promise<null | string> {
+		return invoke<null | string>('thunderstore_get_package_changelog', { name, version, namespace });
 	}
 
 	async installPackage(game: string, fullName: string, version: string, targetPath: string): Promise<void> {
@@ -64,7 +74,7 @@ class ThunderstoreService {
 			game,
 			version,
 			fullName,
-			targetPath,
+			targetPath
 		});
 	}
 
@@ -74,7 +84,23 @@ class ThunderstoreService {
 		}
 		return invoke<Record<string, PackageInfo>>('thunderstore_get_packages_bulk', {
 			game,
-			fullNames,
+			fullNames
+		});
+	}
+
+	preWarmCache(game: string): void {
+		if (_preWarmTriggered) return;
+		_preWarmTriggered = true;
+		invoke('thunderstore_search', {
+			game,
+			page: 0,
+			query: null,
+			pageSize: 1,
+			category: null,
+			sortBy: 'downloads',
+			includeDeprecated: false
+		}).catch(() => {
+			_preWarmTriggered = false;
 		});
 	}
 
@@ -86,7 +112,7 @@ class ThunderstoreService {
 			sortBy: options.sortBy || null,
 			pageSize: options.pageSize ?? 20,
 			category: options.category || null,
-			includeDeprecated: options.includeDeprecated ?? false,
+			includeDeprecated: options.includeDeprecated ?? false
 		});
 	}
 }

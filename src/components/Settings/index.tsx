@@ -76,7 +76,7 @@ const Settings = ({ refresh }: SettingsProps) => {
 	};
 
 	return (
-		<div className="flex flex-col h-full gap-6">
+		<div className="flex flex-col h-full gap-6 pl-6 pt-6">
 			<div>
 				<h1 className="text-2xl font-bold text-foreground">Settings</h1>
 				<p className="text-sm text-muted-foreground">Configure your mod updater preferences</p>

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
-import { NavLink, useLocation } from 'react-router-dom';
 import { Store, Package, Settings, FileText } from 'lucide-react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 
 import GameSelector from '~/components/GameSelector';
 
@@ -12,10 +12,11 @@ const navItems = [
 
 export function Sidebar() {
 	const location = useLocation();
+	const navigate = useNavigate();
 
 	return (
 		<aside className="w-56 bg-sidebar border-r border-sidebar-border flex flex-col shrink-0">
-			<div data-tauri-drag-region className="h-12 flex items-center px-4 border-b border-sidebar-border select-none">
+			<div data-tauri-drag-region className="h-[50px] flex items-center px-4 border-b border-sidebar-border select-none">
 				<div data-tauri-drag-region className="flex items-center gap-2">
 					<div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
 						<Package className="w-5 h-5 text-primary-foreground" />
@@ -45,19 +46,19 @@ export function Sidebar() {
 					);
 				})}
 			</nav>
-			<div className="p-2 border-t border-sidebar-border">
-				<NavLink
-					to="/settings"
+			<div className="border-t border-sidebar-border shrink-0">
+				<button
+					onClick={() => navigate('/settings')}
 					className={cn(
-						'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200',
+						'flex items-center gap-3 px-6 w-full h-[50px] transition-all duration-200',
 						location.pathname === '/settings'
 							? 'bg-sidebar-accent text-primary'
 							: 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground'
 					)}
 				>
-					<Settings className="w-5 h-5" />
-					<span className="font-medium whitespace-nowrap">Settings</span>
-				</NavLink>
+					<Settings className="w-5 h-5 shrink-0" />
+					<span className="font-medium whitespace-nowrap leading-none">Settings</span>
+				</button>
 			</div>
 		</aside>
 	);

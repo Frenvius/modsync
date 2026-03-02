@@ -57,11 +57,16 @@ fn main() {
             profile::set_active_profile,
             profile::get_active_profile,
             profile::get_active_bepinex_path,
+            profile::get_profile_mods_fast,
+            profile::update_profile_mods_yml,
+            profile::set_mod_enabled,
+            profile::preview_r2z,
+            profile::import_r2z,
+            profile::check_profile_updates,
+            profile::update_mod,
+            profile::update_all_mods,
             profile::discover_tmm_profiles_for_import,
             profile::import_from_tmm,
-            profile::discover_tmm_profiles,
-            profile::get_tmm_bepinex_path,
-            profile::create_tmm_profile,
             start_sharing,
             stop_sharing,
             get_share_code,
@@ -85,6 +90,8 @@ fn main() {
             thunderstore::thunderstore_refresh_cache,
             thunderstore::thunderstore_install_package,
             thunderstore::thunderstore_get_games,
+            thunderstore::thunderstore_get_package_readme,
+            thunderstore::thunderstore_get_package_changelog,
             config_editor::get_config_files,
             config_editor::get_profile_config_files,
             config_editor::parse_config_file,
@@ -102,6 +109,7 @@ fn main() {
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -132,17 +140,7 @@ fn get_active_game_id() -> Result<String, String> {
         .or(Ok("valheim".to_string()))
 }
 
-fn get_active_profile_id() -> Result<String, String> {
-    let config = read_config()?;
-    config
-        .get("activeProfileId")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or("No active profile set".to_string())
-}
-
 fn get_active_bepinex_path_internal() -> Result<String, String> {
-    // First try the new profile system
     let game_id = get_active_game_id().unwrap_or_else(|_| "valheim".to_string());
 
     if let Ok(manager) = profile::ProfileManager::new() {
@@ -150,12 +148,6 @@ fn get_active_bepinex_path_internal() -> Result<String, String> {
             let bepinex_path = profile.path.join("BepInEx");
             return Ok(bepinex_path.to_string_lossy().to_string());
         }
-    }
-
-    // Fall back to legacy TMM profile system
-    let config = read_config()?;
-    if let Some(profile_name) = config.get("activeTmmProfile").and_then(|v| v.as_str()) {
-        return profile::get_tmm_bepinex_path(profile_name.to_string());
     }
 
     Err("No active profile set".to_string())
@@ -201,7 +193,7 @@ fn get_initial_data() -> Result<String, String> {
         let default_config = serde_json::json!({
             "valheimPath": "",
             "hostPort": 7878,
-            "activeTmmProfile": null
+            "activeProfileId": null
         });
 
         let default_data = serde_json::to_string(&default_config).unwrap();
@@ -214,24 +206,18 @@ fn get_initial_data() -> Result<String, String> {
     let mut config: serde_json::Value =
         serde_json::from_str(&config_data).map_err(|e| e.to_string())?;
 
-    let tmm_profiles = profile::discover_tmm_profiles().unwrap_or_default();
-    config["tmmProfiles"] = serde_json::to_value(&tmm_profiles).unwrap_or(serde_json::Value::Array(vec![]));
-
-    let active_profile_name = config.get("activeTmmProfile").and_then(|v| v.as_str());
-    let has_valid_profile = active_profile_name
-        .and_then(|name| tmm_profiles.iter().find(|p| p.name == name))
-        .map(|p| p.has_mods)
-        .unwrap_or(false);
+    let active_game_id = config.get("activeGame").and_then(|v| v.as_str()).unwrap_or("valheim").to_string();
+    let has_active_native_profile = if let Ok(manager) = profile::ProfileManager::new() {
+        manager.get_active_profile(&active_game_id)
+            .ok()
+            .flatten()
+            .map(|p| !p.mods.is_empty())
+            .unwrap_or(false)
+    } else {
+        false
+    };
     let valheim_path = config.get("valheimPath").and_then(|v| v.as_str()).unwrap_or("");
-    config["installed"] = serde_json::Value::Bool(has_valid_profile && !valheim_path.is_empty());
-
-    if config.get("activeTmmProfile").map(|v| v.is_null()).unwrap_or(true) && !tmm_profiles.is_empty() {
-        config["activeTmmProfile"] = serde_json::Value::String(tmm_profiles[0].name.clone());
-
-        let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-        let mut file = File::create(&file_path).map_err(|e| e.to_string())?;
-        file.write_all(content.as_bytes()).map_err(|e| e.to_string())?;
-    }
+    config["installed"] = serde_json::Value::Bool(has_active_native_profile && !valheim_path.is_empty());
 
     Ok(serde_json::to_string(&config).unwrap())
 }
@@ -336,7 +322,7 @@ async fn start_sharing(
 
     if !bepinex_path.exists() {
         return Err(format!(
-            "BepInEx directory not found at: {}. Please ensure the TMM profile has mods deployed.",
+            "BepInEx directory not found at: {}. Please ensure the active profile has mods deployed.",
             bepinex_path.display()
         ));
     }

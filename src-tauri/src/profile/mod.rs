@@ -2,7 +2,9 @@ pub mod commands;
 pub mod db;
 pub mod migration;
 pub mod models;
+pub mod r2z;
 pub mod storage;
+pub mod version;
 
 pub use commands::*;
 pub use models::*;

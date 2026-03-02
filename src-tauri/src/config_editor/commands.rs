@@ -2,49 +2,18 @@ use std::path::PathBuf;
 
 use super::bepinex::{self, ConfigFile};
 
-fn get_config_dir() -> Result<PathBuf, String> {
-    let app_data = dirs::data_dir()
-        .ok_or("Could not find AppData directory")?;
-
-    let tmm_path = app_data
-        .join("Thunderstore Mod Manager")
-        .join("DataFolder")
-        .join("Valheim")
-        .join("profiles");
-
-    if tmm_path.exists() {
-        for entry in std::fs::read_dir(&tmm_path).map_err(|e| e.to_string())? {
-            if let Ok(entry) = entry {
-                let profile_config = entry.path().join("BepInEx").join("config");
-                if profile_config.exists() {
-                    return Ok(profile_config);
-                }
-            }
-        }
-    }
-
-    Err("No config directory found".to_string())
+fn config_dir_for_profile_path(profile_path: &std::path::Path) -> PathBuf {
+    profile_path.join("BepInEx").join("config")
 }
 
 #[tauri::command]
 pub fn get_config_files() -> Result<Vec<String>, String> {
-    let config_dir = get_config_dir()?;
-    bepinex::list_config_files(&config_dir)
+    Ok(vec![])
 }
 
 #[tauri::command]
-pub fn get_profile_config_files(profile_name: String) -> Result<Vec<String>, String> {
-    let app_data = dirs::data_dir()
-        .ok_or("Could not find AppData directory")?;
-
-    let config_dir = app_data
-        .join("Thunderstore Mod Manager")
-        .join("DataFolder")
-        .join("Valheim")
-        .join("profiles")
-        .join(&profile_name)
-        .join("BepInEx")
-        .join("config");
+pub fn get_profile_config_files(profile_path: String) -> Result<Vec<String>, String> {
+    let config_dir = config_dir_for_profile_path(std::path::Path::new(&profile_path));
 
     if !config_dir.exists() {
         return Ok(Vec::new());
@@ -90,8 +59,8 @@ pub struct ConfigFileSummary {
 }
 
 #[tauri::command]
-pub fn get_config_summaries(profile_name: String) -> Result<Vec<ConfigFileSummary>, String> {
-    let files = get_profile_config_files(profile_name)?;
+pub fn get_config_summaries(profile_path: String) -> Result<Vec<ConfigFileSummary>, String> {
+    let files = get_profile_config_files(profile_path)?;
     let mut summaries = Vec::new();
 
     for file_path in files {

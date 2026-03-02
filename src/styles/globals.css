@@ -178,3 +178,155 @@
 .animate-sync {
 	animation: sync-spin 1s linear infinite;
 }
+
+.md-body {
+	font-size: 0.875rem;
+	line-height: 1.6;
+	color: var(--color-foreground);
+	word-break: break-word;
+}
+
+.md-body p {
+	margin-bottom: 0.75rem;
+}
+
+.md-body h1 {
+	font-size: 1.125rem;
+	font-weight: 700;
+	margin-top: 1.25rem;
+	margin-bottom: 0.75rem;
+	padding-bottom: 0.25rem;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.md-body h2 {
+	font-size: 1rem;
+	font-weight: 600;
+	margin-top: 1rem;
+	margin-bottom: 0.5rem;
+	padding-bottom: 0.25rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
+.md-body h3 {
+	font-size: 0.9375rem;
+	font-weight: 600;
+	margin-top: 0.75rem;
+	margin-bottom: 0.5rem;
+}
+
+.md-body h4, .md-body h5, .md-body h6 {
+	font-size: 0.875rem;
+	font-weight: 600;
+	margin-top: 0.5rem;
+	margin-bottom: 0.375rem;
+}
+
+.md-body h1:first-child,
+.md-body h2:first-child,
+.md-body h3:first-child {
+	margin-top: 0;
+}
+
+.md-body a {
+	color: var(--color-primary);
+	text-decoration: none;
+}
+
+.md-body a:hover {
+	text-decoration: underline;
+}
+
+.md-body ul {
+	list-style-type: disc;
+	padding-left: 1.25rem;
+	margin-bottom: 0.75rem;
+}
+
+.md-body ol {
+	list-style-type: decimal;
+	padding-left: 1.25rem;
+	margin-bottom: 0.75rem;
+}
+
+.md-body li {
+	margin-bottom: 0.25rem;
+}
+
+.md-body li > ul,
+.md-body li > ol {
+	margin-top: 0.25rem;
+	margin-bottom: 0;
+}
+
+.md-body blockquote {
+	border-left: 3px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
+	padding-left: 0.875rem;
+	margin: 0.75rem 0;
+	color: var(--color-muted-foreground);
+	font-style: italic;
+}
+
+.md-body code {
+	background-color: var(--color-muted);
+	padding: 0.125rem 0.375rem;
+	border-radius: 0.25rem;
+	font-size: 0.8125rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.md-body pre {
+	border-radius: 0.5rem;
+	overflow-x: auto;
+	margin-bottom: 0.75rem;
+	font-size: 0.8125rem;
+}
+
+/* When hljs is active it sets its own background; otherwise fall back */
+.md-body pre:not(.hljs) {
+	background-color: var(--color-muted);
+	padding: 0.75rem;
+}
+
+.md-body pre code {
+	background: transparent;
+	padding: 0;
+	border-radius: 0;
+	font-size: inherit;
+}
+
+.md-body hr {
+	border: none;
+	border-top: 1px solid var(--color-border);
+	margin: 1rem 0;
+}
+
+.md-body img {
+	max-width: 100%;
+	border-radius: 0.375rem;
+	display: inline-block;
+}
+
+.md-body table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: 0.75rem;
+	font-size: 0.8125rem;
+}
+
+.md-body table th {
+	background-color: var(--color-muted);
+	padding: 0.375rem 0.625rem;
+	text-align: left;
+	font-weight: 600;
+	border: 1px solid var(--color-border);
+}
+
+.md-body table td {
+	padding: 0.375rem 0.625rem;
+	border: 1px solid var(--color-border);
+}
+
+.md-body table tr:nth-child(even) td {
+	background-color: color-mix(in srgb, var(--color-muted) 40%, transparent);
+}

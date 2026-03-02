@@ -15,7 +15,6 @@ const initialState: AppStateContextProps = {
 	syncProgress: 0,
 	hostAddress: '',
 	modpackName: '',
-	tmmProfiles: [],
 	isHosting: false,
 	isReadOnly: false,
 	isInstalled: false,
@@ -30,7 +29,6 @@ const initialState: AppStateContextProps = {
 	setIsHosting: () => {},
 	setShareCode: () => {},
 	setModpackId: () => {},
-	activeTmmProfile: null,
 	progressType: undefined,
 	setSyncStatus: () => {},
 	setActiveGame: () => {},
@@ -42,8 +40,6 @@ const initialState: AppStateContextProps = {
 	deleteProfile: async () => {},
 	refreshProfiles: async () => {},
 	setActiveProfile: async () => {},
-	refreshTmmProfiles: async () => {},
-	setActiveTmmProfile: async () => {},
 	createProfile: async () => ({ id: '', name: '', path: '', mods: [], gameId: '', createdAt: 0, updatedAt: 0 })
 };
 
