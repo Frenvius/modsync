@@ -43,11 +43,10 @@ const R2zImportDialog: React.FC<R2zImportDialogProps> = ({ gameId, onClose, onIm
 			title: 'Select .r2z profile file',
 			filters: [{ name: 'R2 Profile', extensions: ['r2z'] }],
 		});
-		if (selected) {
-			const path = selected.path;
-			setR2zPath(path);
+		if (selected && typeof selected === 'string') {
+			setR2zPath(selected);
 			setError('');
-			await loadPreview(path);
+			await loadPreview(selected);
 		}
 	};
 

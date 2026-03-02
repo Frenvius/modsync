@@ -60,12 +60,15 @@ export function TopBar() {
 		deleteProfile,
 		setHostAddress,
 		setModpackName,
+		shareCode,
 		isShareStarting,
 		activeProfileId,
 		refreshProfiles,
 		setActiveProfile,
 		setIsShareStarting,
 	} = useContext(AppStateContext);
+
+	const [copied, setCopied] = useState(false);
 
 	useEffect(() => {
 		const checkMaximized = async () => {
@@ -119,6 +122,14 @@ export function TopBar() {
 				console.error('Error starting share:', err);
 				setIsShareStarting(false);
 			}
+		}
+	};
+
+	const handleCopyShareCode = async () => {
+		if (shareCode) {
+			await navigator.clipboard.writeText(shareCode);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000);
 		}
 	};
 
@@ -257,6 +268,21 @@ export function TopBar() {
 					<div className="flex items-center gap-2">
 						{!isConfigEmpty && (
 							<>
+								{isHosting && shareCode && (
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Button
+												size="sm"
+												variant="outline"
+												className="h-8 px-2"
+												onClick={handleCopyShareCode}
+											>
+												<Copy className="h-4 w-4" />
+											</Button>
+										</TooltipTrigger>
+										<TooltipContent>{copied ? 'Copied!' : 'Copy share code'}</TooltipContent>
+									</Tooltip>
+								)}
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<Button

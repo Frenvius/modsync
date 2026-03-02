@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useToast } from '~/components/Toast';
 import SyncStatus from '~/components/SyncStatus';
 import { stateService } from '~/services/state.service';
-import ModDetailPanel from '~/components/ModDetailPanel';
+import ModDetailPanel, { ModWithInfo as PanelModWithInfo } from '~/components/ModDetailPanel';
 import { ProfileMod, ModUpdateInfo } from '~/types/profile';
 import { profileService } from '~/services/profile.service';
 import { AppStateContext } from '~/context/AppState/constants';
@@ -321,7 +321,7 @@ const ManageProfile = () => {
 		setUpdatingMods((prev) => new Set(prev).add(packageId));
 		try {
 			await profileService.updateMod(activeProfile.id, packageId, mod.latestVersion, activeGame);
-			setMods((prev) => prev.map((m) => (m === mod ? { ...m, hasUpdate: false, thunderstore_version: mod.latestVersion } : m)));
+			setMods((prev) => prev.map((m) => (m === mod ? { ...m, hasUpdate: false, thunderstore_version: mod.latestVersion ?? null } : m)));
 			setModsWithUpdates((prev) => prev.filter((u) => u.packageId !== packageId));
 			_profileModCache.delete(activeProfile.id);
 			toast.success(`Updated ${getModDisplayName(mod)}`, `Updated to v${mod.latestVersion}`);
@@ -384,19 +384,19 @@ const ManageProfile = () => {
 		await relaunch();
 	};
 
-	const getModDisplayName = (mod: ModWithInfo): string => {
+	const getModDisplayName = (mod: PanelModWithInfo): string => {
 		if (mod.name) return mod.name;
 		if (mod.packageInfo?.name) return mod.packageInfo.name;
 		return mod.filename.replace('.dll', '');
 	};
 
-	const getModAuthor = (mod: ModWithInfo): string => {
+	const getModAuthor = (mod: PanelModWithInfo): string => {
 		if (mod.author) return mod.author;
 		if (mod.packageInfo?.owner) return mod.packageInfo.owner;
 		return 'Unknown';
 	};
 
-	const getModVersion = (mod: ModWithInfo): string => {
+	const getModVersion = (mod: PanelModWithInfo): string => {
 		if (mod.thunderstore_version) return mod.thunderstore_version;
 		const parts = mod.filename.replace('.dll', '').split('-');
 		if (parts.length >= 3) return parts[2];
