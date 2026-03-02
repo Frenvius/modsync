@@ -1,24 +1,25 @@
-# Valheim Mod Updater
+# Mod Updater
 
-A lightweight mod updater for the game Valheim built with [Tauri 2.0](https://beta.tauri.app/guides/).
+A lightweight mod updater for some Steam games built with [Tauri 2.0](https://beta.tauri.app/guides/).
 
 ![mod-updater.png](.github/mod-updater.png)
 
 ## Overview
 
-This project is designed to simplify the process of updating and sync mods for Valheim with friends. 
-It checks for updates in a specified Git repository and applies them to your Valheim game folder.
+This project simplifies the process of managing and syncing mods with friends for supported Steam games.
 
 ## Features
 
+- Browse and install mods from Thunderstore
 - Automatic mod updates
+- Profile management (multiple mod configurations per game)
+- Sync mods and configs with friends
 - Simple and intuitive interface
-- Sync mods and its configs with friends
 
 ## Usage
 
 1. Clone this repository.
-2. Install dependencies with `npm install` and run the project using `npm run tauri dev`.
-3. The mod updater will check for updates in the Git repository and apply them to your Valheim game folder.
+2. Install dependencies with `bun install` and run the project using `bun tauri dev`.
+3. Select your game, create a profile, and start managing your mods.
 
-_**Note:** You can also use the [release](https://github.com/Frenvius/tauri-mod-updater/releases) version and set repository url in-app settings._
+_**Note:** You can also use the [release](https://github.com/Frenvius/tauri-mod-updater/releases) version._
