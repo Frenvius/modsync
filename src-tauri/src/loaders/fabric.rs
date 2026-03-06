@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::downloader::{download_batch, DownloadProgress, DownloadTask};
-use crate::minecraft::{Artifact, Library, LibraryDownloads, VersionMeta};
+use crate::minecraft::{Artifact, Library, LibraryDownloads};
 
 const FABRIC_META_URL: &str = "https://meta.fabricmc.net/v2";
 const FABRIC_MAVEN_URL: &str = "https://maven.fabricmc.net";
@@ -206,7 +206,10 @@ pub fn fabric_libs_to_minecraft_libs(profile: &FabricLoaderProfile) -> Vec<Libra
                         path,
                         sha1: lib.sha1.clone().unwrap_or_default(),
                         size: lib.size.unwrap_or(0),
-                        url: lib.url.clone().unwrap_or_else(|| FABRIC_MAVEN_URL.to_string()),
+                        url: lib
+                            .url
+                            .clone()
+                            .unwrap_or_else(|| FABRIC_MAVEN_URL.to_string()),
                     }),
                     classifiers: None,
                 }),

@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { cn } from '~/usecase/util/stringUtils';
+
 import { Drawer as DrawerPrimitive } from 'vaul';
+
+import { cn } from '~/usecase/util/stringUtils';
 
 const Drawer = ({ shouldScaleBackground = true, ...props }: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
 	<DrawerPrimitive.Root shouldScaleBackground={shouldScaleBackground} {...props} />

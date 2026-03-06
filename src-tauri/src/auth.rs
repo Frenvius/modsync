@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
@@ -232,10 +231,17 @@ async fn authenticate_xsts(xbox_token: &str) -> Result<String, String> {
 
         if let Some(xerr) = error_body.get("XErr").and_then(|x| x.as_u64()) {
             return Err(match xerr {
-                2148916233 => "This Microsoft account doesn't have an Xbox account. Please create one first.".to_string(),
+                2148916233 => {
+                    "This Microsoft account doesn't have an Xbox account. Please create one first."
+                        .to_string()
+                }
                 2148916235 => "Xbox Live is not available in your country/region.".to_string(),
-                2148916236 | 2148916237 => "Adult verification required. Please complete it on Xbox.com.".to_string(),
-                2148916238 => "This is a child account. Please add it to a Family on Xbox.com.".to_string(),
+                2148916236 | 2148916237 => {
+                    "Adult verification required. Please complete it on Xbox.com.".to_string()
+                }
+                2148916238 => {
+                    "This is a child account. Please add it to a Family on Xbox.com.".to_string()
+                }
                 _ => format!("XSTS error {}: {:?}", xerr, error_body),
             });
         }
@@ -291,7 +297,9 @@ pub async fn get_minecraft_profile(access_token: &str) -> Result<MinecraftProfil
         .map_err(|e| format!("Profile fetch error: {}", e))?;
 
     if response.status().as_u16() == 404 {
-        return Err("This Microsoft account doesn't own Minecraft. Please purchase the game.".to_string());
+        return Err(
+            "This Microsoft account doesn't own Minecraft. Please purchase the game.".to_string(),
+        );
     }
 
     if !response.status().is_success() {
@@ -389,8 +397,7 @@ pub fn load_accounts(app_handle: &tauri::AppHandle) -> Result<AccountsData, Stri
     let json = fs::read_to_string(&file_path)
         .map_err(|e| format!("Failed to read accounts file: {}", e))?;
 
-    serde_json::from_str(&json)
-        .map_err(|e| format!("Failed to parse accounts: {}", e))
+    serde_json::from_str(&json).map_err(|e| format!("Failed to parse accounts: {}", e))
 }
 
 pub fn save_accounts(app_handle: &tauri::AppHandle, data: &AccountsData) -> Result<(), String> {
@@ -399,13 +406,15 @@ pub fn save_accounts(app_handle: &tauri::AppHandle, data: &AccountsData) -> Resu
     let json = serde_json::to_string_pretty(data)
         .map_err(|e| format!("Failed to serialize accounts: {}", e))?;
 
-    fs::write(&file_path, json)
-        .map_err(|e| format!("Failed to write accounts file: {}", e))?;
+    fs::write(&file_path, json).map_err(|e| format!("Failed to write accounts file: {}", e))?;
 
     Ok(())
 }
 
-pub fn add_account(app_handle: &tauri::AppHandle, mut account: MinecraftAccount) -> Result<(), String> {
+pub fn add_account(
+    app_handle: &tauri::AppHandle,
+    mut account: MinecraftAccount,
+) -> Result<(), String> {
     let mut data = load_accounts(app_handle)?;
 
     data.accounts.retain(|a| a.uuid != account.uuid);
@@ -421,7 +430,12 @@ pub fn add_account(app_handle: &tauri::AppHandle, mut account: MinecraftAccount)
 pub fn remove_account(app_handle: &tauri::AppHandle, uuid: &str) -> Result<(), String> {
     let mut data = load_accounts(app_handle)?;
 
-    let was_default = data.accounts.iter().find(|a| a.uuid == uuid).map(|a| a.is_default).unwrap_or(false);
+    let was_default = data
+        .accounts
+        .iter()
+        .find(|a| a.uuid == uuid)
+        .map(|a| a.is_default)
+        .unwrap_or(false);
 
     data.accounts.retain(|a| a.uuid != uuid);
 
@@ -442,7 +456,9 @@ pub fn set_default_account(app_handle: &tauri::AppHandle, uuid: &str) -> Result<
     save_accounts(app_handle, &data)
 }
 
-pub fn get_default_account(app_handle: &tauri::AppHandle) -> Result<Option<MinecraftAccount>, String> {
+pub fn get_default_account(
+    app_handle: &tauri::AppHandle,
+) -> Result<Option<MinecraftAccount>, String> {
     let data = load_accounts(app_handle)?;
     Ok(data.accounts.into_iter().find(|a| a.is_default))
 }

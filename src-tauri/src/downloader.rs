@@ -93,7 +93,7 @@ pub async fn download_with_verify(task: &DownloadTask) -> Result<(), String> {
 }
 
 pub async fn compute_sha1(path: &PathBuf) -> Result<String, String> {
-    use sha1::{Sha1, Digest};
+    use sha1::{Digest, Sha1};
 
     let bytes = tokio::fs::read(path)
         .await

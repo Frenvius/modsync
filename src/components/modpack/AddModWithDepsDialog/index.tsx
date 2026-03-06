@@ -1,10 +1,12 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { AlertCircle, Check, Loader2, Package } from 'lucide-react';
+
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { toast } from '~/usecase/hooks/use-toast';
 import { Checkbox } from '~/components/ui/checkbox';
-import { AlertCircle, Check, Loader2, Package } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { AddModWithDepsDialogProps } from './types';
@@ -30,13 +32,27 @@ export function AddModWithDepsDialog({
 	});
 	const [isAdding, setIsAdding] = React.useState(false);
 
+	React.useEffect(() => {
+		if (!open) return;
+		const required = new Set<string>();
+		dependencies.forEach((dep) => {
+			if (dep.dependency_type === 'required' && !existingMods.includes(dep.slug)) {
+				required.add(dep.slug);
+			}
+		});
+		setSelectedDeps(required);
+	}, [open, dependencies, existingMods]);
+
 	if (!modInfo) return null;
 
 	const filteredDeps = dependencies.filter((dep) => !existingMods.includes(dep.slug));
 	const requiredDeps = filteredDeps.filter((d) => d.dependency_type === 'required');
 	const optionalDeps = filteredDeps.filter((d) => d.dependency_type === 'optional');
 
+	const requiredSlugs = new Set(requiredDeps.map((d) => d.slug));
+
 	const toggleDep = (slug: string) => {
+		if (requiredSlugs.has(slug)) return;
 		const newSelected = new Set(selectedDeps);
 		if (newSelected.has(slug)) {
 			newSelected.delete(slug);
@@ -131,7 +147,7 @@ export function AddModWithDepsDialog({
 							</div>
 							{requiredDeps.map((dep) => (
 								<div key={dep.slug} className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
-									<Checkbox id={dep.slug} checked={selectedDeps.has(dep.slug)} onCheckedChange={() => toggleDep(dep.slug)} />
+									<Checkbox id={dep.slug} checked={selectedDeps.has(dep.slug)} onCheckedChange={() => toggleDep(dep.slug)} disabled />
 									<div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
 										{dep.icon_url ? (
 											<img alt={dep.title} src={dep.icon_url} className="w-full h-full object-cover" />

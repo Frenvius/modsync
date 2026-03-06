@@ -1,10 +1,12 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { Check, Copy, Loader2, Wifi, WifiOff } from 'lucide-react';
+
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
 import { toast } from '~/usecase/hooks/use-toast';
-import { Check, Copy, ExternalLink, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { ShareModpackDialogProps } from './types';
@@ -18,7 +20,6 @@ export function ShareModpackDialog({
 	onShareStatusChange
 }: ShareModpackDialogProps) {
 	const [port, setPort] = React.useState('7878');
-	const [publicIp, setPublicIp] = React.useState('');
 	const [shareCode, setShareCode] = React.useState<null | string>(currentShareCode || null);
 	const [isSharing, setIsSharing] = React.useState(!!currentShareCode);
 	const [isLoading, setIsLoading] = React.useState(false);
@@ -50,15 +51,6 @@ export function ShareModpackDialog({
 	}, [open, currentShareCode, modpackId, onShareStatusChange]);
 
 	const handleStartSharing = async () => {
-		if (!publicIp.trim()) {
-			toast({
-				variant: 'destructive',
-				title: 'Public IP required',
-				description: 'Please enter your public IP address.'
-			});
-			return;
-		}
-
 		const portNum = parseInt(port);
 		if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
 			toast({
@@ -73,8 +65,7 @@ export function ShareModpackDialog({
 		try {
 			const code = await invoke<string>('start_sharing', {
 				modpackId,
-				port: portNum,
-				publicIp: publicIp.trim()
+				port: portNum
 			});
 
 			setShareCode(code);
@@ -151,22 +142,6 @@ export function ShareModpackDialog({
 
 				{!isSharing ? (
 					<div className="space-y-4 mt-2">
-						<div className="space-y-2">
-							<Label htmlFor="publicIp">Your Public IP</Label>
-							<div className="flex gap-2">
-								<Input id="publicIp" value={publicIp} placeholder="e.g., 203.0.113.50" onChange={(e) => setPublicIp(e.target.value)} />
-								<Button
-									size="icon"
-									variant="outline"
-									title="Find my IP"
-									onClick={() => window.open('https://whatismyipaddress.com/', '_blank')}
-								>
-									<ExternalLink className="w-4 h-4" />
-								</Button>
-							</div>
-							<p className="text-xs text-muted-foreground">Find your public IP at whatismyipaddress.com</p>
-						</div>
-
 						<div className="space-y-2">
 							<Label htmlFor="port">Port</Label>
 							<Input id="port" value={port} placeholder="7878" onChange={(e) => setPort(e.target.value)} />

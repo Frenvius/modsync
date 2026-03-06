@@ -1,17 +1,8 @@
 import React from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { Badge } from '~/components/ui/badge';
-import { listen } from '@tauri-apps/api/event';
-import { Button } from '~/components/ui/button';
-import { Switch } from '~/components/ui/switch';
-import { toast } from '~/usecase/hooks/use-toast';
-import { Progress } from '~/components/ui/progress';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AddModsDialog } from '~/components/modpack/AddModsDialog';
-import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
-import { EditModpackDialog } from '~/components/modpack/EditModpackDialog';
-import { ShareModpackDialog } from '~/components/modpack/ShareModpackDialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table';
+
+import { listen } from '@tauri-apps/api/event';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import {
 	AlertCircle,
 	ArrowLeft,
@@ -23,6 +14,7 @@ import {
 	Play,
 	Plus,
 	RefreshCw,
+	Search,
 	Settings,
 	Share2,
 	Trash2,
@@ -31,11 +23,33 @@ import {
 	WifiOff
 } from 'lucide-react';
 
-import { DetectedMod, InstallProgress, InstallStatus, Modpack, ModpackMod, SyncStatus } from './types';
+import { Badge } from '~/components/ui/badge';
+import { Input } from '~/components/ui/input';
+import { Button } from '~/components/ui/button';
+import { Switch } from '~/components/ui/switch';
+import { useGame } from '~/contexts/GameContext';
+import { toast } from '~/usecase/hooks/use-toast';
+import { Progress } from '~/components/ui/progress';
+import { AddModsDialog } from '~/components/modpack/AddModsDialog';
+import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
+import { EditModpackDialog } from '~/components/modpack/EditModpackDialog';
+import { ShareModpackDialog } from '~/components/modpack/ShareModpackDialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table';
+
+import { DetectedMod, InstallProgress, InstallStatus, Modpack, ModpackMod, ModUpdateInfo, SyncStatus, UpdateCheckResult } from './types';
+
+const getIconSrc = (iconUrl: string | null | undefined): string | undefined => {
+	if (!iconUrl) return undefined;
+	if (iconUrl.startsWith('http://') || iconUrl.startsWith('https://')) {
+		return iconUrl;
+	}
+	return convertFileSrc(iconUrl);
+};
 
 export default function ModpackDetailPage() {
 	const { id } = useParams();
 	const navigate = useNavigate();
+	const { games } = useGame();
 	const [addModsOpen, setAddModsOpen] = React.useState(false);
 	const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
 	const [editDialogOpen, setEditDialogOpen] = React.useState(false);
@@ -49,7 +63,6 @@ export default function ModpackDetailPage() {
 	const [installStatus, setInstallStatus] = React.useState<null | InstallStatus>(null);
 	const [isLaunching, setIsLaunching] = React.useState(false);
 	const [installProgress, setInstallProgress] = React.useState<null | InstallProgress>(null);
-	const hasStartedInstall = React.useRef(false);
 	const [modUpdates, setModUpdates] = React.useState<Record<string, string>>({});
 	const [_isCheckingUpdates, setIsCheckingUpdates] = React.useState(false);
 	const [togglingMod, setTogglingMod] = React.useState<null | string>(null);
@@ -57,8 +70,12 @@ export default function ModpackDetailPage() {
 	const [_isScanning, setIsScanning] = React.useState(false);
 	const [importingMod, setImportingMod] = React.useState<null | string>(null);
 	const [updatingMod, setUpdatingMod] = React.useState<null | string>(null);
+	const [thunderstoreUpdates, setThunderstoreUpdates] = React.useState<ModUpdateInfo[]>([]);
+	const [isCheckingThunderstoreUpdates, setIsCheckingThunderstoreUpdates] = React.useState(false);
+	const [isUpdatingAll, setIsUpdatingAll] = React.useState(false);
+	const [modSearch, setModSearch] = React.useState('');
 
-	const checkModUpdates = React.useCallback(async (mods: ModpackMod[], minecraftVersion: string, loader: string) => {
+	const checkModUpdates = React.useCallback(async (mods: ModpackMod[], gameVersion: string, loader: string) => {
 		if (mods.length === 0) return;
 
 		setIsCheckingUpdates(true);
@@ -70,7 +87,7 @@ export default function ModpackDetailPage() {
 					const versions = await invoke<Array<{ id: string; version_number: string }>>('get_mod_versions', {
 						slug: mod.slug,
 						loader: loader,
-						gameVersion: minecraftVersion
+						gameVersion: gameVersion
 					});
 
 					if (versions.length > 0) {
@@ -93,6 +110,24 @@ export default function ModpackDetailPage() {
 		}
 	}, []);
 
+	const checkThunderstoreUpdates = React.useCallback(async (modpackId: string) => {
+		setIsCheckingThunderstoreUpdates(true);
+		try {
+			const result = await invoke<UpdateCheckResult>('check_thunderstore_updates', {
+				modpackId,
+				skipLoaders: true
+			});
+			setThunderstoreUpdates(result.available_updates);
+			if (result.check_errors.length > 0) {
+				console.warn('Some update checks failed:', result.check_errors);
+			}
+		} catch (err) {
+			console.error('Failed to check Thunderstore updates:', err);
+		} finally {
+			setIsCheckingThunderstoreUpdates(false);
+		}
+	}, []);
+
 	const loadModpack = React.useCallback(
 		async (modpackId: string) => {
 			setIsLoading(true);
@@ -101,7 +136,12 @@ export default function ModpackDetailPage() {
 				const data = await invoke<Modpack>('get_modpack', { id: modpackId });
 				setModpack(data);
 				if (data.mods.length > 0) {
-					checkModUpdates(data.mods, data.minecraft_version, data.loader);
+					const game = games.find((g) => g.id === data.game_id);
+					if (game?.mod_source === 'thunderstore') {
+						checkThunderstoreUpdates(modpackId);
+					} else {
+						checkModUpdates(data.mods, data.game_version, data.loader ?? '');
+					}
 				}
 			} catch (err) {
 				console.error('Failed to load modpack:', err);
@@ -110,7 +150,7 @@ export default function ModpackDetailPage() {
 				setIsLoading(false);
 			}
 		},
-		[checkModUpdates]
+		[checkModUpdates, checkThunderstoreUpdates, games]
 	);
 
 	const checkSyncStatus = React.useCallback(async (modpackId: string) => {
@@ -145,22 +185,6 @@ export default function ModpackDetailPage() {
 			checkInstallStatus(id);
 		}
 	}, [id, loadModpack, checkInstallStatus]);
-
-	React.useEffect(() => {
-		if (!id || !installStatus || hasStartedInstall.current) return;
-
-		if (!installStatus.installed && !installStatus.installing) {
-			hasStartedInstall.current = true;
-			invoke('start_install', { modpackId: id }).catch((err) => {
-				console.error('Failed to start installation:', err);
-				toast({
-					variant: 'destructive',
-					description: String(err),
-					title: 'Installation failed'
-				});
-			});
-		}
-	}, [id, installStatus]);
 
 	React.useEffect(() => {
 		const unlisten = listen<InstallProgress>('install-progress', (event) => {
@@ -254,6 +278,8 @@ export default function ModpackDetailPage() {
 	const handleUpdateMod = async (mod: ModpackMod) => {
 		if (!modpack) return;
 
+		const game = games.find((g) => g.id === modpack.game_id);
+
 		setUpdatingMod(mod.slug);
 		try {
 			const modInfo = await invoke<{
@@ -269,7 +295,9 @@ export default function ModpackDetailPage() {
 			}>('get_mod_with_dependencies', {
 				slug: mod.slug,
 				loader: modpack.loader,
-				gameVersion: modpack.minecraft_version
+				gameVersion: modpack.game_version,
+				source: game?.mod_source ?? 'modrinth',
+				thunderstoreCommunity: game?.thunderstore_community
 			});
 
 			await invoke('remove_mod_from_modpack', {
@@ -311,6 +339,81 @@ export default function ModpackDetailPage() {
 			});
 		} finally {
 			setUpdatingMod(null);
+		}
+	};
+
+	const handleUpdateThunderstoreMod = async (updateInfo: ModUpdateInfo) => {
+		if (!modpack) return;
+
+		setUpdatingMod(updateInfo.full_name);
+		try {
+			const result = await invoke<{ success: boolean; error: null | string; to_version: string }>('update_thunderstore_mod', {
+				modpackId: modpack.id,
+				fullName: updateInfo.full_name
+			});
+
+			if (result.success) {
+				toast({
+					title: 'Mod updated',
+					description: `"${updateInfo.display_name}" has been updated to v${result.to_version}.`
+				});
+
+				setThunderstoreUpdates((prev) => prev.filter((u) => u.full_name !== updateInfo.full_name));
+
+				if (id) {
+					loadModpack(id);
+				}
+			} else {
+				throw new Error(result.error || 'Update failed');
+			}
+		} catch (err) {
+			console.error('Failed to update mod:', err);
+			toast({
+				title: 'Error',
+				variant: 'destructive',
+				description: `Failed to update mod: ${err}`
+			});
+		} finally {
+			setUpdatingMod(null);
+		}
+	};
+
+	const handleUpdateAllThunderstoreMods = async () => {
+		if (!modpack || thunderstoreUpdates.length === 0) return;
+
+		setIsUpdatingAll(true);
+		try {
+			const result = await invoke<{ success_count: number; failure_count: number }>('update_all_thunderstore_mods', {
+				modpackId: modpack.id,
+				skipLoaders: true
+			});
+
+			if (result.success_count > 0) {
+				toast({
+					title: 'Mods updated',
+					description: `Successfully updated ${result.success_count} mod${result.success_count > 1 ? 's' : ''}.${result.failure_count > 0 ? ` ${result.failure_count} failed.` : ''}`
+				});
+			} else if (result.failure_count > 0) {
+				toast({
+					title: 'Update failed',
+					variant: 'destructive',
+					description: `Failed to update ${result.failure_count} mod${result.failure_count > 1 ? 's' : ''}.`
+				});
+			}
+
+			setThunderstoreUpdates([]);
+			if (id) {
+				loadModpack(id);
+			}
+		} catch (err) {
+			console.error('Failed to update all mods:', err);
+			toast({
+				title: 'Error',
+				variant: 'destructive',
+				description: `Failed to update mods: ${err}`
+			});
+		} finally {
+			setIsUpdatingAll(false);
 		}
 	};
 
@@ -485,6 +588,8 @@ export default function ModpackDetailPage() {
 				return 'Extracting Native Libraries';
 			case 'installing_loader':
 				return 'Installing Mod Loader';
+			case 'installing_bepinex':
+				return 'Installing BepInEx';
 			case 'downloading_mods':
 				return 'Downloading Mods';
 			case 'complete':
@@ -582,7 +687,7 @@ export default function ModpackDetailPage() {
 							</Badge>
 						</div>
 						<p className="text-muted-foreground text-sm mt-1">
-							MC {modpack.minecraft_version} • {modpack.mods.length} mods
+							{modpack.game_version} • {modpack.mods.length} mods
 						</p>
 						{modpack.description && <p className="text-muted-foreground text-sm mt-2 line-clamp-2">{modpack.description}</p>}
 					</div>
@@ -703,13 +808,53 @@ export default function ModpackDetailPage() {
 				)}
 				<div className="space-y-4">
 					<div className="flex items-center justify-between">
-						<h2 className="text-xl font-semibold text-foreground">Mods ({modpack.mods.length})</h2>
-						{modpack.is_owner && (
-							<Button size="sm" variant="outline" className="gap-2" onClick={() => setAddModsOpen(true)}>
-								<Plus className="w-4 h-4" />
-								Add Mods
-							</Button>
-						)}
+						<div className="flex items-center gap-3">
+							<h2 className="text-xl font-semibold text-foreground">Mods ({modpack.mods.length})</h2>
+							{thunderstoreUpdates.length > 0 && (
+								<Badge variant="outline" className="gap-1 border-primary/50 text-primary bg-primary/10">
+									{thunderstoreUpdates.length} update{thunderstoreUpdates.length > 1 ? 's' : ''} available
+								</Badge>
+							)}
+							{isCheckingThunderstoreUpdates && (
+								<Badge variant="outline" className="gap-1 border-muted-foreground/50 text-muted-foreground bg-muted">
+									<Loader2 className="w-3 h-3 animate-spin" />
+									Checking...
+								</Badge>
+							)}
+						</div>
+						<div className="flex items-center gap-2">
+							<div className="relative">
+								<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+								<Input
+									type="text"
+									placeholder="Search mods..."
+									value={modSearch}
+									onChange={(e) => setModSearch(e.target.value)}
+									className="pl-8 h-9 w-48"
+								/>
+							</div>
+							{thunderstoreUpdates.length > 0 && modpack.is_owner && (
+								<Button size="sm" variant="outline" className="gap-2" onClick={handleUpdateAllThunderstoreMods} disabled={isUpdatingAll}>
+									{isUpdatingAll ? (
+										<>
+											<Loader2 className="w-4 h-4 animate-spin" />
+											Updating...
+										</>
+									) : (
+										<>
+											<Download className="w-4 h-4" />
+											Update All ({thunderstoreUpdates.length})
+										</>
+									)}
+								</Button>
+							)}
+							{modpack.is_owner && (
+								<Button size="sm" variant="outline" className="gap-2" onClick={() => setAddModsOpen(true)}>
+									<Plus className="w-4 h-4" />
+									Add Mods
+								</Button>
+							)}
+						</div>
 					</div>
 
 					{modpack.mods.length === 0 ? (
@@ -730,70 +875,109 @@ export default function ModpackDetailPage() {
 							<Table>
 								<TableHeader>
 									<TableRow className="hover:bg-transparent">
-										<TableHead className="w-[300px]">Name</TableHead>
-										<TableHead>Version</TableHead>
-										<TableHead className="w-[140px] text-right"></TableHead>
+										<TableHead className="h-9 px-3 w-[300px]">Name</TableHead>
+										<TableHead className="h-9 px-3">Version</TableHead>
+										<TableHead className="h-9 px-3 w-[140px] text-right"></TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{[...modpack.mods].reverse().map((mod) => (
-										<TableRow key={mod.slug} className={`group ${mod.enabled === false ? 'opacity-50' : ''}`}>
-											<TableCell>
-												<div className="flex items-center gap-3">
-													<div className="w-8 h-8 rounded bg-muted flex items-center justify-center overflow-hidden shrink-0">
-														{mod.icon_url ? (
-															<img alt={mod.title} src={mod.icon_url} className="w-full h-full object-cover" />
-														) : (
-															<Package className="w-4 h-4 text-muted-foreground" />
+									{[...modpack.mods]
+										.reverse()
+										.filter(
+											(mod) =>
+												!modSearch ||
+												mod.title.toLowerCase().includes(modSearch.toLowerCase()) ||
+												mod.author.toLowerCase().includes(modSearch.toLowerCase()) ||
+												mod.slug.toLowerCase().includes(modSearch.toLowerCase())
+										)
+										.map((mod) => (
+											<TableRow key={mod.slug} className={`group ${mod.enabled === false ? 'opacity-50' : ''}`}>
+												<TableCell>
+													<div className="flex items-center gap-3">
+														<div className="w-8 h-8 rounded bg-muted flex items-center justify-center overflow-hidden shrink-0">
+															{mod.icon_url ? (
+																<img alt={mod.title} src={getIconSrc(mod.icon_url)} className="w-full h-full object-cover" />
+															) : (
+																<Package className="w-4 h-4 text-muted-foreground" />
+															)}
+														</div>
+														<div className="min-w-0">
+															<div className="flex items-center gap-2">
+																<p className="font-medium text-sm truncate">{mod.title}</p>
+																{mod.is_loader && (
+																	<Badge variant="secondary" className="text-xs px-1.5 py-0">
+																		Loader
+																	</Badge>
+																)}
+															</div>
+															<p className="text-xs text-muted-foreground">by {mod.author}</p>
+														</div>
+													</div>
+												</TableCell>
+												<TableCell>
+													<div className="space-y-0.5">
+														<div className="flex items-center gap-2">
+															<p className="text-sm">{mod.version}</p>
+															{thunderstoreUpdates.find((u) => u.full_name === mod.slug) && (
+																<Badge variant="outline" className="text-xs px-1.5 py-0 border-primary/50 text-primary bg-primary/10">
+																	{thunderstoreUpdates.find((u) => u.full_name === mod.slug)?.latest_version} available
+																</Badge>
+															)}
+														</div>
+														{mod.filename && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{mod.filename}</p>}
+													</div>
+												</TableCell>
+												<TableCell className="text-right">
+													<div className="flex items-center justify-end gap-1">
+														{/* Modrinth update button */}
+														{modUpdates[mod.slug] && (
+															<Button
+																size="icon"
+																variant="ghost"
+																className="h-8 w-8 text-primary"
+																disabled={updatingMod === mod.slug}
+																onClick={() => handleUpdateMod(mod)}
+																title={`Update to ${modUpdates[mod.slug]}`}
+															>
+																{updatingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+															</Button>
+														)}
+														{thunderstoreUpdates.find((u) => u.full_name === mod.slug) && modpack.is_owner && (
+															<Button
+																size="icon"
+																variant="ghost"
+																className="h-8 w-8 text-primary"
+																disabled={updatingMod === mod.slug || isUpdatingAll}
+																onClick={() => {
+																	const updateInfo = thunderstoreUpdates.find((u) => u.full_name === mod.slug);
+																	if (updateInfo) handleUpdateThunderstoreMod(updateInfo);
+																}}
+																title={`Update to ${thunderstoreUpdates.find((u) => u.full_name === mod.slug)?.latest_version}`}
+															>
+																{updatingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+															</Button>
+														)}
+														<Switch
+															checked={mod.enabled !== false}
+															disabled={togglingMod === mod.slug || mod.is_loader === true}
+															onCheckedChange={() => handleToggleMod(mod.slug, mod.title, mod.enabled !== false)}
+														/>
+														{modpack.is_owner && (
+															<Button
+																size="icon"
+																variant="ghost"
+																title="Remove mod"
+																disabled={removingMod === mod.slug}
+																onClick={() => handleRemoveMod(mod.slug, mod.title)}
+																className="h-8 w-8 text-destructive hover:text-destructive"
+															>
+																{removingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+															</Button>
 														)}
 													</div>
-													<div className="min-w-0">
-														<p className="font-medium text-sm truncate">{mod.title}</p>
-														<p className="text-xs text-muted-foreground">by {mod.author}</p>
-													</div>
-												</div>
-											</TableCell>
-											<TableCell>
-												<div className="space-y-0.5">
-													<p className="text-sm">{mod.version}</p>
-													{mod.filename && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{mod.filename}</p>}
-												</div>
-											</TableCell>
-											<TableCell className="text-right">
-												<div className="flex items-center justify-end gap-1">
-													{modUpdates[mod.slug] && (
-														<Button
-															size="icon"
-															variant="ghost"
-															className="h-8 w-8 text-primary"
-															disabled={updatingMod === mod.slug}
-															onClick={() => handleUpdateMod(mod)}
-															title={`Update to ${modUpdates[mod.slug]}`}
-														>
-															{updatingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-														</Button>
-													)}
-													<Switch
-														checked={mod.enabled !== false}
-														disabled={togglingMod === mod.slug}
-														onCheckedChange={() => handleToggleMod(mod.slug, mod.title, mod.enabled !== false)}
-													/>
-													{modpack.is_owner && (
-														<Button
-															size="icon"
-															variant="ghost"
-															title="Remove mod"
-															disabled={removingMod === mod.slug}
-															onClick={() => handleRemoveMod(mod.slug, mod.title)}
-															className="h-8 w-8 text-destructive hover:text-destructive"
-														>
-															{removingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-														</Button>
-													)}
-												</div>
-											</TableCell>
-										</TableRow>
-									))}
+												</TableCell>
+											</TableRow>
+										))}
 								</TableBody>
 							</Table>
 						</div>
@@ -803,12 +987,13 @@ export default function ModpackDetailPage() {
 
 			<AddModsDialog
 				open={addModsOpen}
+				gameId={modpack.game_id}
 				modpackId={modpack.id}
 				loader={modpack.loader}
 				modpackName={modpack.name}
 				onOpenChange={setAddModsOpen}
 				onModsAdded={handleModsAdded}
-				minecraftVersion={modpack.minecraft_version}
+				gameVersion={modpack.game_version}
 				existingMods={modpack.mods.map((m) => m.slug)}
 			/>
 
@@ -830,7 +1015,7 @@ export default function ModpackDetailPage() {
 				onOpenChange={setEditDialogOpen}
 				modpackImagePath={modpack.image_path}
 				onSave={() => loadModpack(modpack.id)}
-				modpackVersion={modpack.minecraft_version}
+				modpackVersion={modpack.game_version}
 			/>
 		</AppLayout>
 	);

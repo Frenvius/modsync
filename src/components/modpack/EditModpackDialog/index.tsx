@@ -1,10 +1,13 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { ImagePlus, Loader2, X } from 'lucide-react';
+
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
+import { useGame } from '~/contexts/GameContext';
 import { toast } from '~/usecase/hooks/use-toast';
-import { ImagePlus, Loader2, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
@@ -19,6 +22,7 @@ export function EditModpackDialog({
 	modpackVersion,
 	modpackImagePath
 }: EditModpackDialogProps) {
+	const { selectedGame } = useGame();
 	const [name, setName] = React.useState(modpackName);
 	const [version, setVersion] = React.useState(modpackVersion);
 	const [versions, setVersions] = React.useState<GameVersion[]>([]);
@@ -32,10 +36,11 @@ export function EditModpackDialog({
 	React.useEffect(() => {
 		const loadVersions = async () => {
 			if (versions.length > 0) return;
+			if (!selectedGame?.requires_loader) return;
 
 			setIsLoadingVersions(true);
 			try {
-				const gameVersions = await invoke<GameVersion[]>('get_game_versions');
+				const gameVersions = await invoke<GameVersion[]>('get_game_versions', { gameId: selectedGame?.id ?? 'minecraft' });
 				setVersions(gameVersions);
 			} catch (error) {
 				console.error('Failed to load game versions:', error);
@@ -47,7 +52,7 @@ export function EditModpackDialog({
 		if (open) {
 			loadVersions();
 		}
-	}, [open, versions.length]);
+	}, [open, versions.length, selectedGame]);
 
 	React.useEffect(() => {
 		const loadExistingImage = async () => {
@@ -125,7 +130,7 @@ export function EditModpackDialog({
 				await invoke('update_modpack', {
 					id: modpackId,
 					name: name.trim(),
-					minecraftVersion: version
+					gameVersion: version
 				});
 
 				if (imageData) {
@@ -207,21 +212,23 @@ export function EditModpackDialog({
 						</div>
 					</div>
 
-					<div className="space-y-2 !-mt-4">
-						<Label htmlFor="version">Minecraft Version</Label>
-						<Select value={version} disabled={isSaving} onValueChange={setVersion}>
-							<SelectTrigger>
-								<SelectValue placeholder={isLoadingVersions ? 'Loading...' : 'Select version'} />
-							</SelectTrigger>
-							<SelectContent>
-								{versions.map((v) => (
-									<SelectItem key={v.version} value={v.version}>
-										{v.version}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
+					{selectedGame?.requires_loader && (
+						<div className="space-y-2 !-mt-4">
+							<Label htmlFor="version">Game Version</Label>
+							<Select value={version} disabled={isSaving} onValueChange={setVersion}>
+								<SelectTrigger>
+									<SelectValue placeholder={isLoadingVersions ? 'Loading...' : 'Select version'} />
+								</SelectTrigger>
+								<SelectContent>
+									{versions.map((v) => (
+										<SelectItem key={v.version} value={v.version}>
+											{v.version}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+					)}
 				</div>
 				<DialogFooter className="mt-4">
 					<Button variant="outline" onClick={() => onOpenChange(false)}>

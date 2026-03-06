@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { cn } from '~/usecase/util/stringUtils';
+
 import * as HoverCardPrimitive from '@radix-ui/react-hover-card';
+
+import { cn } from '~/usecase/util/stringUtils';
 
 const HoverCard = HoverCardPrimitive.Root;
 

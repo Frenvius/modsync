@@ -1,10 +1,12 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { AlertCircle, Link as LinkIcon, Loader2 } from 'lucide-react';
+
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
 import { cn } from '~/usecase/util/stringUtils';
 import { toast } from '~/usecase/hooks/use-toast';
-import { AlertCircle, Link as LinkIcon, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { JoinModpackDialogProps, Modpack } from './types';

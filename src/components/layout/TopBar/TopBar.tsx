@@ -1,11 +1,14 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Check, Copy, Minus, Plus, Search, Square, Trash2, User, X } from 'lucide-react';
+
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useGame } from '~/contexts/GameContext';
 import { LoginDialog } from '~/components/auth/LoginDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
-import { Check, Copy, Minus, Plus, Search, Square, Trash2, User, X } from 'lucide-react';
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -22,6 +25,7 @@ export function TopBar() {
 	const [accounts, setAccounts] = React.useState<AccountInfo[]>([]);
 	const [loginDialogOpen, setLoginDialogOpen] = React.useState(false);
 	const appWindow = getCurrentWindow();
+	const { selectedGame } = useGame();
 
 	const loadAccounts = async () => {
 		try {
@@ -91,67 +95,69 @@ export function TopBar() {
 						<Input placeholder="Search modpacks, mods..." className="pl-10 bg-secondary border-border h-8 text-sm" />
 					</div>
 					<div className="flex items-center">
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button size="icon" variant="ghost" className="rounded-full h-8 w-8">
-									{defaultAccount ? (
-										<Avatar className="h-7 w-7">
-											<AvatarImage alt={defaultAccount.username} src={getHeadUrl(defaultAccount.uuid)} />
-											<AvatarFallback className="text-xs">{defaultAccount.username.slice(0, 2).toUpperCase()}</AvatarFallback>
-										</Avatar>
-									) : (
-										<div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
-											<User className="w-3.5 h-3.5 text-primary" />
-										</div>
-									)}
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="bg-popover w-64">
-								{accounts.length > 0 ? (
-									<>
-										<DropdownMenuLabel>Accounts</DropdownMenuLabel>
-										<DropdownMenuSeparator />
-										{accounts.map((account) => (
-											<DropdownMenuItem
-												key={account.uuid}
-												onClick={() => handleSetDefault(account.uuid)}
-												className="flex items-center justify-between cursor-pointer"
-											>
-												<div className="flex items-center gap-2">
-													<Avatar className="h-6 w-6">
-														<AvatarImage alt={account.username} src={getHeadUrl(account.uuid)} />
-														<AvatarFallback className="text-[10px]">{account.username.slice(0, 2).toUpperCase()}</AvatarFallback>
-													</Avatar>
-													<span className="font-medium">{account.username}</span>
-													{account.is_default && <Check className="w-3 h-3 text-primary" />}
-												</div>
-												<Button
-													size="icon"
-													variant="ghost"
-													className="h-6 w-6 opacity-50 hover:opacity-100 hover:text-destructive"
-													onClick={(e) => {
-														e.stopPropagation();
-														handleRemoveAccount(account.uuid);
-													}}
+						{selectedGame?.id === 'minecraft' && (
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button size="icon" variant="ghost" className="rounded-full h-8 w-8">
+										{defaultAccount ? (
+											<Avatar className="h-7 w-7">
+												<AvatarImage alt={defaultAccount.username} src={getHeadUrl(defaultAccount.uuid)} />
+												<AvatarFallback className="text-xs">{defaultAccount.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+											</Avatar>
+										) : (
+											<div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
+												<User className="w-3.5 h-3.5 text-primary" />
+											</div>
+										)}
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end" className="bg-popover w-64">
+									{accounts.length > 0 ? (
+										<>
+											<DropdownMenuLabel>Accounts</DropdownMenuLabel>
+											<DropdownMenuSeparator />
+											{accounts.map((account) => (
+												<DropdownMenuItem
+													key={account.uuid}
+													onClick={() => handleSetDefault(account.uuid)}
+													className="flex items-center justify-between cursor-pointer"
 												>
-													<Trash2 className="w-3 h-3" />
-												</Button>
-											</DropdownMenuItem>
-										))}
-										<DropdownMenuSeparator />
-									</>
-								) : (
-									<>
-										<DropdownMenuLabel className="text-center text-muted-foreground font-normal">No accounts linked</DropdownMenuLabel>
-										<DropdownMenuSeparator />
-									</>
-								)}
-								<DropdownMenuItem className="cursor-pointer" onClick={() => setLoginDialogOpen(true)}>
-									<Plus className="w-4 h-4 mr-2" />
-									Add Microsoft Account
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
+													<div className="flex items-center gap-2">
+														<Avatar className="h-6 w-6">
+															<AvatarImage alt={account.username} src={getHeadUrl(account.uuid)} />
+															<AvatarFallback className="text-[10px]">{account.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+														</Avatar>
+														<span className="font-medium">{account.username}</span>
+														{account.is_default && <Check className="w-3 h-3 text-primary" />}
+													</div>
+													<Button
+														size="icon"
+														variant="ghost"
+														className="h-6 w-6 opacity-50 hover:opacity-100 hover:text-destructive"
+														onClick={(e) => {
+															e.stopPropagation();
+															handleRemoveAccount(account.uuid);
+														}}
+													>
+														<Trash2 className="w-3 h-3" />
+													</Button>
+												</DropdownMenuItem>
+											))}
+											<DropdownMenuSeparator />
+										</>
+									) : (
+										<>
+											<DropdownMenuLabel className="text-center text-muted-foreground font-normal">No accounts linked</DropdownMenuLabel>
+											<DropdownMenuSeparator />
+										</>
+									)}
+									<DropdownMenuItem className="cursor-pointer" onClick={() => setLoginDialogOpen(true)}>
+										<Plus className="w-4 h-4 mr-2" />
+										Add Microsoft Account
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						)}
 						<div className="flex items-center ml-4 -mr-4">
 							<button
 								onClick={() => appWindow.minimize()}

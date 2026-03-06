@@ -1,11 +1,15 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
-import { Button } from '~/components/ui/button';
-import { toast } from '~/usecase/hooks/use-toast';
 import { Check, Loader2, Package } from 'lucide-react';
+
+import { Button } from '~/components/ui/button';
+import { useGame } from '~/contexts/GameContext';
+import { toast } from '~/usecase/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { AddModWithDepsDialog } from '../AddModWithDepsDialog';
+
 import { AddToModpackDialogProps, DependencyInfo, ModInfo, Modpack, ModWithDependencies } from './types';
 
 export function AddToModpackDialog({
@@ -17,6 +21,7 @@ export function AddToModpackDialog({
 	modAuthor: _modAuthor,
 	modIconUrl: _modIconUrl
 }: AddToModpackDialogProps) {
+	const { games } = useGame();
 	const [selectedModpack, setSelectedModpack] = React.useState<null | string>(null);
 	const [modpacks, setModpacks] = React.useState<Modpack[]>([]);
 	const [isLoading, setIsLoading] = React.useState(false);
@@ -64,12 +69,16 @@ export function AddToModpackDialog({
 		const modpack = modpacks.find((m) => m.id === selectedModpack);
 		if (!modpack) return;
 
+		const game = games.find((g) => g.id === modpack.game_id);
+
 		setIsAdding(true);
 		try {
 			const result = await invoke<ModWithDependencies>('get_mod_with_dependencies', {
 				slug: modSlug,
 				loader: modpack.loader,
-				gameVersion: modpack.minecraft_version
+				gameVersion: modpack.game_version || modpack.minecraft_version,
+				source: game?.mod_source ?? 'modrinth',
+				thunderstoreCommunity: game?.thunderstore_community
 			});
 
 			const existingSlugs = modpack.mods.map((m) => m.slug);
@@ -161,7 +170,7 @@ export function AddToModpackDialog({
 									<div className="flex-1 min-w-0">
 										<h3 className="font-medium text-sm text-foreground truncate">{modpack.name}</h3>
 										<p className="text-xs text-muted-foreground">
-											MC {modpack.minecraft_version} • {modpack.mods.length} mods • {modpack.loader}
+											{modpack.game_version || modpack.minecraft_version} • {modpack.mods.length} mods • {modpack.loader ?? 'No loader'}
 										</p>
 									</div>
 									{alreadyAdded ? (

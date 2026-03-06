@@ -1,8 +1,11 @@
 import React from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { Input } from '~/components/ui/input';
 import { useNavigate } from 'react-router-dom';
+
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { Grid3X3, Link, List, Loader2, Package, Plus, Search } from 'lucide-react';
+
+import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
 import { toast } from '~/usecase/hooks/use-toast';
 import { ModpackCard } from '~/components/modpack/ModpackCard';
@@ -10,7 +13,6 @@ import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
 import { JoinModpackDialog } from '~/components/modpack/JoinModpackDialog';
 import { CreateModpackDialog } from '~/components/modpack/CreateModpackDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
-import { Grid3X3, Link, List, Loader2, Package, Plus, Search } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 
 import { InstallProgress, InstallStatus, InstallStatusMap, Modpack, SyncStatus, SyncStatusMap } from './types';
@@ -206,7 +208,7 @@ export default function ModpacksPage() {
 							imagePath={pack.image_path}
 							shareCode={pack.share_code}
 							onEdit={() => loadModpacks()}
-							version={pack.minecraft_version}
+							version={pack.game_version}
 							onDelete={() => handleDelete(pack.id)}
 							installStatus={installStatus ?? undefined}
 							onShareStatusChange={() => loadModpacks()}

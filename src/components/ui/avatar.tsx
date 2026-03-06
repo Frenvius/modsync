@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { cn } from '~/usecase/util/stringUtils';
+
 import * as AvatarPrimitive from '@radix-ui/react-avatar';
+
+import { cn } from '~/usecase/util/stringUtils';
 
 const Avatar = React.forwardRef<React.ElementRef<typeof AvatarPrimitive.Root>, React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>>(
 	({ className, ...props }, ref) => (

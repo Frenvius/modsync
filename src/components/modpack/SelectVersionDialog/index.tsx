@@ -1,14 +1,16 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { Calendar, ChevronRight, Loader2, Package } from 'lucide-react';
+
 import { Badge } from '~/components/ui/badge';
 import { toast } from '~/usecase/hooks/use-toast';
 import { ScrollArea } from '~/components/ui/scroll-area';
-import { Calendar, ChevronRight, Loader2, Package } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { ModVersion, SelectVersionDialogProps } from './types';
 
-export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersionSelect, minecraftVersion }: SelectVersionDialogProps) {
+export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersionSelect, gameVersion }: SelectVersionDialogProps) {
 	const [versions, setVersions] = React.useState<ModVersion[]>([]);
 	const [isLoading, setIsLoading] = React.useState(false);
 
@@ -23,7 +25,9 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
 				const result = await invoke<ModVersion[]>('get_mod_versions', {
 					slug: mod.slug,
 					loader: loader,
-					gameVersion: minecraftVersion
+					gameVersion: gameVersion,
+					source: mod.source,
+					thunderstoreCommunity: mod.thunderstore_community
 				});
 				setVersions(result);
 			} catch (error) {
@@ -39,7 +43,7 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
 		};
 
 		loadVersions();
-	}, [mod, open, minecraftVersion, loader]);
+	}, [mod, open, gameVersion, loader]);
 
 	const formatDate = (dateString: string) => {
 		const date = new Date(dateString);
@@ -72,7 +76,7 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
 						<span className="truncate">{mod.title}</span>
 					</DialogTitle>
 					<DialogDescription>
-						Select a version compatible with {minecraftVersion} ({loader})
+						Select a version compatible with {gameVersion} ({loader})
 					</DialogDescription>
 				</DialogHeader>
 

@@ -9,12 +9,14 @@ interface ModpackMod {
 export interface Modpack {
 	id: string;
 	name: string;
+	game_id: string;
 	loader: string;
 	is_owner: boolean;
 	mods: ModpackMod[];
 	created_at: string;
 	updated_at: string;
-	minecraft_version: string;
+	game_version: string;
+	minecraft_version?: string;
 	share_code: null | string;
 	description: null | string;
 }

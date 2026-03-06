@@ -5,7 +5,7 @@ use tauri::AppHandle;
 
 use crate::instance;
 use crate::loaders::fabric::FabricLoaderProfile;
-use crate::minecraft::{get_native_classifier, get_os_name, should_include_library, VersionMeta};
+use crate::minecraft::{get_native_classifier, should_include_library, VersionMeta};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct JavaRuntime {
@@ -42,15 +42,17 @@ pub fn find_java() -> Result<JavaRuntime, String> {
     let all_javas = find_all_java();
 
     if let Some(java) = all_javas.iter().find(|j| {
-        j.version.starts_with("17") ||
-        j.version.starts_with("21") ||
-        j.version.starts_with("22") ||
-        j.version.starts_with("23")
+        j.version.starts_with("17")
+            || j.version.starts_with("21")
+            || j.version.starts_with("22")
+            || j.version.starts_with("23")
     }) {
         return Ok(java.clone());
     }
 
-    all_javas.into_iter().next()
+    all_javas
+        .into_iter()
+        .next()
         .ok_or_else(|| "Java not found. Please install Java 17 or later.".to_string())
 }
 
@@ -72,7 +74,9 @@ pub fn find_all_java() -> Vec<JavaRuntime> {
     }
 
     if let Ok(java_home) = std::env::var("JAVA_HOME") {
-        let java_path = PathBuf::from(&java_home).join("bin").join(java_executable());
+        let java_path = PathBuf::from(&java_home)
+            .join("bin")
+            .join(java_executable());
         if java_path.exists() && !seen_paths.contains(&java_path) {
             if let Ok(version) = get_java_version(&java_path) {
                 seen_paths.insert(java_path.clone());
@@ -87,13 +91,11 @@ pub fn find_all_java() -> Vec<JavaRuntime> {
     if let Ok(output) = Command::new("java").arg("-version").output() {
         if output.status.success() {
             let version_output = String::from_utf8_lossy(&output.stderr);
-            let version = parse_java_version(&version_output).unwrap_or_else(|| "unknown".to_string());
+            let version =
+                parse_java_version(&version_output).unwrap_or_else(|| "unknown".to_string());
             let path = PathBuf::from("java");
             if !seen_paths.contains(&path) {
-                found_javas.push(JavaRuntime {
-                    path,
-                    version,
-                });
+                found_javas.push(JavaRuntime { path, version });
             }
         }
     }
@@ -109,7 +111,8 @@ pub fn find_all_java() -> Vec<JavaRuntime> {
 
 fn extract_major_version(version: &str) -> u32 {
     let v = version.trim_start_matches("1.");
-    v.split('.').next()
+    v.split('.')
+        .next()
         .and_then(|s| s.split('_').next())
         .and_then(|s| s.parse().ok())
         .unwrap_or(0)
@@ -256,12 +259,20 @@ fn build_classpath(
     }
 
     if let Some(profile) = fabric_profile {
-        eprintln!("[DEBUG] Adding {} Fabric libraries", profile.libraries.len());
+        eprintln!(
+            "[DEBUG] Adding {} Fabric libraries",
+            profile.libraries.len()
+        );
         for lib in &profile.libraries {
             let rel_path = maven_to_path(&lib.name);
             if let Some(rel_path) = rel_path {
                 let lib_path = libraries_dir.join(&rel_path);
-                eprintln!("[DEBUG] Fabric lib: {} -> {:?} (exists: {})", lib.name, lib_path, lib_path.exists());
+                eprintln!(
+                    "[DEBUG] Fabric lib: {} -> {:?} (exists: {})",
+                    lib.name,
+                    lib_path,
+                    lib_path.exists()
+                );
                 if !lib_path.exists() {
                     missing_files.push(format!("{} ({})", lib.name, lib_path.to_string_lossy()));
                 }
@@ -287,7 +298,11 @@ fn build_classpath(
         }
     }
 
-    let separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+    let separator = if cfg!(target_os = "windows") {
+        ";"
+    } else {
+        ":"
+    };
     let result = classpath
         .iter()
         .map(|p| p.to_string_lossy().to_string())
@@ -295,7 +310,12 @@ fn build_classpath(
         .join(separator);
 
     eprintln!("[DEBUG] Classpath entry count: {}", classpath.len());
-    eprintln!("[DEBUG] First Fabric lib in classpath: {:?}", classpath.iter().find(|p| p.to_string_lossy().contains("fabric")));
+    eprintln!(
+        "[DEBUG] First Fabric lib in classpath: {:?}",
+        classpath
+            .iter()
+            .find(|p| p.to_string_lossy().contains("fabric"))
+    );
 
     let debug_cp_file = instance_dir.join("debug_classpath.txt");
     if let Err(e) = std::fs::write(&debug_cp_file, &result) {
@@ -321,7 +341,7 @@ fn maven_to_path(maven: &str) -> Option<PathBuf> {
         group_path
             .join(artifact)
             .join(version)
-            .join(format!("{}-{}.jar", artifact, version))
+            .join(format!("{}-{}.jar", artifact, version)),
     )
 }
 
@@ -347,7 +367,10 @@ fn build_jvm_args_file(
     }
 
     let natives_path = natives_dir.to_string_lossy();
-    args.push(format!("\"-Djava.library.path={}\"", natives_path.replace('\\', "\\\\")));
+    args.push(format!(
+        "\"-Djava.library.path={}\"",
+        natives_path.replace('\\', "\\\\")
+    ));
 
     args.push("-cp".to_string());
     args.push(quote_path(classpath));
@@ -380,7 +403,10 @@ fn build_jvm_args_file(
         .map_err(|e| format!("Failed to write JVM args file: {}", e))?;
 
     eprintln!("[DEBUG] JVM args file written to: {:?}", arg_file);
-    eprintln!("[DEBUG] JVM args file content length: {} bytes", content.len());
+    eprintln!(
+        "[DEBUG] JVM args file content length: {} bytes",
+        content.len()
+    );
 
     Ok(arg_file)
 }
@@ -467,18 +493,21 @@ pub async fn launch_game(
     let versions_dir = instance::get_versions_dir(app_handle, modpack_id)?;
 
     eprintln!("[DEBUG] Instance dir: {:?}", instance_dir);
-    eprintln!("[DEBUG] Fabric profile present: {}", fabric_profile.is_some());
+    eprintln!(
+        "[DEBUG] Fabric profile present: {}",
+        fabric_profile.is_some()
+    );
 
-    let instance_data = instance::load_instance(app_handle, modpack_id)?
-        .ok_or("Instance not found")?;
+    let instance_data =
+        instance::load_instance(app_handle, modpack_id)?.ok_or("Instance not found")?;
 
     if !instance_data.installed {
         return Err("Instance is not installed. Please install it first.".to_string());
     }
 
     let version_json_path = versions_dir
-        .join(&instance_data.minecraft_version)
-        .join(format!("{}.json", instance_data.minecraft_version));
+        .join(&instance_data.game_version)
+        .join(format!("{}.json", instance_data.game_version));
 
     let version_json = std::fs::read_to_string(&version_json_path)
         .map_err(|e| format!("Failed to read version JSON: {}", e))?;
@@ -577,11 +606,11 @@ fn extract_jar_natives(
 ) -> Result<(), String> {
     use std::io::Read;
 
-    let file = std::fs::File::open(jar_path)
-        .map_err(|e| format!("Failed to open native jar: {}", e))?;
+    let file =
+        std::fs::File::open(jar_path).map_err(|e| format!("Failed to open native jar: {}", e))?;
 
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| format!("Failed to read native jar: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read native jar: {}", e))?;
 
     let exclude_patterns: Vec<&str> = library
         .extract

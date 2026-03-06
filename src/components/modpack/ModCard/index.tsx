@@ -1,11 +1,14 @@
 import React from 'react';
+
+import { Check, Download, Plus } from 'lucide-react';
+
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { cn } from '~/usecase/util/stringUtils';
-import { Check, Download, Plus } from 'lucide-react';
+
+import { AddToModpackDialog } from '../AddToModpackDialog';
 
 import { ModCardProps } from './types';
-import { AddToModpackDialog } from '../AddToModpackDialog';
 
 export function ModCard({
 	slug,

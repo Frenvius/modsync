@@ -1,17 +1,7 @@
 import React from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { Badge } from '~/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '~/components/ui/button';
-import { toast } from '~/usecase/hooks/use-toast';
-import { Progress } from '~/components/ui/progress';
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger
-} from '~/components/ui/dropdown-menu';
+
+import { invoke } from '@tauri-apps/api/core';
 import {
 	AlertCircle,
 	Copy,
@@ -29,10 +19,23 @@ import {
 	WifiOff
 } from 'lucide-react';
 
-import { ModpackCardProps } from './types';
+import { Badge } from '~/components/ui/badge';
+import { Button } from '~/components/ui/button';
+import { toast } from '~/usecase/hooks/use-toast';
+import { Progress } from '~/components/ui/progress';
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger
+} from '~/components/ui/dropdown-menu';
+
 import { EditModpackDialog } from '../EditModpackDialog';
 import { ShareModpackDialog } from '../ShareModpackDialog';
 import { DeleteModpackDialog } from '../DeleteModpackDialog';
+
+import { ModpackCardProps } from './types';
 
 export function ModpackCard({
 	id,
@@ -130,7 +133,7 @@ export function ModpackCard({
 						<div className="min-w-0 flex-1 flex flex-col justify-center">
 							<h3 className="font-medium text-sm text-foreground group-hover:text-primary transition-colors truncate">{name}</h3>
 							<div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-								<span>MC {version}</span>
+								<span>{version}</span>
 								<div className="flex items-center gap-1">
 									<Package className="w-3 h-3" />
 									<span>{modCount}</span>

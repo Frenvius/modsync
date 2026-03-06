@@ -1,8 +1,10 @@
 import * as React from 'react';
+
 import { ChevronDown } from 'lucide-react';
 import { cva } from 'class-variance-authority';
-import { cn } from '~/usecase/util/stringUtils';
 import * as NavigationMenuPrimitive from '@radix-ui/react-navigation-menu';
+
+import { cn } from '~/usecase/util/stringUtils';
 
 const NavigationMenu = React.forwardRef<
 	React.ElementRef<typeof NavigationMenuPrimitive.Root>,

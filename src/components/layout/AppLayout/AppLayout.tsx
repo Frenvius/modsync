@@ -1,6 +1,7 @@
 import { Sidebar } from '../Sidebar';
-import { AppLayoutProps } from './types';
 import { TopBar } from '../TopBar/TopBar';
+
+import { AppLayoutProps } from './types';
 
 export function AppLayout({ children }: AppLayoutProps) {
 	return (

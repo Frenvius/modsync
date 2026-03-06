@@ -1,6 +1,9 @@
-import { cn } from '~/usecase/util/stringUtils';
-import { Package, Settings } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
+
+import { Package, Settings } from 'lucide-react';
+
+import { cn } from '~/usecase/util/stringUtils';
+import { GameSelector } from '~/components/layout/GameSelector';
 
 import { navItems } from './constants';
 
@@ -17,7 +20,10 @@ export function Sidebar() {
 					<span className="font-bold text-lg text-foreground">ModSync</span>
 				</div>
 			</div>
-			<nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
+			<div className="px-3 pt-2 pb-1">
+				<GameSelector />
+			</div>
+			<nav className="flex-1 px-3 py-1 space-y-1 overflow-y-auto">
 				{navItems.map((item) => {
 					const isActive = location.pathname === item.path;
 					return (

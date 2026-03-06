@@ -1,8 +1,10 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
-import { Button } from '~/components/ui/button';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Check, Copy, ExternalLink, Loader2 } from 'lucide-react';
+
+import { Button } from '~/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { DeviceCodeInfo, LoginDialogProps, LoginState, MinecraftAccount } from './types';

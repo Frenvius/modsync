@@ -1,7 +1,9 @@
 import React from 'react';
+
+import { Check, Copy, Share2 } from 'lucide-react';
+
 import { Button } from '~/components/ui/button';
 import { cn } from '~/usecase/util/stringUtils';
-import { Check, Copy, Share2 } from 'lucide-react';
 
 import { ShareCodeDisplayProps } from './types';
 

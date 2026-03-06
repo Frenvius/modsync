@@ -1,15 +1,18 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { AlertCircle, CheckCircle, Download, Loader2, Package } from 'lucide-react';
+
 import { Button } from '~/components/ui/button';
 import { toast } from '~/usecase/hooks/use-toast';
 import { Progress } from '~/components/ui/progress';
-import { AlertCircle, CheckCircle, Download, Loader2, Package } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { InstallDialogProps, InstallProgress } from './types';
 
-export function InstallDialog({ open, modpackId, modpackName, onOpenChange, onInstallComplete }: InstallDialogProps) {
+export function InstallDialog({ open, modpackId, modpackName, modSource, onOpenChange, onInstallComplete }: InstallDialogProps) {
+	const isThunderstore = modSource === 'thunderstore';
 	const [isInstalling, setIsInstalling] = React.useState(false);
 	const [progress, setProgress] = React.useState<null | InstallProgress>(null);
 	const [error, setError] = React.useState<null | string>(null);
@@ -65,6 +68,8 @@ export function InstallDialog({ open, modpackId, modpackName, onOpenChange, onIn
 				return 'Extracting Native Libraries';
 			case 'installing_loader':
 				return 'Installing Mod Loader';
+			case 'installing_bepinex':
+				return 'Installing BepInEx';
 			case 'downloading_mods':
 				return 'Downloading Mods';
 			case 'complete':
@@ -93,8 +98,12 @@ export function InstallDialog({ open, modpackId, modpackName, onOpenChange, onIn
 					</DialogTitle>
 					<DialogDescription>
 						{isInstalling
-							? 'Downloading and installing Minecraft, mod loader, and mods...'
-							: 'This will download Minecraft, the mod loader, and all mods for this modpack.'}
+							? isThunderstore
+								? 'Downloading and installing BepInEx and mods...'
+								: 'Downloading and installing Minecraft, mod loader, and mods...'
+							: isThunderstore
+								? 'This will download BepInEx and all mods for this modpack.'
+								: 'This will download Minecraft, the mod loader, and all mods for this modpack.'}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -102,18 +111,33 @@ export function InstallDialog({ open, modpackId, modpackName, onOpenChange, onIn
 					{!isInstalling && !error && (
 						<>
 							<div className="p-4 bg-muted/50 rounded-lg space-y-2">
-								<div className="flex items-center gap-2 text-sm">
-									<Package className="w-4 h-4 text-muted-foreground" />
-									<span>Minecraft client and assets</span>
-								</div>
-								<div className="flex items-center gap-2 text-sm">
-									<Package className="w-4 h-4 text-muted-foreground" />
-									<span>Mod loader (Fabric)</span>
-								</div>
-								<div className="flex items-center gap-2 text-sm">
-									<Package className="w-4 h-4 text-muted-foreground" />
-									<span>All mods in the modpack</span>
-								</div>
+								{isThunderstore ? (
+									<>
+										<div className="flex items-center gap-2 text-sm">
+											<Package className="w-4 h-4 text-muted-foreground" />
+											<span>BepInEx mod loader framework</span>
+										</div>
+										<div className="flex items-center gap-2 text-sm">
+											<Package className="w-4 h-4 text-muted-foreground" />
+											<span>All mods and their dependencies</span>
+										</div>
+									</>
+								) : (
+									<>
+										<div className="flex items-center gap-2 text-sm">
+											<Package className="w-4 h-4 text-muted-foreground" />
+											<span>Minecraft client and assets</span>
+										</div>
+										<div className="flex items-center gap-2 text-sm">
+											<Package className="w-4 h-4 text-muted-foreground" />
+											<span>Mod loader (Fabric)</span>
+										</div>
+										<div className="flex items-center gap-2 text-sm">
+											<Package className="w-4 h-4 text-muted-foreground" />
+											<span>All mods in the modpack</span>
+										</div>
+									</>
+								)}
 							</div>
 							<p className="text-xs text-muted-foreground">This may take a few minutes depending on your internet connection.</p>
 							<Button variant="glow" className="w-full" onClick={handleInstall}>

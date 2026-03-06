@@ -1,11 +1,14 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { ImagePlus, Loader2, X } from 'lucide-react';
+
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
+import { useGame } from '~/contexts/GameContext';
 import { toast } from '~/usecase/hooks/use-toast';
 import { Textarea } from '~/components/ui/textarea';
-import { ImagePlus, Loader2, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
@@ -13,9 +16,10 @@ import { LOADERS } from './constants';
 import { CreateModpackDialogProps, GameVersion, Modpack } from './types';
 
 export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateModpackDialogProps) {
+	const { selectedGame } = useGame();
 	const [name, setName] = React.useState('');
 	const [description, setDescription] = React.useState('');
-	const [minecraftVersion, setMinecraftVersion] = React.useState('');
+	const [gameVersion, setGameVersion] = React.useState('');
 	const [loader, setLoader] = React.useState('');
 	const [versions, setVersions] = React.useState<GameVersion[]>([]);
 	const [isLoading, setIsLoading] = React.useState(false);
@@ -60,19 +64,23 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
 		if (open) {
 			loadVersions();
 		}
-	}, [open]);
+	}, [open, selectedGame]);
 
 	const loadVersions = async () => {
+		if (!selectedGame?.requires_loader) {
+			setIsLoading(false);
+			return;
+		}
 		setIsLoading(true);
 		try {
-			const gameVersions = await invoke<GameVersion[]>('get_game_versions');
+			const gameVersions = await invoke<GameVersion[]>('get_game_versions', { gameId: selectedGame.id });
 			setVersions(gameVersions);
 		} catch (error) {
 			console.error('Failed to load game versions:', error);
 			toast({
 				title: 'Error',
 				variant: 'destructive',
-				description: 'Failed to load Minecraft versions'
+				description: 'Failed to load game versions'
 			});
 		} finally {
 			setIsLoading(false);
@@ -89,16 +97,18 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
 			return;
 		}
 
-		if (!minecraftVersion) {
+		const requiresLoader = selectedGame?.requires_loader ?? true;
+
+		if (requiresLoader && !gameVersion) {
 			toast({
 				variant: 'destructive',
 				title: 'Validation error',
-				description: 'Please select a Minecraft version'
+				description: 'Please select a game version'
 			});
 			return;
 		}
 
-		if (!loader) {
+		if (requiresLoader && !loader) {
 			toast({
 				variant: 'destructive',
 				title: 'Validation error',
@@ -110,8 +120,9 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
 		setIsCreating(true);
 		try {
 			const modpack = await invoke<Modpack>('create_modpack', {
-				loader,
-				minecraftVersion,
+				gameId: selectedGame?.id ?? 'minecraft',
+				gameVersion: requiresLoader ? gameVersion : selectedGame?.default_version ?? 'latest',
+				loader: requiresLoader ? loader : null,
 				name: name.trim(),
 				description: description.trim() || null
 			});
@@ -129,7 +140,7 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
 
 			setName('');
 			setDescription('');
-			setMinecraftVersion('');
+			setGameVersion('');
 			setLoader('');
 			setImagePreview(null);
 			setImageData(null);
@@ -154,7 +165,7 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
 		if (!newOpen) {
 			setName('');
 			setDescription('');
-			setMinecraftVersion('');
+			setGameVersion('');
 			setLoader('');
 			setImagePreview(null);
 			setImageData(null);
@@ -229,37 +240,41 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
 						/>
 					</div>
 
-					<div className="space-y-2">
-						<Label htmlFor="version">Minecraft Version *</Label>
-						<Select disabled={isCreating} value={minecraftVersion} onValueChange={setMinecraftVersion}>
-							<SelectTrigger>
-								<SelectValue placeholder={isLoading ? 'Loading...' : 'Select version'} />
-							</SelectTrigger>
-							<SelectContent>
-								{versions.map((v) => (
-									<SelectItem key={v.version} value={v.version}>
-										{v.version}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
+					{selectedGame?.requires_loader && (
+						<>
+							<div className="space-y-2">
+								<Label htmlFor="version">Game Version *</Label>
+								<Select disabled={isCreating} value={gameVersion} onValueChange={setGameVersion}>
+									<SelectTrigger>
+										<SelectValue placeholder={isLoading ? 'Loading...' : 'Select version'} />
+									</SelectTrigger>
+									<SelectContent>
+										{versions.map((v) => (
+											<SelectItem key={v.version} value={v.version}>
+												{v.version}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
 
-					<div className="space-y-2">
-						<Label htmlFor="loader">Mod Loader *</Label>
-						<Select value={loader} disabled={isCreating} onValueChange={setLoader}>
-							<SelectTrigger>
-								<SelectValue placeholder="Select loader" />
-							</SelectTrigger>
-							<SelectContent>
-								{LOADERS.map((l) => (
-									<SelectItem key={l.value} value={l.value}>
-										{l.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
+							<div className="space-y-2">
+								<Label htmlFor="loader">Mod Loader *</Label>
+								<Select value={loader} disabled={isCreating} onValueChange={setLoader}>
+									<SelectTrigger>
+										<SelectValue placeholder="Select loader" />
+									</SelectTrigger>
+									<SelectContent>
+										{LOADERS.map((l) => (
+											<SelectItem key={l.value} value={l.value}>
+												{l.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+						</>
+					)}
 				</div>
 
 				<DialogFooter className="mt-4">

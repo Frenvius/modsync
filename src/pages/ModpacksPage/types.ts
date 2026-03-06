@@ -9,12 +9,13 @@ interface ModpackMod {
 export interface Modpack {
 	id: string;
 	name: string;
-	loader: string;
+	game_id: string;
+	game_version: string;
+	loader: null | string;
 	is_owner: boolean;
 	mods: ModpackMod[];
 	created_at: string;
 	updated_at: string;
-	minecraft_version: string;
 	share_code: null | string;
 	image_path: null | string;
 	description: null | string;
@@ -47,7 +48,7 @@ export interface InstallStatus {
 	loader: null | string;
 	last_played: null | string;
 	loader_version: null | string;
-	minecraft_version: null | string;
+	game_version: null | string;
 	progress: null | InstallProgress;
 }
 

@@ -17,7 +17,7 @@ interface InstallStatusInfo {
 	loader: null | string;
 	last_played: null | string;
 	loader_version: null | string;
-	minecraft_version: null | string;
+	game_version: null | string;
 	progress: null | InstallProgress;
 }
 

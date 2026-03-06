@@ -35,3 +35,9 @@ export interface ModLoader {
 	icon: string;
 	supported_project_types: string[];
 }
+
+export interface FetchProgress {
+	chunks_downloaded: number;
+	total_chunks: number;
+	is_loading: boolean;
+}

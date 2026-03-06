@@ -1,7 +1,9 @@
 import * as React from 'react';
-import { cn } from '~/usecase/util/stringUtils';
+
 import { Check, ChevronRight, Circle } from 'lucide-react';
 import * as MenubarPrimitive from '@radix-ui/react-menubar';
+
+import { cn } from '~/usecase/util/stringUtils';
 
 const MenubarMenu = MenubarPrimitive.Menu;
 

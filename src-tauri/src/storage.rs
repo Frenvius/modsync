@@ -42,8 +42,8 @@ pub fn load_modpack(app_handle: &tauri::AppHandle, id: &str) -> Result<Modpack, 
         return Err(format!("Modpack not found: {}", id));
     }
 
-    let json =
-        fs::read_to_string(&file_path).map_err(|e| format!("Failed to read modpack file: {}", e))?;
+    let json = fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read modpack file: {}", e))?;
 
     let modpack: Modpack =
         serde_json::from_str(&json).map_err(|e| format!("Failed to parse modpack: {}", e))?;
@@ -56,8 +56,8 @@ pub fn load_all_modpacks(app_handle: &tauri::AppHandle) -> Result<Vec<Modpack>, 
 
     let mut modpacks = Vec::new();
 
-    let entries =
-        fs::read_dir(&modpacks_dir).map_err(|e| format!("Failed to read modpacks directory: {}", e))?;
+    let entries = fs::read_dir(&modpacks_dir)
+        .map_err(|e| format!("Failed to read modpacks directory: {}", e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
@@ -92,7 +92,6 @@ pub fn delete_modpack_file(app_handle: &tauri::AppHandle, id: &str) -> Result<()
     Ok(())
 }
 
-
 fn get_settings_file(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app_handle
         .path()
@@ -117,8 +116,7 @@ pub fn load_settings(app_handle: &tauri::AppHandle) -> Result<AppSettings, Strin
     let json = fs::read_to_string(&file_path)
         .map_err(|e| format!("Failed to read settings file: {}", e))?;
 
-    serde_json::from_str(&json)
-        .map_err(|e| format!("Failed to parse settings: {}", e))
+    serde_json::from_str(&json).map_err(|e| format!("Failed to parse settings: {}", e))
 }
 
 pub fn save_settings(app_handle: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
@@ -127,8 +125,7 @@ pub fn save_settings(app_handle: &tauri::AppHandle, settings: &AppSettings) -> R
     let json = serde_json::to_string_pretty(settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
 
-    fs::write(&file_path, json)
-        .map_err(|e| format!("Failed to write settings file: {}", e))?;
+    fs::write(&file_path, json).map_err(|e| format!("Failed to write settings file: {}", e))?;
 
     Ok(())
 }

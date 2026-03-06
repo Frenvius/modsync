@@ -8,6 +8,9 @@ export interface ModrinthMod {
 	description: string;
 	categories: string[];
 	icon_url: null | string;
+	source?: string;
+	thunderstore_community?: string;
+	thunderstore_full_name?: string;
 }
 
 export interface SearchResult {
@@ -52,11 +55,12 @@ export interface ModVersion {
 
 export interface AddModsDialogProps {
 	open: boolean;
-	loader: string;
+	gameId: string;
+	loader: null | string;
 	modpackId: string;
 	modpackName: string;
 	existingMods: string[];
-	minecraftVersion: string;
+	gameVersion: string;
 	onModsAdded?: () => void;
 	onOpenChange: (open: boolean) => void;
 }

@@ -1,7 +1,8 @@
+import { AlertCircle, CheckCircle2, Clock, Download, RefreshCw, Upload } from 'lucide-react';
+
 import { Button } from '~/components/ui/button';
 import { cn } from '~/usecase/util/stringUtils';
 import { Progress } from '~/components/ui/progress';
-import { AlertCircle, CheckCircle2, Clock, Download, RefreshCw, Upload } from 'lucide-react';
 
 import { SyncStatusPanelProps } from './types';
 

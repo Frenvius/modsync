@@ -9,6 +9,7 @@ export interface InstallDialogProps {
 	open: boolean;
 	modpackId: string;
 	modpackName: string;
+	modSource?: string;
 	onInstallComplete?: () => void;
 	onOpenChange: (open: boolean) => void;
 }

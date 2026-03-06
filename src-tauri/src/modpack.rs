@@ -1,12 +1,24 @@
 use serde::{Deserialize, Serialize};
 
+fn default_game_id() -> String {
+    "minecraft".to_string()
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Modpack {
     pub id: String,
+    #[serde(default = "default_game_id")]
+    pub game_id: String,
     pub name: String,
     pub description: Option<String>,
-    pub minecraft_version: String,
-    pub loader: String,
+    #[serde(alias = "minecraft_version")]
+    pub game_version: String,
+    #[serde(default)]
+    pub loader: Option<String>,
     pub mods: Vec<ModpackMod>,
     pub is_owner: bool,
     pub share_code: Option<String>,
@@ -33,25 +45,24 @@ pub struct ModpackMod {
     pub enabled: bool,
     #[serde(default)]
     pub filename: Option<String>,
-}
-
-fn default_enabled() -> bool {
-    true
+    #[serde(default)]
+    pub is_loader: bool,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateModpackRequest {
     pub name: String,
     pub description: Option<String>,
-    pub minecraft_version: String,
-    pub loader: String,
+    pub game_id: String,
+    pub game_version: String,
+    pub loader: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateModpackRequest {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub minecraft_version: Option<String>,
+    pub game_version: Option<String>,
     pub loader: Option<String>,
     pub image_path: Option<String>,
 }
@@ -61,9 +72,10 @@ impl Modpack {
         let now = chrono::Utc::now().to_rfc3339();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
+            game_id: request.game_id,
             name: request.name,
             description: request.description,
-            minecraft_version: request.minecraft_version,
+            game_version: request.game_version,
             loader: request.loader,
             mods: Vec::new(),
             is_owner: true,
@@ -92,11 +104,11 @@ impl Modpack {
         if let Some(description) = updates.description {
             self.description = Some(description);
         }
-        if let Some(minecraft_version) = updates.minecraft_version {
-            self.minecraft_version = minecraft_version;
+        if let Some(game_version) = updates.game_version {
+            self.game_version = game_version;
         }
         if let Some(loader) = updates.loader {
-            self.loader = loader;
+            self.loader = Some(loader);
         }
         if let Some(image_path) = updates.image_path {
             self.image_path = Some(image_path);

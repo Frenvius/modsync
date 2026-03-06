@@ -1,6 +1,9 @@
 import * as React from 'react';
+
 import { PanelLeft } from 'lucide-react';
 import { Slot } from '@radix-ui/react-slot';
+import { cva, VariantProps } from 'class-variance-authority';
+
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
 import { cn } from '~/usecase/util/stringUtils';
@@ -8,7 +11,6 @@ import { Skeleton } from '~/components/ui/skeleton';
 import { Separator } from '~/components/ui/separator';
 import { useIsMobile } from '~/usecase/hooks/use-mobile';
 import { Sheet, SheetContent } from '~/components/ui/sheet';
-import { cva, VariantProps } from 'class-variance-authority';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip';
 
 const SIDEBAR_COOKIE_NAME = 'sidebar:state';

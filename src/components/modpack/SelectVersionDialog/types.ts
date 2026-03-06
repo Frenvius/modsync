@@ -14,13 +14,16 @@ interface ModrinthMod {
 	author: string;
 	description: string;
 	icon_url: null | string;
+	source?: string;
+	thunderstore_community?: string;
+	thunderstore_full_name?: string;
 }
 
 export interface SelectVersionDialogProps {
 	open: boolean;
-	loader: string;
+	loader: null | string;
 	mod: null | ModrinthMod;
-	minecraftVersion: string;
+	gameVersion: string;
 	onOpenChange: (open: boolean) => void;
 	onVersionSelect: (version: ModVersion) => void;
 }

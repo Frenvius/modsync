@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { cn } from '~/usecase/util/stringUtils';
+
 import * as ProgressPrimitive from '@radix-ui/react-progress';
+
+import { cn } from '~/usecase/util/stringUtils';
 
 const Progress = React.forwardRef<
 	React.ElementRef<typeof ProgressPrimitive.Root>,

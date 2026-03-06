@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::AppHandle;
 
-use crate::downloader::{download_batch, download_file, DownloadProgress, DownloadTask};
+use crate::downloader::{download_batch, DownloadProgress, DownloadTask};
 use crate::instance;
 
-const VERSION_MANIFEST_URL: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+const VERSION_MANIFEST_URL: &str =
+    "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const RESOURCES_URL: &str = "https://resources.download.minecraft.net";
 
 #[derive(Debug, Deserialize)]
@@ -288,9 +289,9 @@ pub fn get_native_classifier(library: &Library) -> Option<String> {
     let natives = library.natives.as_ref()?;
     let os_name = get_os_name();
 
-    natives.get(os_name).map(|s| {
-        s.replace("${arch}", get_arch())
-    })
+    natives
+        .get(os_name)
+        .map(|s| s.replace("${arch}", get_arch()))
 }
 
 pub async fn download_minecraft<F>(
@@ -317,7 +318,7 @@ where
     let libraries_dir = instance::get_libraries_dir(app_handle, modpack_id)?;
     let assets_dir = instance::get_assets_dir(app_handle, modpack_id)?;
 
-    let client_jar_path = versions_dir.join(&version).join(format!("{}.jar", version));
+    let client_jar_path = versions_dir.join(version).join(format!("{}.jar", version));
     let client_download = &version_meta.downloads.client;
 
     let mut tasks: Vec<DownloadTask> = vec![DownloadTask {
@@ -328,7 +329,7 @@ where
         name: Some(format!("{}.jar", version)),
     }];
 
-    let version_json_path = versions_dir.join(&version).join(format!("{}.json", version));
+    let version_json_path = versions_dir.join(version).join(format!("{}.json", version));
     let version_json = serde_json::to_string_pretty(&version_meta)
         .map_err(|e| format!("Failed to serialize version meta: {}", e))?;
 
@@ -372,7 +373,9 @@ where
     }
 
     let asset_index = &version_meta.asset_index;
-    let asset_index_path = assets_dir.join("indexes").join(format!("{}.json", asset_index.id));
+    let asset_index_path = assets_dir
+        .join("indexes")
+        .join(format!("{}.json", asset_index.id));
 
     tasks.push(DownloadTask {
         url: asset_index.url.clone(),
@@ -388,9 +391,12 @@ where
     let asset_index_data = fetch_asset_index(&asset_index.url).await?;
     let mut asset_tasks: Vec<DownloadTask> = vec![];
 
-    for (_, asset) in &asset_index_data.objects {
+    for asset in asset_index_data.objects.values() {
         let hash_prefix = &asset.hash[0..2];
-        let asset_path = assets_dir.join("objects").join(hash_prefix).join(&asset.hash);
+        let asset_path = assets_dir
+            .join("objects")
+            .join(hash_prefix)
+            .join(&asset.hash);
         let asset_url = format!("{}/{}/{}", RESOURCES_URL, hash_prefix, asset.hash);
 
         asset_tasks.push(DownloadTask {

@@ -78,6 +78,12 @@ pub struct ModrinthMod {
     pub follows: i64,
     pub date_created: String,
     pub date_modified: String,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub thunderstore_community: Option<String>,
+    #[serde(default)]
+    pub thunderstore_full_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,6 +203,9 @@ pub async fn search_mods(params: SearchParams) -> Result<SearchResult, String> {
             follows: hit.follows,
             date_created: hit.date_created,
             date_modified: hit.date_modified,
+            source: Some("modrinth".to_string()),
+            thunderstore_community: None,
+            thunderstore_full_name: None,
         })
         .collect();
 
@@ -229,7 +238,10 @@ pub async fn get_categories() -> Result<Vec<Category>, String> {
         .await
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-    Ok(categories.into_iter().filter(|c| c.project_type == "mod").collect())
+    Ok(categories
+        .into_iter()
+        .filter(|c| c.project_type == "mod")
+        .collect())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -292,7 +304,10 @@ pub async fn get_game_versions() -> Result<Vec<GameVersion>, String> {
         .await
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-    Ok(versions.into_iter().filter(|v| v.version_type == "release").collect())
+    Ok(versions
+        .into_iter()
+        .filter(|v| v.version_type == "release")
+        .collect())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -384,8 +399,13 @@ pub async fn get_projects_batch(ids: &[String]) -> Result<Vec<Project>, String> 
     }
 
     let client = reqwest::Client::new();
-    let ids_json = serde_json::to_string(ids).map_err(|e| format!("Failed to serialize IDs: {}", e))?;
-    let url = format!("{}/projects?ids={}", MODRINTH_API_BASE, urlencoding::encode(&ids_json));
+    let ids_json =
+        serde_json::to_string(ids).map_err(|e| format!("Failed to serialize IDs: {}", e))?;
+    let url = format!(
+        "{}/projects?ids={}",
+        MODRINTH_API_BASE,
+        urlencoding::encode(&ids_json)
+    );
 
     let response = client
         .get(&url)
@@ -452,8 +472,13 @@ pub async fn get_versions_batch(ids: &[String]) -> Result<Vec<Version>, String> 
     }
 
     let client = reqwest::Client::new();
-    let ids_json = serde_json::to_string(ids).map_err(|e| format!("Failed to serialize IDs: {}", e))?;
-    let url = format!("{}/versions?ids={}", MODRINTH_API_BASE, urlencoding::encode(&ids_json));
+    let ids_json =
+        serde_json::to_string(ids).map_err(|e| format!("Failed to serialize IDs: {}", e))?;
+    let url = format!(
+        "{}/versions?ids={}",
+        MODRINTH_API_BASE,
+        urlencoding::encode(&ids_json)
+    );
 
     let response = client
         .get(&url)

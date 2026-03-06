@@ -1,16 +1,10 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::Json,
-    routing::get,
-    Router,
-};
+use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tauri::AppHandle;
+use tokio::sync::RwLock;
 
-use crate::storage;
 use crate::modpack::Modpack;
+use crate::storage;
 
 static SERVER_HANDLE: RwLock<Option<tokio::task::JoinHandle<()>>> = RwLock::const_new(None);
 static CURRENT_MODPACK_ID: RwLock<Option<String>> = RwLock::const_new(None);
@@ -24,16 +18,18 @@ async fn health_check() -> StatusCode {
     StatusCode::OK
 }
 
-async fn get_modpack(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Modpack>, StatusCode> {
+async fn get_modpack(State(state): State<Arc<AppState>>) -> Result<Json<Modpack>, StatusCode> {
     match storage::load_modpack(&state.app_handle, &state.modpack_id) {
         Ok(modpack) => Ok(Json(modpack)),
         Err(_) => Err(StatusCode::NOT_FOUND),
     }
 }
 
-pub async fn start_server(app_handle: AppHandle, modpack_id: String, port: u16) -> Result<(), String> {
+pub async fn start_server(
+    app_handle: AppHandle,
+    modpack_id: String,
+    port: u16,
+) -> Result<(), String> {
     {
         let handle = SERVER_HANDLE.read().await;
         if handle.is_some() {

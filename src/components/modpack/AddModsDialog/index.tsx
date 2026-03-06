@@ -1,25 +1,33 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { Check, ChevronDown, Loader2, Package, Plus, Search } from 'lucide-react';
+
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
+import { useGame } from '~/contexts/GameContext';
 import { toast } from '~/usecase/hooks/use-toast';
-import { Check, ChevronDown, Loader2, Package, Plus, Search } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { SelectVersionDialog } from '../SelectVersionDialog';
 import { AddModWithDepsDialog } from '../AddModWithDepsDialog';
+
 import { AddModsDialogProps, DependencyInfo, ModInfo, ModrinthMod, ModVersion, ModWithDependencies, SearchResult } from './types';
 
 export function AddModsDialog({
 	open,
+	gameId,
 	loader,
 	modpackId,
 	modpackName,
 	onModsAdded,
 	onOpenChange,
 	existingMods,
-	minecraftVersion
+	gameVersion
 }: AddModsDialogProps) {
+	const { games } = useGame();
+	const game = games.find((g) => g.id === gameId);
+
 	const [search, setSearch] = React.useState('');
 	const [searchResults, setSearchResults] = React.useState<ModrinthMod[]>([]);
 	const [isSearching, setIsSearching] = React.useState(false);
@@ -50,7 +58,7 @@ export function AddModsDialog({
 		}, 300);
 
 		return () => clearTimeout(timer);
-	}, [search, open, minecraftVersion, loader]);
+	}, [search, open, gameVersion, loader]);
 
 	React.useEffect(() => {
 		if (open && !hasSearched) {
@@ -72,10 +80,11 @@ export function AddModsDialog({
 			setIsSearching(true);
 			try {
 				const result = await invoke<SearchResult>('search_mods', {
+					gameId,
 					limit: 20,
 					loader: loader,
 					query: query || null,
-					gameVersion: minecraftVersion,
+					gameVersion: gameVersion,
 					sort: query ? 'relevance' : 'downloads'
 				});
 				setSearchResults(result.mods);
@@ -91,7 +100,7 @@ export function AddModsDialog({
 				setIsSearching(false);
 			}
 		},
-		[minecraftVersion, loader]
+		[gameId, gameVersion, loader]
 	);
 
 	const isModInModpack = (slug: string) => {
@@ -109,7 +118,9 @@ export function AddModsDialog({
 			const result = await invoke<ModWithDependencies>('get_mod_with_dependencies', {
 				slug: mod.slug,
 				loader: loader,
-				gameVersion: minecraftVersion
+				gameVersion: gameVersion,
+				source: game?.mod_source ?? 'modrinth',
+				thunderstoreCommunity: game?.thunderstore_community
 			});
 
 			const newDependencies = result.dependencies.filter((dep) => !localExistingMods.includes(dep.slug));
@@ -167,7 +178,9 @@ export function AddModsDialog({
 			const result = await invoke<ModWithDependencies>('get_mod_with_dependencies', {
 				loader: loader,
 				slug: selectedMod.slug,
-				gameVersion: minecraftVersion
+				gameVersion: gameVersion,
+				source: game?.mod_source ?? 'modrinth',
+				thunderstoreCommunity: game?.thunderstore_community
 			});
 
 			const modInfo: ModInfo = {
@@ -247,7 +260,8 @@ export function AddModsDialog({
 				<DialogHeader>
 					<DialogTitle>Add Mods</DialogTitle>
 					<DialogDescription>
-						Search Modrinth for mods compatible with {minecraftVersion} ({loader})
+						Search for mods compatible with {gameVersion}
+						{loader ? ` (${loader})` : ''}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -335,7 +349,7 @@ export function AddModsDialog({
 				mod={selectedMod}
 				open={versionDialogOpen}
 				onOpenChange={setVersionDialogOpen}
-				minecraftVersion={minecraftVersion}
+				gameVersion={gameVersion}
 				onVersionSelect={handleVersionSelect}
 			/>
 			<AddModWithDepsDialog

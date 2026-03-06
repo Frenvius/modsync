@@ -1,8 +1,10 @@
 import * as React from 'react';
+
 import { Search } from 'lucide-react';
-import { cn } from '~/usecase/util/stringUtils';
 import { Command as CommandPrimitive } from 'cmdk';
 import { type DialogProps } from '@radix-ui/react-dialog';
+
+import { cn } from '~/usecase/util/stringUtils';
 import { Dialog, DialogContent } from '~/components/ui/dialog';
 
 const Command = React.forwardRef<React.ElementRef<typeof CommandPrimitive>, React.ComponentPropsWithoutRef<typeof CommandPrimitive>>(

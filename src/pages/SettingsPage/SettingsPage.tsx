@@ -1,5 +1,8 @@
 import React from 'react';
+
 import { invoke } from '@tauri-apps/api/core';
+import { Check, Coffee, Download, ExternalLink, HardDrive, Loader2, Monitor, RefreshCw, Share2, Wifi, WifiOff } from 'lucide-react';
+
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
@@ -9,7 +12,6 @@ import { Separator } from '~/components/ui/separator';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
-import { Check, Coffee, Download, ExternalLink, HardDrive, Loader2, Monitor, RefreshCw, Share2, Wifi, WifiOff } from 'lucide-react';
 
 import { AppSettings, JavaRuntime } from './types';
 

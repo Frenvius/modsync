@@ -44,12 +44,12 @@ export default tseslint.config(
 				{
 					order: 'asc',
 					type: 'line-length',
-					'internal-pattern': ['^~/'],
-					'newlines-between': 'always',
-					groups: ['type', ['react', 'builtin', 'external'], ['internal', 'parent', 'sibling', 'index']],
-					'custom-groups': {
-						value: { react: ['^react$', '^react-.'] }
-					}
+					internalPattern: ['^~/'],
+					newlinesBetween: 1,
+					groups: ['type', 'react', 'builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+					customGroups: [
+						{ groupName: 'react', elementNamePattern: ['^react$', '^react-.'] }
+					]
 				}
 			]
 		}

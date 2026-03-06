@@ -3,10 +3,19 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+fn default_profile_type() -> String {
+    "minecraft".to_string()
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Instance {
     pub modpack_id: String,
-    pub minecraft_version: String,
+    #[serde(default)]
+    pub game_id: String,
+    #[serde(default = "default_profile_type")]
+    pub profile_type: String,
+    #[serde(alias = "minecraft_version")]
+    pub game_version: String,
     pub loader: String,
     pub loader_version: Option<String>,
     pub installed: bool,
@@ -15,11 +24,32 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub fn new(modpack_id: String, minecraft_version: String, loader: String) -> Self {
+    pub fn new(modpack_id: String, game_version: String, loader: String) -> Self {
         Self {
             modpack_id,
-            minecraft_version,
+            game_id: String::new(),
+            profile_type: "minecraft".to_string(),
+            game_version,
             loader,
+            loader_version: None,
+            installed: false,
+            last_played: None,
+            java_path: None,
+        }
+    }
+
+    pub fn new_thunderstore(
+        modpack_id: String,
+        game_id: String,
+        game_version: String,
+        loader_name: &str,
+    ) -> Self {
+        Self {
+            modpack_id,
+            game_id,
+            profile_type: "thunderstore".to_string(),
+            game_version,
+            loader: loader_name.to_string(),
             loader_version: None,
             installed: false,
             last_played: None,
@@ -57,8 +87,7 @@ fn load_mapping(app_handle: &AppHandle) -> Result<FolderMapping, String> {
     let content = std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read mapping file: {}", e))?;
 
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse mapping file: {}", e))
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse mapping file: {}", e))
 }
 
 fn save_mapping(app_handle: &AppHandle, mapping: &FolderMapping) -> Result<(), String> {
@@ -72,8 +101,7 @@ fn save_mapping(app_handle: &AppHandle, mapping: &FolderMapping) -> Result<(), S
     let json = serde_json::to_string_pretty(mapping)
         .map_err(|e| format!("Failed to serialize mapping: {}", e))?;
 
-    std::fs::write(&path, json)
-        .map_err(|e| format!("Failed to write mapping file: {}", e))?;
+    std::fs::write(&path, json).map_err(|e| format!("Failed to write mapping file: {}", e))?;
 
     Ok(())
 }
@@ -114,7 +142,9 @@ pub fn get_or_create_folder_name(
         counter += 1;
     }
 
-    mapping.mappings.insert(modpack_id.to_string(), folder_name.clone());
+    mapping
+        .mappings
+        .insert(modpack_id.to_string(), folder_name.clone());
     save_mapping(app_handle, &mapping)?;
 
     Ok(folder_name)
@@ -138,6 +168,11 @@ pub fn get_instance_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<Path
 pub fn get_mods_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
     let instance_dir = get_instance_dir(app_handle, modpack_id)?;
     Ok(instance_dir.join("mods"))
+}
+
+pub fn get_plugins_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
+    let instance_dir = get_instance_dir(app_handle, modpack_id)?;
+    Ok(instance_dir.join("BepInEx").join("plugins"))
 }
 
 pub fn get_versions_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
@@ -170,23 +205,36 @@ pub fn create_instance_dirs(
     modpack_id: &str,
     modpack_name: &str,
 ) -> Result<(), String> {
-    let _folder_name = get_or_create_folder_name(app_handle, modpack_id, modpack_name)?;
+    create_instance_dirs_for_game(app_handle, modpack_id, modpack_name, None)
+}
 
+pub fn create_instance_dirs_for_game(
+    app_handle: &AppHandle,
+    modpack_id: &str,
+    modpack_name: &str,
+    profile_type: Option<&str>,
+) -> Result<(), String> {
+    let _folder_name = get_or_create_folder_name(app_handle, modpack_id, modpack_name)?;
     let instance_dir = get_instance_dir(app_handle, modpack_id)?;
 
-    let dirs = [
-        instance_dir.clone(),
-        instance_dir.join("mods"),
-        instance_dir.join("config"),
-        instance_dir.join("saves"),
-        instance_dir.join("versions"),
-        instance_dir.join("libraries"),
-        instance_dir.join("assets"),
-        instance_dir.join("assets/indexes"),
-        instance_dir.join("assets/objects"),
-        instance_dir.join("natives"),
-        instance_dir.join("logs"),
-    ];
+    let dirs: Vec<PathBuf> = match profile_type {
+        Some("thunderstore") | Some("bepinex") => {
+            vec![instance_dir.clone(), instance_dir.join("_state")]
+        }
+        _ => vec![
+            instance_dir.clone(),
+            instance_dir.join("mods"),
+            instance_dir.join("config"),
+            instance_dir.join("saves"),
+            instance_dir.join("versions"),
+            instance_dir.join("libraries"),
+            instance_dir.join("assets"),
+            instance_dir.join("assets/indexes"),
+            instance_dir.join("assets/objects"),
+            instance_dir.join("natives"),
+            instance_dir.join("logs"),
+        ],
+    };
 
     for dir in &dirs {
         std::fs::create_dir_all(dir)
@@ -207,8 +255,7 @@ pub fn save_instance(app_handle: &AppHandle, instance: &Instance) -> Result<(), 
     let json = serde_json::to_string_pretty(instance)
         .map_err(|e| format!("Failed to serialize instance: {}", e))?;
 
-    std::fs::write(&path, json)
-        .map_err(|e| format!("Failed to write instance.json: {}", e))?;
+    std::fs::write(&path, json).map_err(|e| format!("Failed to write instance.json: {}", e))?;
 
     Ok(())
 }
@@ -257,4 +304,12 @@ pub fn update_last_played(app_handle: &AppHandle, modpack_id: &str) -> Result<()
         save_instance(app_handle, &instance)?;
     }
     Ok(())
+}
+
+pub fn get_cache_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    let app_data = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    Ok(app_data.join("cache").join("thunderstore"))
 }
