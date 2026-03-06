@@ -368,7 +368,7 @@ async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoRespo
     // TODO: Add Modrinth support - read from modpack.mods
 
     let mut p2p_files = Vec::new();
-    let config_patterns = vec!["BepInEx/config/", "config/", "mods.yml"];
+    let sync_patterns = vec!["BepInEx/config/", "BepInEx/plugins/", "config/", "mods.yml"];
 
     for entry in WalkDir::new(&instance_dir)
         .follow_links(false)
@@ -389,11 +389,11 @@ async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoRespo
             continue;
         }
 
-        let is_config = config_patterns
+        let is_syncable = sync_patterns
             .iter()
             .any(|pattern| relative_path.starts_with(pattern) || relative_path == *pattern);
 
-        if !is_config {
+        if !is_syncable {
             continue;
         }
 

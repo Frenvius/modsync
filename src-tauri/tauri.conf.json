@@ -1,6 +1,6 @@
 {
 	"productName": "modpack-sync",
-	"version": "1.0.8",
+	"version": "2.0.0",
 	"identifier": "com.modpack-sync.app",
 	"build": {
 		"beforeDevCommand": "bun run dev",
@@ -21,8 +21,14 @@
 			}
 		],
 		"security": {
-			"csp": "default-src blob: data: filesystem: ws: wss: http: https: tauri: 'unsafe-inline' 'self' img-src data: 'self'; script-src http: https: 'unsafe-inline'; default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset:; connect-src http://ipc.localhost 'self'",
-			"dangerousDisableAssetCspModification": ["style-src"]
+			"csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: https:; connect-src 'self' ipc: http://ipc.localhost https:",
+			"assetProtocol": {
+				"enable": true,
+				"scope": {
+					"allow": ["$APPDATA/**"],
+					"requireLiteralLeadingDot": false
+				}
+			}
 		}
 	},
 	"plugins": {

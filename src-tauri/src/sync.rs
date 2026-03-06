@@ -800,7 +800,6 @@ fn remove_empty_parents(dir: &Path, root: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-///
 pub async fn sync_from_owner(
     app_handle: &AppHandle,
     modpack: &Modpack,
@@ -875,7 +874,6 @@ async fn download_single_mod_to_cache(
     })
 }
 
-///
 async fn download_mods_to_cache(
     cache_base: PathBuf,
     community: String,
@@ -950,7 +948,6 @@ fn partition_download_results(
     (successes, failures)
 }
 
-///
 fn install_cached_mods(
     _cache_base: &Path,
     instance_dir: &Path,
@@ -1186,11 +1183,20 @@ async fn fetch_sync_manifest(owner_address: &str) -> Result<SyncManifest, String
 
 const DOWNLOAD_CONCURRENCY: usize = 4;
 
-///
-///
-///
-///
-///
+fn compute_file_hash(path: &std::path::Path) -> Result<String, std::io::Error> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 8192];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
 pub async fn hybrid_sync_from_owner(
     app_handle: AppHandle,
     modpack_id: String,
@@ -1330,25 +1336,42 @@ pub async fn hybrid_sync_from_owner(
     }
 
     if !manifest.p2p_files.is_empty() {
+        let files_to_download: Vec<_> = manifest
+            .p2p_files
+            .iter()
+            .filter(|f| {
+                let local_path = instance_dir.join(&f.path);
+                if !local_path.exists() {
+                    return true;
+                }
+                match compute_file_hash(&local_path) {
+                    Ok(local_hash) => local_hash != f.hash,
+                    Err(_) => true,
+                }
+            })
+            .collect();
+
+        let files_to_download_count = files_to_download.len();
+
         let _ = app_handle.emit(
             "sync:progress",
             serde_json::json!({
                 "mode": "hybrid",
                 "phase": "configs",
-                "message": format!("Syncing {} config files...", total_files)
+                "message": format!("Syncing {}/{} files...", files_to_download_count, total_files)
             }),
         );
 
-        for (idx, p2p_file) in manifest.p2p_files.iter().enumerate() {
+        for (idx, p2p_file) in files_to_download.iter().enumerate() {
             let _ = app_handle.emit(
                 "sync:progress",
                 serde_json::json!({
                     "mode": "hybrid",
                     "phase": "configs",
                     "current": idx + 1,
-                    "total": total_files,
+                    "total": files_to_download_count,
                     "file_name": &p2p_file.path,
-                    "action": "downloading_config"
+                    "action": "downloading_file"
                 }),
             );
 
@@ -1358,7 +1381,7 @@ pub async fn hybrid_sync_from_owner(
                     result.configs_synced += 1;
                 }
                 Err(e) => {
-                    eprintln!("Failed to download config {}: {}", p2p_file.path, e);
+                    eprintln!("Failed to download {}: {}", p2p_file.path, e);
                 }
             }
         }

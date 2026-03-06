@@ -1707,6 +1707,15 @@ async fn check_sync_status(
         .await
         .map_err(|e| format!("Failed to parse: {}", e))?;
 
+    if remote_modpack.id != modpack.id {
+        return Ok(SyncStatus {
+            is_synced: false,
+            owner_online: false,
+            remote_mod_count: None,
+            local_mod_count: modpack.mods.len(),
+        });
+    }
+
     let local_slugs: std::collections::HashSet<_> = modpack.mods.iter().map(|m| &m.slug).collect();
     let remote_slugs: std::collections::HashSet<_> =
         remote_modpack.mods.iter().map(|m| &m.slug).collect();
