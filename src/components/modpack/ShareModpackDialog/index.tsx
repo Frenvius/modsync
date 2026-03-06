@@ -63,7 +63,7 @@ export function ShareModpackDialog({
 
 		setIsLoading(true);
 		try {
-			const code = await invoke<string>('start_sharing', {
+			const code = await invoke<string>('begin_sharing', {
 				modpackId,
 				port: portNum
 			});

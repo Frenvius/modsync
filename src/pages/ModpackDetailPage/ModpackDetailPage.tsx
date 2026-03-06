@@ -7,6 +7,7 @@ import {
 	AlertCircle,
 	ArrowLeft,
 	CheckCircle,
+	Copy,
 	Download,
 	FolderOpen,
 	Loader2,
@@ -36,7 +37,18 @@ import { EditModpackDialog } from '~/components/modpack/EditModpackDialog';
 import { ShareModpackDialog } from '~/components/modpack/ShareModpackDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table';
 
-import { DetectedMod, InstallProgress, InstallStatus, Modpack, ModpackMod, ModUpdateInfo, SyncStatus, UpdateCheckResult } from './types';
+import {
+	DetectedMod,
+	InstallProgress,
+	InstallStatus,
+	Modpack,
+	ModpackMod,
+	ModUpdateInfo,
+	SyncProgress,
+	SyncResult,
+	SyncStatus,
+	UpdateCheckResult
+} from './types';
 
 const getIconSrc = (iconUrl: string | null | undefined): string | undefined => {
 	if (!iconUrl) return undefined;
@@ -74,6 +86,9 @@ export default function ModpackDetailPage() {
 	const [isCheckingThunderstoreUpdates, setIsCheckingThunderstoreUpdates] = React.useState(false);
 	const [isUpdatingAll, setIsUpdatingAll] = React.useState(false);
 	const [modSearch, setModSearch] = React.useState('');
+	const [syncProgress, setSyncProgress] = React.useState<SyncProgress | null>(null);
+	const [isCloning, setIsCloning] = React.useState(false);
+	const autoSyncTriggeredRef = React.useRef(false);
 
 	const checkModUpdates = React.useCallback(async (mods: ModpackMod[], gameVersion: string, loader: string) => {
 		if (mods.length === 0) return;
@@ -204,6 +219,37 @@ export default function ModpackDetailPage() {
 	}, [id, checkInstallStatus]);
 
 	React.useEffect(() => {
+		const unlistenProgress = listen<SyncProgress>('sync:progress', (event) => {
+			setSyncProgress(event.payload);
+		});
+
+		const unlistenStarted = listen<{ total: number }>('sync:started', () => {
+			setSyncProgress({ current: 0, total: 0, mod_name: '', action: 'starting' });
+		});
+
+		const unlistenCompleted = listen<SyncResult>('sync:completed', (event) => {
+			setSyncProgress(null);
+			const { mods_added, mods_removed, mods_updated, mods_toggled, errors } = event.payload;
+			const total = mods_added.length + mods_removed.length + mods_updated.length + mods_toggled.length;
+			if (total > 0 || errors.length > 0) {
+				console.log('Sync completed:', event.payload);
+			}
+		});
+
+		const unlistenError = listen<{ message: string }>('sync:error', (event) => {
+			setSyncProgress(null);
+			console.error('Sync error:', event.payload.message);
+		});
+
+		return () => {
+			unlistenProgress.then((fn) => fn());
+			unlistenStarted.then((fn) => fn());
+			unlistenCompleted.then((fn) => fn());
+			unlistenError.then((fn) => fn());
+		};
+	}, []);
+
+	React.useEffect(() => {
 		if (!id || !installStatus?.installing) return;
 
 		const interval = setInterval(() => {
@@ -218,6 +264,50 @@ export default function ModpackDetailPage() {
 			checkSyncStatus(modpack.id);
 		}
 	}, [modpack?.id, modpack?.is_owner, checkSyncStatus]);
+
+	React.useEffect(() => {
+		if (!modpack || modpack.is_owner || autoSyncTriggeredRef.current || isSyncing) {
+			return;
+		}
+
+		autoSyncTriggeredRef.current = true;
+
+		const autoSync = async () => {
+			setIsSyncing(true);
+			setSyncProgress(null);
+			try {
+				const updated = await invoke<Modpack>('sync_modpack', {
+					modpackId: modpack.id
+				});
+				setModpack(updated);
+				setSyncStatus({
+					is_synced: true,
+					owner_online: true,
+					local_mod_count: updated.mods.length,
+					remote_mod_count: updated.mods.length
+				});
+				toast({
+					title: 'Sync complete',
+					description: `Synced ${updated.mods.length} mods from the modpack owner.`
+				});
+			} catch (err) {
+				console.error('Auto-sync failed:', err);
+				toast({
+					title: 'Sync failed',
+					description: `${err}`,
+					variant: 'destructive'
+				});
+			} finally {
+				setIsSyncing(false);
+			}
+		};
+
+		autoSync();
+	}, [modpack?.id, modpack?.is_owner, isSyncing]);
+
+	React.useEffect(() => {
+		autoSyncTriggeredRef.current = false;
+	}, [id]);
 
 	const handleRemoveMod = async (slug: string, title: string) => {
 		if (!modpack) return;
@@ -540,6 +630,7 @@ export default function ModpackDetailPage() {
 		const previousName = modpack.name;
 
 		setIsSyncing(true);
+		setSyncProgress(null);
 		try {
 			const updated = await invoke<Modpack>('sync_modpack', {
 				modpackId: modpack.id
@@ -577,6 +668,29 @@ export default function ModpackDetailPage() {
 			});
 		} finally {
 			setIsSyncing(false);
+		}
+	};
+
+	const handleClone = async () => {
+		if (!modpack) return;
+
+		setIsCloning(true);
+		try {
+			const cloned = await invoke<Modpack>('clone_modpack', { modpackId: modpack.id });
+			toast({
+				title: 'Modpack cloned',
+				description: `Created "${cloned.name}"`
+			});
+			navigate(`/modpack/${cloned.id}`);
+		} catch (err) {
+			console.error('Failed to clone modpack:', err);
+			toast({
+				title: 'Clone failed',
+				description: `${err}`,
+				variant: 'destructive'
+			});
+		} finally {
+			setIsCloning(false);
 		}
 	};
 
@@ -682,9 +796,11 @@ export default function ModpackDetailPage() {
 									)}
 								</>
 							)}
-							<Badge variant="secondary" className="capitalize">
-								{modpack.loader}
-							</Badge>
+							{modpack.loader && (
+								<Badge variant="secondary" className="capitalize">
+									{modpack.loader}
+								</Badge>
+							)}
 						</div>
 						<p className="text-muted-foreground text-sm mt-1">
 							{modpack.game_version} • {modpack.mods.length} mods
@@ -698,17 +814,25 @@ export default function ModpackDetailPage() {
 								<Share2 className="w-4 h-4" />
 							</Button>
 						) : (
-							<Button variant="outline" className="gap-2" onClick={handleSync} disabled={isSyncing} title="Sync with owner">
-								{isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-								Sync
-							</Button>
+							<>
+								<Button variant="outline" className="gap-2" onClick={handleSync} disabled={isSyncing} title="Sync with owner">
+									{isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+									Sync
+								</Button>
+								<Button variant="outline" className="gap-2" onClick={handleClone} disabled={isCloning} title="Clone to own">
+									{isCloning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+									Clone
+								</Button>
+							</>
 						)}
 						<Button size="icon" variant="outline" onClick={handleOpenFolder} title="Open instance folder">
 							<FolderOpen className="w-4 h-4" />
 						</Button>
-						<Button size="icon" title="Settings" variant="outline" onClick={() => setEditDialogOpen(true)}>
-							<Settings className="w-4 h-4" />
-						</Button>
+						{modpack.is_owner && (
+							<Button size="icon" title="Settings" variant="outline" onClick={() => setEditDialogOpen(true)}>
+								<Settings className="w-4 h-4" />
+							</Button>
+						)}
 						<Button
 							variant="glow"
 							className="gap-2"
@@ -755,6 +879,32 @@ export default function ModpackDetailPage() {
 								)}
 							</div>
 						</div>
+					</div>
+				)}
+				{isSyncing && syncProgress && (
+					<div className="p-4 bg-primary/5 border border-primary/30 rounded-lg space-y-3">
+						<div className="flex items-center gap-3">
+							<RefreshCw className="w-5 h-5 text-primary animate-spin" />
+							<div className="flex-1">
+								<p className="font-medium text-foreground">
+									{!syncProgress.action || syncProgress.action === 'starting'
+										? 'Starting sync...'
+										: `${syncProgress.action.charAt(0).toUpperCase() + syncProgress.action.slice(1)} ${syncProgress.mod_name || ''}`}
+								</p>
+								<p className="text-sm text-muted-foreground">Syncing with modpack owner</p>
+							</div>
+						</div>
+						{syncProgress.total > 0 && (
+							<div className="space-y-1">
+								<Progress className="h-2" value={Math.round((syncProgress.current / syncProgress.total) * 100)} />
+								<div className="flex justify-between text-xs text-muted-foreground">
+									<span>{Math.round((syncProgress.current / syncProgress.total) * 100)}%</span>
+									<span>
+										{syncProgress.current}/{syncProgress.total} mods
+									</span>
+								</div>
+							</div>
+						)}
 					</div>
 				)}
 				{installStatus?.installed && !isInstalling && installStatus.last_played && (
@@ -810,7 +960,7 @@ export default function ModpackDetailPage() {
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-3">
 							<h2 className="text-xl font-semibold text-foreground">Mods ({modpack.mods.length})</h2>
-							{thunderstoreUpdates.length > 0 && (
+							{modpack.is_owner && thunderstoreUpdates.length > 0 && (
 								<Badge variant="outline" className="gap-1 border-primary/50 text-primary bg-primary/10">
 									{thunderstoreUpdates.length} update{thunderstoreUpdates.length > 1 ? 's' : ''} available
 								</Badge>
@@ -918,7 +1068,7 @@ export default function ModpackDetailPage() {
 													<div className="space-y-0.5">
 														<div className="flex items-center gap-2">
 															<p className="text-sm">{mod.version}</p>
-															{thunderstoreUpdates.find((u) => u.full_name === mod.slug) && (
+															{modpack.is_owner && thunderstoreUpdates.find((u) => u.full_name === mod.slug) && (
 																<Badge variant="outline" className="text-xs px-1.5 py-0 border-primary/50 text-primary bg-primary/10">
 																	{thunderstoreUpdates.find((u) => u.full_name === mod.slug)?.latest_version} available
 																</Badge>
@@ -929,8 +1079,7 @@ export default function ModpackDetailPage() {
 												</TableCell>
 												<TableCell className="text-right">
 													<div className="flex items-center justify-end gap-1">
-														{/* Modrinth update button */}
-														{modUpdates[mod.slug] && (
+														{modpack.is_owner && modUpdates[mod.slug] && (
 															<Button
 																size="icon"
 																variant="ghost"
@@ -959,7 +1108,7 @@ export default function ModpackDetailPage() {
 														)}
 														<Switch
 															checked={mod.enabled !== false}
-															disabled={togglingMod === mod.slug || mod.is_loader === true}
+															disabled={togglingMod === mod.slug || mod.is_loader === true || !modpack.is_owner}
 															onCheckedChange={() => handleToggleMod(mod.slug, mod.title, mod.enabled !== false)}
 														/>
 														{modpack.is_owner && (

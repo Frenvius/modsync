@@ -9,6 +9,7 @@ pub mod installer;
 pub mod manifest;
 pub mod profile;
 pub mod rules;
+pub mod sync;
 pub mod update;
 
 use std::collections::HashSet;

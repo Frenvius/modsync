@@ -93,3 +93,24 @@ export interface BatchUpdateResult {
 	success_count: number;
 	failure_count: number;
 }
+
+export interface SyncProgress {
+	current: number;
+	total: number;
+	mod_name: string;
+	action: string;
+}
+
+export interface SyncResult {
+	mods_added: string[];
+	mods_removed: string[];
+	mods_updated: string[];
+	mods_toggled: string[];
+	errors: SyncError[];
+}
+
+export interface SyncError {
+	mod_slug: string;
+	action: string;
+	message: string;
+}

@@ -13,13 +13,19 @@ import { JoinModpackDialogProps, Modpack } from './types';
 
 export function JoinModpackDialog({ open, onJoined, onOpenChange }: JoinModpackDialogProps) {
 	const [code, setCode] = React.useState('');
-	const [status, setStatus] = React.useState<'idle' | 'error' | 'loading'>('idle');
+	const [isLoading, setIsLoading] = React.useState(false);
 	const [error, setError] = React.useState<null | string>(null);
+
+	const handleReset = () => {
+		setCode('');
+		setError(null);
+		setIsLoading(false);
+	};
 
 	const handleJoin = async () => {
 		if (!code.trim()) return;
 
-		setStatus('loading');
+		setIsLoading(true);
 		setError(null);
 
 		try {
@@ -29,26 +35,25 @@ export function JoinModpackDialog({ open, onJoined, onOpenChange }: JoinModpackD
 
 			toast({
 				title: 'Modpack joined!',
-				description: `You've joined "${modpack.name}" with ${modpack.mods.length} mods.`
+				description: `You've joined "${modpack.name}". Syncing will start automatically.`
 			});
 
-			setStatus('idle');
-			setCode('');
+			handleReset();
 			onOpenChange(false);
-
 			onJoined?.(modpack.id);
 		} catch (err) {
 			console.error('Failed to join modpack:', err);
 			setError(String(err));
-			setStatus('error');
+		} finally {
+			setIsLoading(false);
 		}
 	};
 
 	const handleClose = (open: boolean) => {
+		if (isLoading) return;
+
 		if (!open) {
-			setStatus('idle');
-			setCode('');
-			setError(null);
+			handleReset();
 		}
 		onOpenChange(open);
 	};
@@ -68,21 +73,20 @@ export function JoinModpackDialog({ open, onJoined, onOpenChange }: JoinModpackD
 					<div className="relative">
 						<Input
 							value={code}
-							disabled={status === 'loading'}
+							disabled={isLoading}
 							placeholder="Paste share code here"
-							className={cn('text-center font-mono h-14', status === 'error' && 'border-destructive bg-destructive/5')}
+							className={cn('text-center font-mono h-14', error && 'border-destructive bg-destructive/5')}
 							onChange={(e) => {
 								setCode(e.target.value);
-								if (status === 'error') {
-									setStatus('idle');
+								if (error) {
 									setError(null);
 								}
 							}}
 						/>
-						{status === 'error' && <AlertCircle className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-destructive" />}
+						{error && <AlertCircle className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-destructive" />}
 					</div>
 
-					{status === 'error' && error && (
+					{error && (
 						<div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm">
 							<p className="font-medium text-destructive">Failed to join</p>
 							<p className="text-muted-foreground mt-1">{error}</p>
@@ -93,8 +97,8 @@ export function JoinModpackDialog({ open, onJoined, onOpenChange }: JoinModpackD
 						<p>The modpack owner must be online and sharing for you to join. You can sync updates anytime they're online.</p>
 					</div>
 
-					<Button variant="glow" className="w-full" onClick={handleJoin} disabled={!code.trim() || status === 'loading'}>
-						{status === 'loading' ? (
+					<Button variant="glow" className="w-full" onClick={handleJoin} disabled={!code.trim() || isLoading}>
+						{isLoading ? (
 							<>
 								<Loader2 className="w-4 h-4 animate-spin" />
 								Connecting...

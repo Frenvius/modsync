@@ -10,6 +10,7 @@ mod modrinth;
 mod server;
 mod sources;
 mod storage;
+mod sync;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use games::GameInfo;
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 static INSTALL_PROGRESS: Lazy<Mutex<HashMap<String, InstallProgress>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -510,6 +511,10 @@ async fn update_modpack(
 ) -> Result<Modpack, String> {
     let mut modpack = storage::load_modpack(&app_handle, &id)?;
 
+    if !modpack.is_owner {
+        return Err("Cannot modify a joined modpack. Clone it first to make changes.".to_string());
+    }
+
     let updates = UpdateModpackRequest {
         name,
         description,
@@ -531,6 +536,11 @@ async fn set_modpack_image(
     image_data: String,
 ) -> Result<String, String> {
     use tauri::Manager;
+
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+    if !modpack.is_owner {
+        return Err("Cannot modify a joined modpack. Clone it first to make changes.".to_string());
+    }
 
     let app_data = app_handle
         .path()
@@ -567,6 +577,10 @@ async fn remove_modpack_image(
     use tauri::Manager;
 
     let mut modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+
+    if !modpack.is_owner {
+        return Err("Cannot modify a joined modpack. Clone it first to make changes.".to_string());
+    }
 
     if let Some(ref image_path) = modpack.image_path {
         let app_data = app_handle
@@ -625,6 +639,53 @@ async fn delete_modpack(app_handle: tauri::AppHandle, id: String) -> Result<(), 
     instance::delete_instance(&app_handle, &id)?;
 
     storage::delete_modpack_file(&app_handle, &id)
+}
+
+#[tauri::command]
+async fn clone_modpack(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+) -> Result<Modpack, String> {
+    let source = storage::load_modpack(&app_handle, &modpack_id)?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let new_id = uuid::Uuid::new_v4().to_string();
+
+    let cloned = Modpack {
+        id: new_id.clone(),
+        name: format!("{} (Copy)", source.name),
+        description: source.description,
+        game_id: source.game_id.clone(),
+        game_version: source.game_version,
+        loader: source.loader,
+        mods: source.mods,
+        is_owner: true,
+        share_code: None,
+        owner_address: None,
+        image_path: None,
+        created_at: now.clone(),
+        updated_at: now,
+    };
+
+    storage::save_modpack(&app_handle, &cloned)?;
+
+    let game = games::get_game(&cloned.game_id);
+    let is_thunderstore = game
+        .as_ref()
+        .map(|g| g.mod_source == "thunderstore")
+        .unwrap_or(false);
+
+    if is_thunderstore {
+        instance::create_instance_dirs_for_game(
+            &app_handle,
+            &new_id,
+            &cloned.name,
+            Some("thunderstore"),
+        )?;
+        let instance_dir = instance::get_instance_dir(&app_handle, &new_id)?;
+        sources::thunderstore::profile::save_mods_yml(&instance_dir, &vec![])?;
+    }
+
+    Ok(cloned)
 }
 
 #[tauri::command]
@@ -908,6 +969,10 @@ async fn toggle_mod_enabled(
     slug: String,
 ) -> Result<Modpack, String> {
     let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+
+    if !modpack.is_owner {
+        return Err("Cannot modify a joined modpack. Clone it first to make changes.".to_string());
+    }
 
     let game = games::get_game(&modpack.game_id);
     let is_thunderstore = game
@@ -1434,23 +1499,21 @@ async fn get_public_ip() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn start_sharing(
+async fn begin_sharing(
     app_handle: tauri::AppHandle,
     modpack_id: String,
     port: u16,
 ) -> Result<String, String> {
     let mut modpack = storage::load_modpack(&app_handle, &modpack_id)?;
-
     if !modpack.is_owner {
         return Err("You can only share modpacks you own".to_string());
     }
 
     let public_ip = get_public_ip().await?;
-
     server::start_server(app_handle.clone(), modpack_id.clone(), port).await?;
 
-    let raw = format!("{}:{}:{}", public_ip, port, modpack_id);
-    let share_code = BASE64.encode(raw.as_bytes());
+    let share_data = format!("{}:{}:{}", public_ip, port, modpack_id);
+    let share_code = BASE64.encode(share_data.as_bytes());
 
     modpack.share_code = Some(share_code.clone());
     storage::save_modpack(&app_handle, &modpack)?;
@@ -1481,13 +1544,12 @@ async fn join_modpack(app_handle: tauri::AppHandle, share_code: String) -> Resul
         .map_err(|_| "Invalid share code format")?;
     let decoded = String::from_utf8(decoded_bytes).map_err(|_| "Invalid share code encoding")?;
 
-    let parts: Vec<&str> = decoded.split(':').collect();
+    let parts: Vec<String> = decoded.split(':').map(|s| s.to_string()).collect();
     if parts.len() != 3 {
         return Err("Invalid share code format".to_string());
     }
 
-    let (ip, port, _modpack_id) = (parts[0], parts[1], parts[2]);
-    let owner_address = format!("{}:{}", ip, port);
+    let owner_address = format!("{}:{}", parts[0], parts[1]);
 
     let url = format!("http://{}/modpack", owner_address);
     let client = reqwest::Client::new();
@@ -1522,7 +1584,7 @@ async fn join_modpack(app_handle: tauri::AppHandle, share_code: String) -> Resul
         }
     }
 
-    let local_modpack = Modpack::from_joined(remote_modpack, owner_address);
+    let local_modpack = Modpack::from_joined(remote_modpack, owner_address.clone());
     storage::save_modpack(&app_handle, &local_modpack)?;
 
     Ok(local_modpack)
@@ -1539,7 +1601,8 @@ async fn sync_modpack(app_handle: tauri::AppHandle, modpack_id: String) -> Resul
     let owner_address = modpack
         .owner_address
         .as_ref()
-        .ok_or("This modpack doesn't have an owner address. It may not be a joined modpack.")?;
+        .ok_or("This modpack doesn't have an owner address. It may not be a joined modpack.")?
+        .clone();
 
     let url = format!("http://{}/modpack", owner_address);
     let client = reqwest::Client::new();
@@ -1559,6 +1622,18 @@ async fn sync_modpack(app_handle: tauri::AppHandle, modpack_id: String) -> Resul
         .json()
         .await
         .map_err(|e| format!("Failed to parse modpack data: {}", e))?;
+
+    let sync_result = sync::hybrid_sync_from_owner(
+        app_handle.clone(),
+        modpack.id.clone(),
+        modpack.name.clone(),
+        owner_address.clone(),
+    )
+    .await;
+
+    if let Err(e) = &sync_result {
+        let _ = app_handle.emit("sync:error", serde_json::json!({ "message": e }));
+    }
 
     modpack.name = remote_modpack.name;
     modpack.description = remote_modpack.description;
@@ -2446,6 +2521,7 @@ pub fn run() {
             get_modpack,
             update_modpack,
             delete_modpack,
+            clone_modpack,
             add_mod_to_modpack,
             remove_mod_from_modpack,
             toggle_mod_enabled,
@@ -2454,7 +2530,7 @@ pub fn run() {
             import_detected_mod,
             get_mod_with_dependencies,
             get_public_ip,
-            start_sharing,
+            begin_sharing,
             stop_sharing,
             get_sharing_status,
             join_modpack,
