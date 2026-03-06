@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background: radial, dark center fading to lighter edges -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%"   stop-color="#06051a" />
+      <stop offset="55%"  stop-color="#0e0c2e" />
+      <stop offset="100%" stop-color="#16143a" />
+    </radialGradient>
+    <!-- Top face: brightest -->
+    <linearGradient id="top" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <!-- Left face: mid -->
+    <linearGradient id="left" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4338ca" />
+      <stop offset="100%" stop-color="#3730a3" />
+    </linearGradient>
+    <!-- Right face: darkest -->
+    <linearGradient id="right" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#312e81" />
+      <stop offset="100%" stop-color="#1e1b60" />
+    </linearGradient>
+    <!-- Top face shine -->
+    <linearGradient id="shine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+    <!-- Silhouette glow behind cube -->
+    <radialGradient id="silhouette" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#6366f1" stop-opacity="0.18" />
+      <stop offset="60%"  stop-color="#4338ca" stop-opacity="0.07" />
+      <stop offset="100%" stop-color="#1e1b4b" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded square background with radial gradient -->
+  <rect width="1024" height="1024" rx="200" fill="url(#bg)" />
+
+  <!-- Barely noticeable gradient silhouette behind cube -->
+  <ellipse cx="512" cy="530" rx="380" ry="320" fill="url(#silhouette)" />
+
+  <!--
+    Isometric cube — centered at 512,512 — scaled 1.15x
+    Top apex:    512, 190
+    Left point:  236, 351
+    Right point: 788, 351
+    Center mid:  512, 512
+    Bot-left:    236, 673
+    Bot-right:   788, 673
+    Bottom:      512, 834
+  -->
+
+  <!-- Right face (darkest) -->
+  <polygon points="512,512 788,351 788,673 512,834" fill="url(#right)" />
+
+  <!-- Left face (mid) -->
+  <polygon points="236,351 512,512 512,834 236,673" fill="url(#left)" />
+
+  <!-- Top face (brightest) -->
+  <polygon points="512,190 788,351 512,512 236,351" fill="url(#top)" />
+
+  <!-- Top face shine overlay -->
+  <polygon points="512,190 788,351 512,512 236,351" fill="url(#shine)" />
+
+</svg>
