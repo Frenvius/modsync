@@ -4,20 +4,20 @@ import { NavLink as RouterNavLink, NavLinkProps } from 'react-router-dom';
 import { cn } from '~/usecase/util/stringUtils';
 
 interface NavLinkCompatProps extends Omit<NavLinkProps, 'className'> {
-	className?: string;
-	activeClassName?: string;
-	pendingClassName?: string;
+  className?: string;
+  activeClassName?: string;
+  pendingClassName?: string;
 }
 
 const NavLink = forwardRef<HTMLAnchorElement, NavLinkCompatProps>(({ to, className, activeClassName, pendingClassName, ...props }, ref) => {
-	return (
-		<RouterNavLink
-			to={to}
-			ref={ref}
-			className={({ isActive, isPending }) => cn(className, isActive && activeClassName, isPending && pendingClassName)}
-			{...props}
-		/>
-	);
+  return (
+    <RouterNavLink
+      to={to}
+      ref={ref}
+      className={({ isActive, isPending }) => cn(className, isActive && activeClassName, isPending && pendingClassName)}
+      {...props}
+    />
+  );
 });
 
 NavLink.displayName = 'NavLink';

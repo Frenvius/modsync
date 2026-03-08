@@ -16,24 +16,24 @@ import ModpackDetailPage from './pages/ModpackDetailPage/ModpackDetailPage';
 const queryClient = new QueryClient();
 
 const App = () => (
-	<QueryClientProvider client={queryClient}>
-		<GameProvider>
-			<TooltipProvider>
-				<Toaster />
-				<Sonner />
-				<BrowserRouter>
-					<Routes>
-						<Route path="/" element={<Navigate replace to="/modpacks" />} />
-						<Route path="/modpacks" element={<ModpacksPage />} />
-						<Route path="/modpack/:id" element={<ModpackDetailPage />} />
-						<Route path="/browse" element={<BrowseModsPage />} />
-						<Route path="/settings" element={<SettingsPage />} />
-						<Route path="*" element={<NotFound />} />
-					</Routes>
-				</BrowserRouter>
-			</TooltipProvider>
-		</GameProvider>
-	</QueryClientProvider>
+  <QueryClientProvider client={queryClient}>
+    <GameProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Navigate replace to="/modpacks" />} />
+            <Route path="/modpacks" element={<ModpacksPage />} />
+            <Route path="/modpack/:id" element={<ModpackDetailPage />} />
+            <Route path="/browse" element={<BrowseModsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </GameProvider>
+  </QueryClientProvider>
 );
 
 export default App;

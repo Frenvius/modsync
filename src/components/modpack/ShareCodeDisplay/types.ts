@@ -1,4 +1,4 @@
 export interface ShareCodeDisplayProps {
-	code: string;
-	modpackName: string;
+  code: string;
+  modpackName: string;
 }
