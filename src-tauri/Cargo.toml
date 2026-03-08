@@ -40,4 +40,5 @@ flate2 = "1.1"
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
 windows-core = "0.61"
+winreg = "0.55"
 

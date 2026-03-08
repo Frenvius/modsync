@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Copy,
   Download,
+  FolderOpen,
   Loader2,
   MoreVertical,
   Package,
@@ -31,6 +32,7 @@ import {
   DropdownMenuTrigger
 } from '~/components/ui/dropdown-menu';
 
+import { GamePathDialog } from '../GamePathDialog';
 import { EditModpackDialog } from '../EditModpackDialog';
 import { ShareModpackDialog } from '../ShareModpackDialog';
 import { DeleteModpackDialog } from '../DeleteModpackDialog';
@@ -43,9 +45,12 @@ export function ModpackCard({
   onEdit,
   version,
   modCount,
+  gameId,
+  modSource,
   imageUrl,
   syncInfo,
   onDelete,
+  onClone,
   imagePath,
   shareCode,
   installStatus,
@@ -56,7 +61,24 @@ export function ModpackCard({
   const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
   const [editDialogOpen, setEditDialogOpen] = React.useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [gamePathDialogOpen, setGamePathDialogOpen] = React.useState(false);
+  const [isLaunching, setIsLaunching] = React.useState(false);
   const [resolvedImageUrl, setResolvedImageUrl] = React.useState<null | string>(null);
+
+  const isThunderstoreGame = modSource === 'thunderstore';
+
+  const handleThunderstoreLaunch = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsLaunching(true);
+    try {
+      await invoke('launch_thunderstore_instance', { modpackId: id });
+    } catch (err) {
+      const { toast } = await import('~/usecase/hooks/use-toast');
+      toast({ title: 'Launch failed', variant: 'destructive', description: String(err) });
+    } finally {
+      setIsLaunching(false);
+    }
+  };
 
   React.useEffect(() => {
     const resolveImage = async () => {
@@ -183,6 +205,20 @@ export function ModpackCard({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="bg-popover">
+                  {!isOwner && onClone && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClone();
+                        }}
+                      >
+                        <Copy className="w-4 h-4 mr-2" />
+                        Clone
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   {isOwner && (
                     <>
                       <DropdownMenuItem
@@ -215,6 +251,20 @@ export function ModpackCard({
                       <DropdownMenuSeparator />
                     </>
                   )}
+                  {isThunderstoreGame && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setGamePathDialogOpen(true);
+                        }}
+                      >
+                        <FolderOpen className="w-4 h-4 mr-2" />
+                        Set Game Path
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   <DropdownMenuItem
                     className="text-destructive"
                     onClick={(e) => {
@@ -230,7 +280,18 @@ export function ModpackCard({
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            {installStatus?.installing ? (
+            {isThunderstoreGame ? (
+              <Button
+                size="sm"
+                variant="glow"
+                onClick={handleThunderstoreLaunch}
+                disabled={isLaunching}
+                className="flex-1 gap-1 h-6 text-[11px]"
+              >
+                {isLaunching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                {isLaunching ? 'Launching...' : 'Launch'}
+              </Button>
+            ) : installStatus?.installing ? (
               <div onClick={(e) => e.stopPropagation()} className="flex-1 flex flex-col gap-1">
                 <div className="flex items-center gap-1.5">
                   <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
@@ -296,6 +357,9 @@ export function ModpackCard({
         onOpenChange={setEditDialogOpen}
       />
       <DeleteModpackDialog modpackName={name} onConfirm={onDelete} open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} />
+      {isThunderstoreGame && (
+        <GamePathDialog open={gamePathDialogOpen} gameId={gameId} gameName={name} onOpenChange={setGamePathDialogOpen} />
+      )}
     </>
   );
 }

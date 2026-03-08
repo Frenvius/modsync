@@ -26,6 +26,8 @@ export interface ModpackCardProps {
   name: string;
   version: string;
   modCount: number;
+  gameId: string;
+  modSource?: string;
   imageUrl?: string;
   isOwner?: boolean;
   onEdit?: () => void;
@@ -33,6 +35,7 @@ export interface ModpackCardProps {
   imagePath?: null | string;
   shareCode?: null | string;
   syncInfo?: SyncStatusInfo;
+  onClone?: () => void;
   onShareStatusChange?: () => void;
   installStatus?: InstallStatusInfo;
 }

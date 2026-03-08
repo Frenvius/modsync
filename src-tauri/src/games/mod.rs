@@ -78,6 +78,8 @@ pub struct GameInfo {
     pub thunderstore_community: Option<String>,
     pub default_version: Option<String>,
     pub loader: Option<LoaderConfig>,
+    pub steam_app_id: Option<u32>,
+    pub exe_name: Option<String>,
 }
 
 pub fn list_games() -> Vec<GameInfo> {
@@ -90,6 +92,8 @@ pub fn list_games() -> Vec<GameInfo> {
             thunderstore_community: None,
             default_version: None,
             loader: None,
+            steam_app_id: None,
+            exe_name: None,
         },
         GameInfo {
             id: "lethal-company".to_string(),
@@ -102,6 +106,8 @@ pub fn list_games() -> Vec<GameInfo> {
                 loader_type: PackageLoader::BepInEx,
                 package_name: "BepInEx-BepInExPack".into(),
             }),
+            steam_app_id: Some(1966720),
+            exe_name: Some("Lethal Company.exe".to_string()),
         },
         GameInfo {
             id: "valheim".to_string(),
@@ -114,6 +120,8 @@ pub fn list_games() -> Vec<GameInfo> {
                 loader_type: PackageLoader::BepInEx,
                 package_name: "denikson-BepInExPack_Valheim".into(),
             }),
+            steam_app_id: Some(892970),
+            exe_name: Some("valheim.exe".to_string()),
         },
     ]
 }

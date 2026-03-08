@@ -11,6 +11,7 @@ import {
   Download,
   FolderOpen,
   Loader2,
+  MoreVertical,
   Package,
   Play,
   Plus,
@@ -33,9 +34,17 @@ import { toast } from '~/usecase/hooks/use-toast';
 import { Progress } from '~/components/ui/progress';
 import { AddModsDialog } from '~/components/modpack/AddModsDialog';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
+import { GamePathDialog } from '~/components/modpack/GamePathDialog';
 import { EditModpackDialog } from '~/components/modpack/EditModpackDialog';
 import { ShareModpackDialog } from '~/components/modpack/ShareModpackDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '~/components/ui/dropdown-menu';
 
 import {
   DetectedMod,
@@ -65,6 +74,7 @@ export default function ModpackDetailPage() {
   const [addModsOpen, setAddModsOpen] = React.useState(false);
   const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
   const [editDialogOpen, setEditDialogOpen] = React.useState(false);
+  const [gamePathDialogOpen, setGamePathDialogOpen] = React.useState(false);
   const [modpack, setModpack] = React.useState<null | Modpack>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<null | string>(null);
@@ -585,24 +595,25 @@ export default function ModpackDetailPage() {
   };
 
   const handleLaunch = async () => {
-    if (!modpack || !installStatus?.installed) return;
+    if (!modpack) return;
+
+    const game = games.find((g) => g.id === modpack.game_id);
+    const isThunderstoreGame = game?.mod_source === 'thunderstore';
+
+    if (!isThunderstoreGame && !installStatus?.installed) return;
 
     setIsLaunching(true);
     try {
-      await invoke('launch_instance', {
-        modpackId: modpack.id
-      });
-      toast({
-        title: 'Game launched',
-        description: 'Minecraft is starting...'
-      });
+      if (isThunderstoreGame) {
+        await invoke('launch_thunderstore_instance', { modpackId: modpack.id });
+        toast({ title: 'Game launched', description: `${game?.display_name ?? 'Game'} is starting...` });
+      } else {
+        await invoke('launch_instance', { modpackId: modpack.id });
+        toast({ title: 'Game launched', description: 'Minecraft is starting...' });
+      }
     } catch (err) {
       console.error('Failed to launch:', err);
-      toast({
-        title: 'Launch failed',
-        variant: 'destructive',
-        description: String(err)
-      });
+      toast({ title: 'Launch failed', variant: 'destructive', description: String(err) });
     } finally {
       setIsLaunching(false);
     }
@@ -814,37 +825,63 @@ export default function ModpackDetailPage() {
                 <Share2 className="w-4 h-4" />
               </Button>
             ) : (
-              <>
-                <Button variant="outline" className="gap-2" onClick={handleSync} disabled={isSyncing} title="Sync with owner">
-                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Sync
-                </Button>
-                <Button variant="outline" className="gap-2" onClick={handleClone} disabled={isCloning} title="Clone to own">
-                  {isCloning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
-                  Clone
-                </Button>
-              </>
-            )}
-            <Button size="icon" variant="outline" onClick={handleOpenFolder} title="Open instance folder">
-              <FolderOpen className="w-4 h-4" />
-            </Button>
-            {modpack.is_owner && (
-              <Button size="icon" title="Settings" variant="outline" onClick={() => setEditDialogOpen(true)}>
-                <Settings className="w-4 h-4" />
+              <Button variant="outline" className="gap-2" onClick={handleSync} disabled={isSyncing} title="Sync with owner">
+                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Sync
               </Button>
             )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="outline" title="More options">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-popover">
+                {!modpack.is_owner && (
+                  <>
+                    <DropdownMenuItem onClick={handleClone} disabled={isCloning}>
+                      {isCloning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Copy className="w-4 h-4 mr-2" />}
+                      Clone
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuItem onClick={handleOpenFolder}>
+                  <FolderOpen className="w-4 h-4 mr-2" />
+                  Open Instance Folder
+                </DropdownMenuItem>
+                {games.find((g) => g.id === modpack.game_id)?.mod_source === 'thunderstore' && (
+                  <DropdownMenuItem onClick={() => setGamePathDialogOpen(true)}>
+                    <FolderOpen className="w-4 h-4 mr-2" />
+                    Set Game Path
+                  </DropdownMenuItem>
+                )}
+                {modpack.is_owner && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
+                      <Settings className="w-4 h-4 mr-2" />
+                      Settings
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="glow"
               className="gap-2"
               onClick={handleLaunch}
-              disabled={isLaunching || isInstalling || !installStatus?.installed}
+              disabled={
+                isLaunching ||
+                (games.find((g) => g.id === modpack.game_id)?.mod_source !== 'thunderstore' && (isInstalling || !installStatus?.installed))
+              }
             >
               {isLaunching ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Launching...
                 </>
-              ) : isInstalling ? (
+              ) : isInstalling && games.find((g) => g.id === modpack.game_id)?.mod_source !== 'thunderstore' ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Installing...
@@ -1166,6 +1203,15 @@ export default function ModpackDetailPage() {
         onSave={() => loadModpack(modpack.id)}
         modpackVersion={modpack.game_version}
       />
+
+      {games.find((g) => g.id === modpack.game_id)?.mod_source === 'thunderstore' && (
+        <GamePathDialog
+          open={gamePathDialogOpen}
+          gameId={modpack.game_id}
+          gameName={games.find((g) => g.id === modpack.game_id)?.display_name ?? modpack.game_id}
+          onOpenChange={setGamePathDialogOpen}
+        />
+      )}
     </AppLayout>
   );
 }

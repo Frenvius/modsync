@@ -7,6 +7,7 @@ import { Grid3X3, Link, List, Loader2, Package, Plus, Search } from 'lucide-reac
 
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
+import { useGame } from '~/contexts/GameContext';
 import { toast } from '~/usecase/hooks/use-toast';
 import { ModpackCard } from '~/components/modpack/ModpackCard';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
@@ -19,6 +20,7 @@ import { InstallProgress, InstallStatus, InstallStatusMap, Modpack, SyncStatus, 
 
 export default function ModpacksPage() {
   const navigate = useNavigate();
+  const { games } = useGame();
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
@@ -156,6 +158,24 @@ export default function ModpacksPage() {
     return () => clearInterval(interval);
   }, [installStatuses]);
 
+  const handleClone = async (id: string) => {
+    try {
+      await invoke('clone_modpack', { id });
+      toast({
+        title: 'Modpack cloned',
+        description: 'The modpack has been cloned to your library.'
+      });
+      loadModpacks();
+    } catch (error) {
+      console.error('Failed to clone modpack:', error);
+      toast({
+        title: 'Error',
+        variant: 'destructive',
+        description: `Failed to clone modpack: ${error}`
+      });
+    }
+  };
+
   const handleDelete = async (id: string) => {
     try {
       await invoke('delete_modpack', { id });
@@ -198,11 +218,14 @@ export default function ModpacksPage() {
         {packs.map((pack) => {
           const syncStatusInfo = syncStatuses[pack.id];
           const installStatus = installStatuses[pack.id];
+          const gameInfo = games.find((g) => g.id === pack.game_id);
           return (
             <ModpackCard
               id={pack.id}
               key={pack.id}
               name={pack.name}
+              gameId={pack.game_id}
+              modSource={gameInfo?.mod_source}
               isOwner={pack.is_owner}
               modCount={pack.mods.length}
               imagePath={pack.image_path}
@@ -210,6 +233,7 @@ export default function ModpacksPage() {
               onEdit={() => loadModpacks()}
               version={pack.game_version}
               onDelete={() => handleDelete(pack.id)}
+              onClone={!pack.is_owner ? () => handleClone(pack.id) : undefined}
               installStatus={installStatus ?? undefined}
               onShareStatusChange={() => loadModpacks()}
               syncInfo={

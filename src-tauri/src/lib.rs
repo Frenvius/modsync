@@ -9,8 +9,10 @@ mod modpack;
 mod modrinth;
 mod server;
 mod sources;
+mod steam;
 mod storage;
 mod sync;
+mod thunderstore_launcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use games::GameInfo;
@@ -2407,6 +2409,8 @@ pub struct AppSettings {
     pub java_path: Option<String>,
     pub memory_min: Option<String>,
     pub memory_max: Option<String>,
+    #[serde(default)]
+    pub game_paths: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2489,6 +2493,81 @@ async fn get_default_account(app_handle: tauri::AppHandle) -> Result<Option<Acco
     }))
 }
 
+#[tauri::command]
+async fn detect_steam_path() -> Result<String, String> {
+    let info = steam::detect_steam_install()?;
+    Ok(info.install_path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+async fn detect_game_path(game_id: String) -> Result<String, String> {
+    let game = games::get_game(&game_id)
+        .ok_or_else(|| format!("Unknown game: {}", game_id))?;
+    let app_id = game
+        .steam_app_id
+        .ok_or_else(|| format!("Game {} has no Steam app ID configured", game_id))?;
+    let steam_info = steam::detect_steam_install()?;
+    let path = steam::find_game_path(&steam_info, app_id)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+async fn get_game_path(
+    app_handle: tauri::AppHandle,
+    game_id: String,
+) -> Result<Option<String>, String> {
+    let settings = storage::load_settings(&app_handle).unwrap_or_default();
+    Ok(settings.game_paths.get(&game_id).cloned())
+}
+
+#[tauri::command]
+async fn set_game_path(
+    app_handle: tauri::AppHandle,
+    game_id: String,
+    path: String,
+) -> Result<(), String> {
+    let mut settings = storage::load_settings(&app_handle).unwrap_or_default();
+    settings.game_paths.insert(game_id, path);
+    storage::save_settings(&app_handle, &settings)
+}
+
+#[tauri::command]
+async fn launch_thunderstore_instance(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+) -> Result<(), String> {
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+    let game = games::get_game(&modpack.game_id)
+        .ok_or_else(|| format!("Unknown game: {}", modpack.game_id))?;
+
+    if game.mod_source != "thunderstore" {
+        return Err("This command is only for Thunderstore games".to_string());
+    }
+
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+
+    let settings = storage::load_settings(&app_handle).unwrap_or_default();
+    let custom_path = settings.game_paths.get(&modpack.game_id).cloned();
+
+    let launch_mode = if let Some(custom) = custom_path {
+        let exe_name = game
+            .exe_name
+            .as_deref()
+            .ok_or("Game has no exe name configured")?;
+        let exe_path = std::path::PathBuf::from(&custom).join(exe_name);
+        thunderstore_launcher::LaunchMode::Direct { exe_path }
+    } else if let Some(app_id) = game.steam_app_id {
+        let steam_info = steam::detect_steam_install()
+            .map_err(|_| "Steam not found. Please set a custom game path in the modpack settings.".to_string())?;
+        let steam_exe = steam_info.steam_exe();
+        thunderstore_launcher::LaunchMode::Steam { steam_exe, app_id }
+    } else {
+        return Err("No game path configured and no Steam app ID available. Please set a custom game path.".to_string());
+    };
+
+    thunderstore_launcher::launch_thunderstore_game(launch_mode, &instance_dir).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2562,7 +2641,12 @@ pub fn run() {
             save_settings,
             set_modpack_image,
             remove_modpack_image,
-            get_image_data
+            get_image_data,
+            detect_steam_path,
+            detect_game_path,
+            get_game_path,
+            set_game_path,
+            launch_thunderstore_instance
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
