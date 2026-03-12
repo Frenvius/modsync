@@ -566,8 +566,3 @@ pub async fn is_server_running() -> bool {
     let handle = SERVER_HANDLE.read().await;
     handle.is_some()
 }
-
-pub async fn get_current_modpack_id() -> Option<String> {
-    let current_id = CURRENT_MODPACK_ID.read().await;
-    current_id.clone()
-}

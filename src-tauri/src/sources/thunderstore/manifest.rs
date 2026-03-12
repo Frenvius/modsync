@@ -9,14 +9,6 @@ pub struct VersionNumber {
 }
 
 impl VersionNumber {
-    pub fn new(major: u32, minor: u32, patch: u32) -> Self {
-        Self {
-            major,
-            minor,
-            patch,
-        }
-    }
-
     pub fn parse(version_str: &str) -> Self {
         let parts: Vec<&str> = version_str.split('.').collect();
         Self {
@@ -30,61 +22,6 @@ impl VersionNumber {
 impl std::fmt::Display for VersionNumber {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum NetworkMode {
-    #[default]
-    Both,
-    Client,
-    Server,
-}
-
-impl std::fmt::Display for NetworkMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NetworkMode::Both => write!(f, "both"),
-            NetworkMode::Client => write!(f, "client"),
-            NetworkMode::Server => write!(f, "server"),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum PackageType {
-    Mod,
-    Modpack,
-    #[default]
-    Other,
-}
-
-impl std::fmt::Display for PackageType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PackageType::Mod => write!(f, "mod"),
-            PackageType::Modpack => write!(f, "modpack"),
-            PackageType::Other => write!(f, "other"),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum InstallMode {
-    #[default]
-    Managed,
-    Extract,
-}
-
-impl std::fmt::Display for InstallMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InstallMode::Managed => write!(f, "managed"),
-            InstallMode::Extract => write!(f, "extract"),
-        }
     }
 }
 
@@ -228,18 +165,6 @@ impl ManifestV2 {
         manifest
     }
 
-    pub fn version_string(&self) -> String {
-        self.version_number.to_string()
-    }
-
-    pub fn parse_author_from_name(name: &str) -> Option<String> {
-        name.split('-').next().map(String::from)
-    }
-
-    pub fn parse_mod_name_from_full(name: &str) -> Option<String> {
-        let parts: Vec<&str> = name.splitn(2, '-').collect();
-        parts.get(1).map(|s| s.to_string())
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -267,10 +192,6 @@ impl DependencyString {
 
     pub fn full_name(&self) -> String {
         format!("{}-{}", self.owner, self.name)
-    }
-
-    pub fn to_string(&self) -> String {
-        format!("{}-{}-{}", self.owner, self.name, self.version)
     }
 }
 

@@ -47,26 +47,6 @@ impl InstallRule {
         self
     }
 
-    pub fn with_sub_rules(mut self, rules: Vec<InstallRule>) -> Self {
-        self.sub_rules = rules;
-        self
-    }
-
-    pub fn matches_extension(&self, path: &Path) -> bool {
-        if self.default_extensions.is_empty() {
-            return true;
-        }
-
-        path.extension()
-            .and_then(|e| e.to_str())
-            .map(|ext| {
-                self.default_extensions
-                    .iter()
-                    .any(|de| de.eq_ignore_ascii_case(ext))
-            })
-            .unwrap_or(false)
-    }
-
     pub fn get_destination(
         &self,
         instance_dir: &Path,
@@ -121,30 +101,6 @@ pub fn get_rules_for_game(game_id: &str, loader: Option<&str>) -> Vec<InstallRul
             _ => get_bepinex_rules(),
         },
     }
-}
-
-pub fn find_rule_for_file<'a>(
-    rules: &'a [InstallRule],
-    relative_path: &Path,
-) -> Option<&'a InstallRule> {
-    for rule in rules {
-        let route_path = Path::new(&rule.route);
-        if relative_path.starts_with(route_path) && rule.matches_extension(relative_path) {
-            return Some(rule);
-        }
-    }
-
-    rules.iter().find(|r| r.is_default)
-}
-
-pub fn resolve_install_path(
-    rules: &[InstallRule],
-    instance_dir: &Path,
-    mod_name: &str,
-    archive_path: &Path,
-) -> Option<std::path::PathBuf> {
-    let rule = find_rule_for_file(rules, archive_path)?;
-    Some(rule.get_destination(instance_dir, mod_name, archive_path))
 }
 
 #[cfg(test)]

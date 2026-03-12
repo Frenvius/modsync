@@ -25,26 +25,19 @@ pub fn is_loader_package(full_name: &str) -> bool {
 #[derive(Debug, Serialize, Clone)]
 pub enum PackageLoader {
     BepInEx,
-    MelonLoader,
 }
 
 impl PackageLoader {
     pub fn mods_base_dir(&self) -> &str {
         match self {
             Self::BepInEx => "BepInEx/plugins",
-            Self::MelonLoader => "Mods",
         }
     }
 
     pub fn marker_dir(&self) -> &str {
         match self {
             Self::BepInEx => "BepInEx/core",
-            Self::MelonLoader => "MelonLoader",
         }
-    }
-
-    pub fn mod_dir(&self, instance_dir: &Path, full_name: &str) -> PathBuf {
-        instance_dir.join(self.mods_base_dir()).join(full_name)
     }
 
     pub fn mods_base_path(&self, instance_dir: &Path) -> PathBuf {
@@ -58,7 +51,6 @@ impl PackageLoader {
     pub fn name(&self) -> &str {
         match self {
             Self::BepInEx => "bepinex",
-            Self::MelonLoader => "melonloader",
         }
     }
 }

@@ -471,27 +471,6 @@ pub async fn get_project_team(project_id: &str) -> Result<Vec<TeamMember>, Strin
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
-pub async fn get_version(version_id: &str) -> Result<Version, String> {
-    let client = reqwest::Client::new();
-    let url = format!("{}/version/{}", MODRINTH_API_BASE, version_id);
-
-    let response = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("API error: {}", response.status()));
-    }
-
-    response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))
-}
-
 pub async fn get_versions_batch(ids: &[String]) -> Result<Vec<Version>, String> {
     if ids.is_empty() {
         return Ok(vec![]);

@@ -15,7 +15,6 @@ const SKIP_FILES: [&str; 5] = [
 pub struct ModInstaller {
     instance_dir: PathBuf,
     rules: Vec<InstallRule>,
-    game_id: String,
 }
 
 impl ModInstaller {
@@ -23,7 +22,6 @@ impl ModInstaller {
         Self {
             instance_dir,
             rules: get_rules_for_game(game_id, loader),
-            game_id: game_id.to_string(),
         }
     }
 
@@ -322,13 +320,6 @@ impl ModInstaller {
         Err(format!("No mod directory or state found for mod {}", name))
     }
 
-    pub fn mods_base_path(&self) -> PathBuf {
-        if let Some(rule) = self.default_rule() {
-            self.instance_dir.join(&rule.route)
-        } else {
-            self.instance_dir.join("BepInEx/plugins")
-        }
-    }
 }
 
 pub async fn install_mod_full(

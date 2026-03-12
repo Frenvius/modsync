@@ -16,7 +16,6 @@ pub struct DeviceCodeResponse {
     pub device_code: String,
     pub user_code: String,
     pub verification_uri: String,
-    pub expires_in: i32,
     pub interval: i32,
     pub message: String,
 }
@@ -25,8 +24,6 @@ pub struct DeviceCodeResponse {
 struct MicrosoftTokenResponse {
     access_token: String,
     refresh_token: String,
-    expires_in: i64,
-    token_type: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,7 +53,6 @@ struct XstsResponse {
 #[derive(Debug, Deserialize)]
 struct MinecraftAuthResponse {
     access_token: String,
-    expires_in: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -342,35 +338,6 @@ pub async fn complete_authentication(
         skin_url,
         is_default: false,
     })
-}
-
-pub async fn refresh_account(account: &MinecraftAccount) -> Result<MinecraftAccount, String> {
-    let client = reqwest::Client::new();
-
-    let params = [
-        ("client_id", MICROSOFT_CLIENT_ID),
-        ("grant_type", "refresh_token"),
-        ("refresh_token", &account.refresh_token),
-        ("scope", "XboxLive.signin offline_access"),
-    ];
-
-    let response = client
-        .post(MICROSOFT_TOKEN_URL)
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| format!("Token refresh error: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err("Session expired. Please login again.".to_string());
-    }
-
-    let token_response: MicrosoftTokenResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse refresh response: {}", e))?;
-
-    complete_authentication(&token_response.access_token, &token_response.refresh_token).await
 }
 
 fn get_accounts_file(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {

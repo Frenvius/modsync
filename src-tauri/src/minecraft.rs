@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tauri::AppHandle;
 
 use crate::downloader::{download_batch, DownloadProgress, DownloadTask};
@@ -12,26 +11,13 @@ const RESOURCES_URL: &str = "https://resources.download.minecraft.net";
 
 #[derive(Debug, Deserialize)]
 pub struct VersionManifest {
-    pub latest: LatestVersions,
     pub versions: Vec<VersionInfo>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LatestVersions {
-    pub release: String,
-    pub snapshot: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct VersionInfo {
     pub id: String,
-    #[serde(rename = "type")]
-    pub version_type: String,
     pub url: String,
-    pub time: String,
-    #[serde(rename = "releaseTime")]
-    pub release_time: String,
-    pub sha1: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -413,23 +399,3 @@ where
     Ok(version_meta)
 }
 
-pub fn parse_library_name(name: &str) -> Option<(String, String, String)> {
-    let parts: Vec<&str> = name.split(':').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-
-    let group = parts[0].replace('.', "/");
-    let artifact = parts[1].to_string();
-    let version = parts[2].to_string();
-
-    Some((group, artifact, version))
-}
-
-pub fn library_name_to_path(name: &str) -> Option<PathBuf> {
-    let (group, artifact, version) = parse_library_name(name)?;
-    Some(PathBuf::from(format!(
-        "{}/{}/{}/{}-{}.jar",
-        group, artifact, version, artifact, version
-    )))
-}

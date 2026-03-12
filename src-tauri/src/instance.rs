@@ -170,11 +170,6 @@ pub fn get_mods_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf,
     Ok(instance_dir.join("mods"))
 }
 
-pub fn get_plugins_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
-    let instance_dir = get_instance_dir(app_handle, modpack_id)?;
-    Ok(instance_dir.join("BepInEx").join("plugins"))
-}
-
 pub fn get_versions_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
     let instance_dir = get_instance_dir(app_handle, modpack_id)?;
     Ok(instance_dir.join("versions"))
@@ -188,11 +183,6 @@ pub fn get_libraries_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<Pat
 pub fn get_assets_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
     let instance_dir = get_instance_dir(app_handle, modpack_id)?;
     Ok(instance_dir.join("assets"))
-}
-
-pub fn get_natives_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
-    let instance_dir = get_instance_dir(app_handle, modpack_id)?;
-    Ok(instance_dir.join("natives"))
 }
 
 fn get_instance_json_path(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
@@ -274,13 +264,6 @@ pub fn load_instance(app_handle: &AppHandle, modpack_id: &str) -> Result<Option<
         .map_err(|e| format!("Failed to parse instance.json: {}", e))?;
 
     Ok(Some(instance))
-}
-
-pub fn is_instance_installed(app_handle: &AppHandle, modpack_id: &str) -> Result<bool, String> {
-    match load_instance(app_handle, modpack_id)? {
-        Some(instance) => Ok(instance.installed),
-        None => Ok(false),
-    }
 }
 
 pub fn delete_instance(app_handle: &AppHandle, modpack_id: &str) -> Result<(), String> {

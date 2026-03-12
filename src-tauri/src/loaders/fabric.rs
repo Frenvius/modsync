@@ -2,16 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::downloader::{download_batch, DownloadProgress, DownloadTask};
-use crate::minecraft::{Artifact, Library, LibraryDownloads};
 
 const FABRIC_META_URL: &str = "https://meta.fabricmc.net/v2";
 const FABRIC_MAVEN_URL: &str = "https://maven.fabricmc.net";
 
 #[derive(Debug, Deserialize)]
 pub struct FabricLoaderVersion {
-    pub separator: String,
-    pub build: i32,
-    pub maven: String,
     pub version: String,
     pub stable: bool,
 }
@@ -192,67 +188,3 @@ where
     Ok((loader_version, profile))
 }
 
-pub fn fabric_libs_to_minecraft_libs(profile: &FabricLoaderProfile) -> Vec<Library> {
-    profile
-        .libraries
-        .iter()
-        .filter_map(|lib| {
-            let path = maven_to_path(&lib.name)?;
-
-            Some(Library {
-                name: lib.name.clone(),
-                downloads: Some(LibraryDownloads {
-                    artifact: Some(Artifact {
-                        path,
-                        sha1: lib.sha1.clone().unwrap_or_default(),
-                        size: lib.size.unwrap_or(0),
-                        url: lib
-                            .url
-                            .clone()
-                            .unwrap_or_else(|| FABRIC_MAVEN_URL.to_string()),
-                    }),
-                    classifiers: None,
-                }),
-                url: lib.url.clone(),
-                natives: None,
-                rules: None,
-                extract: None,
-            })
-        })
-        .collect()
-}
-
-pub async fn supports_minecraft_version(minecraft_version: &str) -> Result<bool, String> {
-    let client = reqwest::Client::builder()
-        .user_agent("ModSync/0.1.0")
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
-    let url = format!("{}/versions/game", FABRIC_META_URL);
-
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch Fabric game versions: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "Failed to fetch Fabric game versions: HTTP {}",
-            response.status()
-        ));
-    }
-
-    #[derive(Deserialize)]
-    struct GameVersion {
-        version: String,
-        stable: bool,
-    }
-
-    let versions: Vec<GameVersion> = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse Fabric game versions: {}", e))?;
-
-    Ok(versions.iter().any(|v| v.version == minecraft_version))
-}

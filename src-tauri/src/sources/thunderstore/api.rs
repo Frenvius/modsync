@@ -583,28 +583,3 @@ pub async fn get_package_changelog(
     Ok(result.markdown)
 }
 
-pub fn clear_cache(community: Option<&str>, cache_base: Option<&Path>) {
-    if let Ok(mut cache) = CACHE.lock() {
-        match community {
-            Some(c) => {
-                cache.remove(c);
-            }
-            None => {
-                cache.clear();
-            }
-        }
-    }
-
-    if let Some(base) = cache_base {
-        let ts_cache = base.join("thunderstore");
-        match community {
-            Some(c) => {
-                let community_dir = ts_cache.join(c);
-                let _ = std::fs::remove_dir_all(&community_dir);
-            }
-            None => {
-                let _ = std::fs::remove_dir_all(&ts_cache);
-            }
-        }
-    }
-}

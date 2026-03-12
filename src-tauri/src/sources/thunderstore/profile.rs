@@ -1,78 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::manifest::ManifestV2;
 
 pub type ModsYml = Vec<ManifestV2>;
-
-#[derive(Debug, Clone)]
-pub struct Profile {
-    pub name: String,
-    pub path: PathBuf,
-    pub is_custom_path: bool,
-}
-
-impl Profile {
-    pub fn new(name: &str, path: PathBuf) -> Self {
-        Self {
-            name: name.to_string(),
-            path,
-            is_custom_path: false,
-        }
-    }
-
-    pub fn with_custom_path(name: &str, path: PathBuf) -> Self {
-        Self {
-            name: name.to_string(),
-            path,
-            is_custom_path: true,
-        }
-    }
-
-    pub fn get_mods_yml_path(&self) -> PathBuf {
-        self.path.join("mods.yml")
-    }
-
-    pub fn get_state_dir(&self) -> PathBuf {
-        self.path.join("_state")
-    }
-
-    pub fn load_mod_list(&self) -> Result<ModsYml, String> {
-        load_mods_yml(&self.path)
-    }
-
-    pub fn save_mod_list(&self, mods: &ModsYml) -> Result<(), String> {
-        save_mods_yml(&self.path, mods)
-    }
-
-    pub fn add_mod(&self, manifest: ManifestV2) -> Result<(), String> {
-        let mut mods = self.load_mod_list()?;
-        add_mod_to_list(&mut mods, manifest);
-        self.save_mod_list(&mods)
-    }
-
-    pub fn remove_mod(&self, name: &str) -> Result<bool, String> {
-        let mut mods = self.load_mod_list()?;
-        let removed = remove_mod_from_list(&mut mods, name);
-        if removed {
-            self.save_mod_list(&mods)?;
-        }
-        Ok(removed)
-    }
-
-    pub fn get_mod(&self, name: &str) -> Result<Option<ManifestV2>, String> {
-        let mods = self.load_mod_list()?;
-        Ok(find_mod_in_list(&mods, name).cloned())
-    }
-
-    pub fn set_mod_enabled(&self, name: &str, enabled: bool) -> Result<bool, String> {
-        let mut mods = self.load_mod_list()?;
-        let updated = set_enabled_in_list(&mut mods, name, enabled);
-        if updated {
-            self.save_mod_list(&mods)?;
-        }
-        Ok(updated)
-    }
-}
 
 pub fn load_mods_yml(instance_dir: &Path) -> Result<ModsYml, String> {
     let path = instance_dir.join("mods.yml");
@@ -182,9 +112,6 @@ impl ModFileState {
         Ok(())
     }
 
-    pub fn get_dest_paths(&self) -> Vec<&str> {
-        self.files.iter().map(|(_, d)| d.as_str()).collect()
-    }
 }
 
 #[cfg(test)]

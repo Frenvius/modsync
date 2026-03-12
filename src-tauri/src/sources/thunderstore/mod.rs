@@ -19,8 +19,7 @@ use crate::games::LoaderConfig;
 use crate::modrinth::{ModrinthMod, SearchResult};
 
 pub use api::{FetchProgress, PackageVersionInfo, ThunderstorePackage};
-pub use cache::{resolve_dependencies_with_visited, ResolvedDep};
-pub use manifest::DependencyString;
+pub use cache::resolve_dependencies_with_visited;
 pub use update::{
     check_for_updates, update_all_mods, update_mod, BatchUpdateResult, UpdateCheckResult,
     UpdateResult,
@@ -169,23 +168,6 @@ pub async fn get_latest_package_version(
     api::get_latest_version(community, full_name).await
 }
 
-pub async fn resolve_dependencies(
-    community: &str,
-    dep_strings: &[String],
-    cache_dir: Option<&Path>,
-) -> Result<Vec<ResolvedDep>, String> {
-    cache::resolve_dependencies(community, dep_strings, cache_dir).await
-}
-
-pub async fn download_and_cache(
-    cache_base: &Path,
-    full_name: &str,
-    version: &str,
-    download_url: &str,
-) -> Result<std::path::PathBuf, String> {
-    cache::download_and_extract(cache_base, full_name, version, download_url).await
-}
-
 pub async fn install_mod_full(
     cache_base: &Path,
     instance_dir: &Path,
@@ -262,10 +244,3 @@ pub async fn ensure_loader_installed(
     Ok(ver.version_number)
 }
 
-pub fn clear_cache(community: Option<&str>, cache_base: Option<&Path>) {
-    api::clear_cache(community, cache_base);
-}
-
-pub fn parse_dependency_string(dep: &str) -> Option<(String, String, String)> {
-    DependencyString::parse(dep).map(|d| (d.owner, d.name, d.version))
-}
