@@ -3,9 +3,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Toaster } from '~/components/ui/toaster';
-import { GameProvider } from '~/contexts/GameContext';
 import { TooltipProvider } from '~/components/ui/tooltip';
 import { Toaster as Sonner } from '~/components/ui/sonner';
+import { GameProvider } from '~/usecase/contexts/GameContext';
 
 import NotFound from './pages/NotFound/NotFound';
 import ModpacksPage from './pages/ModpacksPage/ModpacksPage';

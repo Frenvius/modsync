@@ -6,7 +6,7 @@ import { Check, Copy, Minus, Plus, Search, Square, Trash2, User, X } from 'lucid
 
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
-import { useGame } from '~/contexts/GameContext';
+import { useGame } from '~/usecase/contexts/GameContext';
 import { LoginDialog } from '~/components/auth/LoginDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
 import {

@@ -6,8 +6,8 @@ import { ImagePlus, Loader2, X } from 'lucide-react';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
-import { useGame } from '~/contexts/GameContext';
 import { toast } from '~/usecase/hooks/use-toast';
+import { useGame } from '~/usecase/contexts/GameContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 

@@ -1,8 +1,8 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import {
   AlertCircle,
   ArrowLeft,
@@ -29,15 +29,17 @@ import { Badge } from '~/components/ui/badge';
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
 import { Switch } from '~/components/ui/switch';
-import { useGame } from '~/contexts/GameContext';
 import { toast } from '~/usecase/hooks/use-toast';
 import { Progress } from '~/components/ui/progress';
+import { getIconSrc } from '~/usecase/util/pathUtils';
+import { useGame } from '~/usecase/contexts/GameContext';
+import { getStageLabel } from '~/usecase/util/labelUtils';
+import { capitalize, cn } from '~/usecase/util/stringUtils';
 import { AddModsDialog } from '~/components/modpack/AddModsDialog';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
 import { ModDetailPanel } from '~/components/modpack/ModDetailPanel';
-import { ModDetails } from '~/components/modpack/ModDetailPanel/types';
-import { cn } from '~/usecase/util/stringUtils';
 import { GamePathDialog } from '~/components/modpack/GamePathDialog';
+import { ModDetails } from '~/components/modpack/ModDetailPanel/types';
 import { EditModpackDialog } from '~/components/modpack/EditModpackDialog';
 import { ShareModpackDialog } from '~/components/modpack/ShareModpackDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table';
@@ -65,14 +67,6 @@ import {
 
 const _updateCache: Record<string, { updates: ModUpdateInfo[]; checkedAt: number }> = {};
 const UPDATE_CACHE_TTL = 2 * 60 * 1000;
-
-const getIconSrc = (iconUrl: string | null | undefined): string | undefined => {
-  if (!iconUrl) return undefined;
-  if (iconUrl.startsWith('http://') || iconUrl.startsWith('https://')) {
-    return iconUrl;
-  }
-  return convertFileSrc(iconUrl);
-};
 
 export default function ModpackDetailPage() {
   const { id } = useParams();
@@ -351,7 +345,7 @@ export default function ModpackDetailPage() {
 
       setModpack(updatedModpack);
       if (_updateCache[modpack.id]) {
-        _updateCache[modpack.id].updates = _updateCache[modpack.id].updates.filter(u => u.full_name !== slug);
+        _updateCache[modpack.id].updates = _updateCache[modpack.id].updates.filter((u) => u.full_name !== slug);
       }
 
       toast({
@@ -488,9 +482,7 @@ export default function ModpackDetailPage() {
           if (!prev) return prev;
           return {
             ...prev,
-            mods: prev.mods.map((m) =>
-              m.slug === updateInfo.full_name ? { ...m, version: result.to_version } : m
-            )
+            mods: prev.mods.map((m) => (m.slug === updateInfo.full_name ? { ...m, version: result.to_version } : m))
           };
         });
         if (id) delete _updateCache[id];
@@ -536,11 +528,7 @@ export default function ModpackDetailPage() {
 
       setModpack((prev) => {
         if (!prev) return prev;
-        const versionMap = new Map(
-          result.results
-            .filter((r) => r.success && !r.error)
-            .map((r) => [r.full_name, r.to_version])
-        );
+        const versionMap = new Map(result.results.filter((r) => r.success && !r.error).map((r) => [r.full_name, r.to_version]));
         return {
           ...prev,
           mods: prev.mods.map((m) => {
@@ -775,25 +763,6 @@ export default function ModpackDetailPage() {
     }
   };
 
-  const getStageLabel = (stage: string): string => {
-    switch (stage) {
-      case 'downloading_minecraft':
-        return 'Downloading Minecraft';
-      case 'extracting_natives':
-        return 'Extracting Native Libraries';
-      case 'installing_loader':
-        return 'Installing Mod Loader';
-      case 'installing_bepinex':
-        return 'Installing BepInEx';
-      case 'downloading_mods':
-        return 'Downloading Mods';
-      case 'complete':
-        return 'Complete';
-      default:
-        return 'Setting up';
-    }
-  };
-
   const isInstalling = installStatus?.installing || (installProgress && installProgress.stage !== 'complete');
   const progressPercent = installProgress
     ? installProgress.total > 0
@@ -829,438 +798,457 @@ export default function ModpackDetailPage() {
   return (
     <AppLayout fullBleed>
       <div className="flex-1 flex gap-0 overflow-hidden">
-      <div className={cn('space-y-6 p-6 transition-all overflow-auto h-full', selectedModSlug ? 'flex-[3] min-w-0' : 'w-full')}>
-        <div className="flex items-start gap-4">
-          <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-primary/20 via-card to-card flex items-center justify-center shrink-0">
-            <Package className="w-10 h-10 text-primary/50" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-foreground">{modpack.name}</h1>
-              {modpack.is_owner ? (
-                modpack.share_code ? (
-                  <Badge variant="outline" className="gap-1 border-primary/50 text-primary bg-primary/10">
-                    <Wifi className="w-3 h-3" />
-                    Sharing
-                  </Badge>
-                ) : null
-              ) : (
-                <>
-                  <Badge variant="outline" className="gap-1 border-blue-500/50 text-blue-500 bg-blue-500/10">
-                    <Users className="w-3 h-3" />
-                    Joined
-                  </Badge>
-                  {!isCheckingSync &&
-                    syncStatus &&
-                    !syncStatus.is_synced &&
-                    (syncStatus.owner_online ? (
-                      <Badge variant="outline" className="gap-1 border-warning/50 text-warning bg-warning/10">
-                        <AlertCircle className="w-3 h-3" />
-                        Out of Sync
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="gap-1 border-muted-foreground/50 text-muted-foreground bg-muted">
-                        <WifiOff className="w-3 h-3" />
-                        Owner Offline
-                      </Badge>
-                    ))}
-                  {isCheckingSync && (
-                    <Badge variant="outline" className="gap-1 border-muted-foreground/50 text-muted-foreground bg-muted">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Checking...
-                    </Badge>
-                  )}
-                  {!isCheckingSync && syncStatus?.is_synced && (
+        <div className={cn('space-y-6 p-6 transition-all overflow-auto h-full', selectedModSlug ? 'flex-[3] min-w-0' : 'w-full')}>
+          <div className="flex items-start gap-4">
+            <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-primary/20 via-card to-card flex items-center justify-center shrink-0">
+              <Package className="w-10 h-10 text-primary/50" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-foreground">{modpack.name}</h1>
+                {modpack.is_owner ? (
+                  modpack.share_code ? (
                     <Badge variant="outline" className="gap-1 border-primary/50 text-primary bg-primary/10">
-                      <RefreshCw className="w-3 h-3" />
-                      Synced
+                      <Wifi className="w-3 h-3" />
+                      Sharing
                     </Badge>
-                  )}
-                </>
-              )}
-              {modpack.loader && (
-                <Badge variant="secondary" className="capitalize">
-                  {modpack.loader}
-                </Badge>
-              )}
-            </div>
-            <p className="text-muted-foreground text-sm mt-1">
-              {modpack.game_version} • {modpack.mods.length} mods
-            </p>
-            {modpack.description && <p className="text-muted-foreground text-sm mt-2 line-clamp-2">{modpack.description}</p>}
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {modpack.is_owner ? (
-              <Button size="icon" variant="outline" title="Share modpack" onClick={() => setShareDialogOpen(true)}>
-                <Share2 className="w-4 h-4" />
-              </Button>
-            ) : (
-              <Button variant="outline" className="gap-2" onClick={handleSync} disabled={isSyncing} title="Sync with owner">
-                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Sync
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="outline" title="More options">
-                  <MoreVertical className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-popover">
-                {!modpack.is_owner && (
+                  ) : null
+                ) : (
                   <>
-                    <DropdownMenuItem onClick={handleClone} disabled={isCloning}>
-                      {isCloning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Copy className="w-4 h-4 mr-2" />}
-                      Clone
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                <DropdownMenuItem onClick={handleOpenFolder}>
-                  <FolderOpen className="w-4 h-4 mr-2" />
-                  Open Instance Folder
-                </DropdownMenuItem>
-                {games.find((g) => g.id === modpack.game_id)?.mod_source === 'thunderstore' && (
-                  <DropdownMenuItem onClick={() => setGamePathDialogOpen(true)}>
-                    <FolderOpen className="w-4 h-4 mr-2" />
-                    Set Game Path
-                  </DropdownMenuItem>
-                )}
-                {modpack.is_owner && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
-                      <Settings className="w-4 h-4 mr-2" />
-                      Settings
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="glow"
-              className="gap-2"
-              onClick={handleLaunch}
-              disabled={
-                isLaunching ||
-                (games.find((g) => g.id === modpack.game_id)?.mod_source !== 'thunderstore' && (isInstalling || !installStatus?.installed))
-              }
-            >
-              {isLaunching ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Launching...
-                </>
-              ) : isInstalling && games.find((g) => g.id === modpack.game_id)?.mod_source !== 'thunderstore' ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Installing...
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" />
-                  Launch
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-        {isInstalling && (
-          <div className="p-4 bg-card border border-border rounded-lg space-y-3">
-            <div className="flex items-center gap-3">
-              <Download className="w-5 h-5 text-primary animate-pulse" />
-              <div className="flex-1">
-                <p className="font-medium text-foreground">{installProgress ? getStageLabel(installProgress.stage) : 'Preparing...'}</p>
-                <p className="text-sm text-muted-foreground">{installProgress?.message || 'Starting installation...'}</p>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Progress className="h-2" value={progressPercent} />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{progressPercent}%</span>
-                {installProgress && installProgress.total > 0 && (
-                  <span>
-                    {installProgress.current}/{installProgress.total} files
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        {isSyncing && syncProgress && (
-          <div className="p-4 bg-primary/5 border border-primary/30 rounded-lg space-y-3">
-            <div className="flex items-center gap-3">
-              <RefreshCw className="w-5 h-5 text-primary animate-spin" />
-              <div className="flex-1">
-                <p className="font-medium text-foreground">
-                  {!syncProgress.action || syncProgress.action === 'starting'
-                    ? 'Starting sync...'
-                    : `${syncProgress.action.charAt(0).toUpperCase() + syncProgress.action.slice(1)} ${syncProgress.mod_name || ''}`}
-                </p>
-                <p className="text-sm text-muted-foreground">Syncing with modpack owner</p>
-              </div>
-            </div>
-            {syncProgress.total > 0 && (
-              <div className="space-y-1">
-                <Progress className="h-2" value={Math.round((syncProgress.current / syncProgress.total) * 100)} />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{Math.round((syncProgress.current / syncProgress.total) * 100)}%</span>
-                  <span>
-                    {syncProgress.current}/{syncProgress.total} mods
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        {installStatus?.installed && !isInstalling && installStatus.last_played && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <CheckCircle className="w-3 h-3" />
-            <span>Last played {new Date(installStatus.last_played).toLocaleDateString()}</span>
-          </div>
-        )}
-        {detectedMods.length > 0 && (
-          <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Package className="w-5 h-5 text-primary" />
-                <div>
-                  <p className="font-medium text-foreground">
-                    {detectedMods.length} untracked mod{detectedMods.length > 1 ? 's' : ''} detected
-                  </p>
-                  <p className="text-sm text-muted-foreground">Found in mods folder but not in modpack</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {detectedMods.map((mod) => (
-                <div key={mod.mod_id} className="flex items-center gap-3 p-2 bg-card border border-border rounded-lg">
-                  <div className="w-8 h-8 rounded bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                    {mod.modrinth_icon_url ? (
-                      <img alt={mod.name} src={mod.modrinth_icon_url} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="w-4 h-4 text-muted-foreground" />
+                    <Badge variant="outline" className="gap-1 border-blue-500/50 text-blue-500 bg-blue-500/10">
+                      <Users className="w-3 h-3" />
+                      Joined
+                    </Badge>
+                    {!isCheckingSync &&
+                      syncStatus &&
+                      !syncStatus.is_synced &&
+                      (syncStatus.owner_online ? (
+                        <Badge variant="outline" className="gap-1 border-warning/50 text-warning bg-warning/10">
+                          <AlertCircle className="w-3 h-3" />
+                          Out of Sync
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1 border-muted-foreground/50 text-muted-foreground bg-muted">
+                          <WifiOff className="w-3 h-3" />
+                          Owner Offline
+                        </Badge>
+                      ))}
+                    {isCheckingSync && (
+                      <Badge variant="outline" className="gap-1 border-muted-foreground/50 text-muted-foreground bg-muted">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Checking...
+                      </Badge>
                     )}
+                    {!isCheckingSync && syncStatus?.is_synced && (
+                      <Badge variant="outline" className="gap-1 border-primary/50 text-primary bg-primary/10">
+                        <RefreshCw className="w-3 h-3" />
+                        Synced
+                      </Badge>
+                    )}
+                  </>
+                )}
+                {modpack.loader && (
+                  <Badge variant="secondary" className="capitalize">
+                    {modpack.loader}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-muted-foreground text-sm mt-1">
+                {modpack.game_version} • {modpack.mods.length} mods
+              </p>
+              {modpack.description && <p className="text-muted-foreground text-sm mt-2 line-clamp-2">{modpack.description}</p>}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {modpack.is_owner ? (
+                <Button size="icon" variant="outline" title="Share modpack" onClick={() => setShareDialogOpen(true)}>
+                  <Share2 className="w-4 h-4" />
+                </Button>
+              ) : (
+                <Button variant="outline" className="gap-2" onClick={handleSync} disabled={isSyncing} title="Sync with owner">
+                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Sync
+                </Button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="outline" title="More options">
+                    <MoreVertical className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-popover">
+                  {!modpack.is_owner && (
+                    <>
+                      <DropdownMenuItem onClick={handleClone} disabled={isCloning}>
+                        {isCloning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Copy className="w-4 h-4 mr-2" />}
+                        Clone
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem onClick={handleOpenFolder}>
+                    <FolderOpen className="w-4 h-4 mr-2" />
+                    Open Instance Folder
+                  </DropdownMenuItem>
+                  {games.find((g) => g.id === modpack.game_id)?.mod_source === 'thunderstore' && (
+                    <DropdownMenuItem onClick={() => setGamePathDialogOpen(true)}>
+                      <FolderOpen className="w-4 h-4 mr-2" />
+                      Set Game Path
+                    </DropdownMenuItem>
+                  )}
+                  {modpack.is_owner && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
+                        <Settings className="w-4 h-4 mr-2" />
+                        Settings
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="glow"
+                className="gap-2"
+                onClick={handleLaunch}
+                disabled={
+                  isLaunching ||
+                  (games.find((g) => g.id === modpack.game_id)?.mod_source !== 'thunderstore' &&
+                    (isInstalling || !installStatus?.installed))
+                }
+              >
+                {isLaunching ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Launching...
+                  </>
+                ) : isInstalling && games.find((g) => g.id === modpack.game_id)?.mod_source !== 'thunderstore' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Installing...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" />
+                    Launch
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+          {isInstalling && (
+            <div className="p-4 bg-card border border-border rounded-lg space-y-3">
+              <div className="flex items-center gap-3">
+                <Download className="w-5 h-5 text-primary animate-pulse" />
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">{installProgress ? getStageLabel(installProgress.stage) : 'Preparing...'}</p>
+                  <p className="text-sm text-muted-foreground">{installProgress?.message || 'Starting installation...'}</p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Progress className="h-2" value={progressPercent} />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{progressPercent}%</span>
+                  {installProgress && installProgress.total > 0 && (
+                    <span>
+                      {installProgress.current}/{installProgress.total} files
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          {isSyncing && syncProgress && (
+            <div className="p-4 bg-primary/5 border border-primary/30 rounded-lg space-y-3">
+              <div className="flex items-center gap-3">
+                <RefreshCw className="w-5 h-5 text-primary animate-spin" />
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">
+                    {!syncProgress.action || syncProgress.action === 'starting'
+                      ? 'Starting sync...'
+                      : `${capitalize(syncProgress.action)} ${syncProgress.mod_name || ''}`}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Syncing with modpack owner</p>
+                </div>
+              </div>
+              {syncProgress.total > 0 && (
+                <div className="space-y-1">
+                  <Progress className="h-2" value={Math.round((syncProgress.current / syncProgress.total) * 100)} />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{Math.round((syncProgress.current / syncProgress.total) * 100)}%</span>
+                    <span>
+                      {syncProgress.current}/{syncProgress.total} mods
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{mod.modrinth_title || mod.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{mod.filename}</p>
+                </div>
+              )}
+            </div>
+          )}
+          {installStatus?.installed && !isInstalling && installStatus.last_played && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <CheckCircle className="w-3 h-3" />
+              <span>Last played {new Date(installStatus.last_played).toLocaleDateString()}</span>
+            </div>
+          )}
+          {detectedMods.length > 0 && (
+            <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Package className="w-5 h-5 text-primary" />
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {detectedMods.length} untracked mod{detectedMods.length > 1 ? 's' : ''} detected
+                    </p>
+                    <p className="text-sm text-muted-foreground">Found in mods folder but not in modpack</p>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => handleImportMod(mod)} disabled={importingMod === mod.mod_id}>
-                    {importingMod === mod.mod_id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {detectedMods.map((mod) => (
+                  <div key={mod.mod_id} className="flex items-center gap-3 p-2 bg-card border border-border rounded-lg">
+                    <div className="w-8 h-8 rounded bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                      {mod.modrinth_icon_url ? (
+                        <img alt={mod.name} src={mod.modrinth_icon_url} className="w-full h-full object-cover" />
+                      ) : (
+                        <Package className="w-4 h-4 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{mod.modrinth_title || mod.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{mod.filename}</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => handleImportMod(mod)} disabled={importingMod === mod.mod_id}>
+                      {importingMod === mod.mod_id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 mr-1" />
+                          Import
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-semibold text-foreground">Mods ({modpack.mods.length})</h2>
+                {modpack.is_owner && thunderstoreUpdates.length > 0 && (
+                  <Badge variant="outline" className="gap-1 border-primary/50 text-primary bg-primary/10">
+                    {thunderstoreUpdates.length} update{thunderstoreUpdates.length > 1 ? 's' : ''} available
+                  </Badge>
+                )}
+                {isCheckingThunderstoreUpdates && (
+                  <Badge variant="outline" className="gap-1 border-muted-foreground/50 text-muted-foreground bg-muted">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Checking...
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search mods..."
+                    value={modSearch}
+                    onChange={(e) => setModSearch(e.target.value)}
+                    className="pl-8 h-9 w-48"
+                  />
+                </div>
+                {thunderstoreUpdates.length > 0 && modpack.is_owner && (
+                  <Button size="sm" variant="outline" className="gap-2" onClick={handleUpdateAllThunderstoreMods} disabled={isUpdatingAll}>
+                    {isUpdatingAll ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating...
+                      </>
                     ) : (
                       <>
-                        <Plus className="w-4 h-4 mr-1" />
-                        Import
+                        <Download className="w-4 h-4" />
+                        Update All ({thunderstoreUpdates.length})
                       </>
                     )}
                   </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-semibold text-foreground">Mods ({modpack.mods.length})</h2>
-              {modpack.is_owner && thunderstoreUpdates.length > 0 && (
-                <Badge variant="outline" className="gap-1 border-primary/50 text-primary bg-primary/10">
-                  {thunderstoreUpdates.length} update{thunderstoreUpdates.length > 1 ? 's' : ''} available
-                </Badge>
-              )}
-              {isCheckingThunderstoreUpdates && (
-                <Badge variant="outline" className="gap-1 border-muted-foreground/50 text-muted-foreground bg-muted">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Checking...
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Search mods..."
-                  value={modSearch}
-                  onChange={(e) => setModSearch(e.target.value)}
-                  className="pl-8 h-9 w-48"
-                />
+                )}
+                {modpack.is_owner && (
+                  <Button size="sm" variant="outline" className="gap-2" onClick={() => setAddModsOpen(true)}>
+                    <Plus className="w-4 h-4" />
+                    Add Mods
+                  </Button>
+                )}
               </div>
-              {thunderstoreUpdates.length > 0 && modpack.is_owner && (
-                <Button size="sm" variant="outline" className="gap-2" onClick={handleUpdateAllThunderstoreMods} disabled={isUpdatingAll}>
-                  {isUpdatingAll ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Updating...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      Update All ({thunderstoreUpdates.length})
-                    </>
-                  )}
-                </Button>
-              )}
-              {modpack.is_owner && (
-                <Button size="sm" variant="outline" className="gap-2" onClick={() => setAddModsOpen(true)}>
-                  <Plus className="w-4 h-4" />
-                  Add Mods
-                </Button>
-              )}
             </div>
-          </div>
 
-          {modpack.mods.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-border rounded-lg">
-              <Package className="w-12 h-12 mb-4 opacity-50" />
-              <p className="mb-4">No mods added yet</p>
-              {modpack.is_owner ? (
-                <Button variant="outline" onClick={() => setAddModsOpen(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add your first mod
-                </Button>
-              ) : (
-                <p className="text-sm">Sync with owner to get mods</p>
-              )}
-            </div>
-          ) : (
-            <div className="border border-border rounded-lg overflow-hidden bg-card">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="h-9 px-3 w-[300px]">Name</TableHead>
-                    <TableHead className="h-9 px-3">Version</TableHead>
-                    <TableHead className="h-9 px-3 w-[140px] text-right"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[...modpack.mods]
-                    .reverse()
-                    .filter(
-                      (mod) =>
-                        !modSearch ||
-                        mod.title.toLowerCase().includes(modSearch.toLowerCase()) ||
-                        mod.author.toLowerCase().includes(modSearch.toLowerCase()) ||
-                        mod.slug.toLowerCase().includes(modSearch.toLowerCase())
-                    )
-                    .map((mod) => (
-                      <TableRow
-                        key={mod.slug}
-                        className={cn('group cursor-pointer', mod.enabled === false && 'opacity-50', selectedModSlug === mod.slug && 'bg-accent')}
-                        onClick={() => setSelectedModSlug(mod.slug === selectedModSlug ? null : mod.slug)}
-                      >
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                              {mod.icon_url ? (
-                                <img alt={mod.title} src={getIconSrc(mod.icon_url)} className="w-full h-full object-cover" />
-                              ) : (
-                                <Package className="w-4 h-4 text-muted-foreground" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-sm truncate">{mod.title}</p>
-                                {mod.is_loader && (
-                                  <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                                    Loader
-                                  </Badge>
+            {modpack.mods.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-border rounded-lg">
+                <Package className="w-12 h-12 mb-4 opacity-50" />
+                <p className="mb-4">No mods added yet</p>
+                {modpack.is_owner ? (
+                  <Button variant="outline" onClick={() => setAddModsOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add your first mod
+                  </Button>
+                ) : (
+                  <p className="text-sm">Sync with owner to get mods</p>
+                )}
+              </div>
+            ) : (
+              <div className="border border-border rounded-lg overflow-hidden bg-card">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="h-9 px-3 w-[300px]">Name</TableHead>
+                      <TableHead className="h-9 px-3">Version</TableHead>
+                      <TableHead className="h-9 px-3 w-[140px] text-right"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {[...modpack.mods]
+                      .reverse()
+                      .filter(
+                        (mod) =>
+                          !modSearch ||
+                          mod.title.toLowerCase().includes(modSearch.toLowerCase()) ||
+                          mod.author.toLowerCase().includes(modSearch.toLowerCase()) ||
+                          mod.slug.toLowerCase().includes(modSearch.toLowerCase())
+                      )
+                      .map((mod) => (
+                        <TableRow
+                          key={mod.slug}
+                          className={cn(
+                            'group cursor-pointer',
+                            mod.enabled === false && 'opacity-50',
+                            selectedModSlug === mod.slug && 'bg-accent'
+                          )}
+                          onClick={() => setSelectedModSlug(mod.slug === selectedModSlug ? null : mod.slug)}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                                {mod.icon_url ? (
+                                  <img alt={mod.title} src={getIconSrc(mod.icon_url)} className="w-full h-full object-cover" />
+                                ) : (
+                                  <Package className="w-4 h-4 text-muted-foreground" />
                                 )}
-                                {mod.is_deprecated && (
-                                  <Badge variant="outline" className="text-xs px-1.5 py-0 border-yellow-500/50 text-yellow-500 bg-yellow-500/10">
-                                    Deprecated
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-sm truncate">{mod.title}</p>
+                                  {mod.is_loader && (
+                                    <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                                      Loader
+                                    </Badge>
+                                  )}
+                                  {mod.is_deprecated && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs px-1.5 py-0 border-yellow-500/50 text-yellow-500 bg-yellow-500/10"
+                                    >
+                                      Deprecated
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">by {mod.author}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm">{mod.version}</p>
+                                {modpack.is_owner && thunderstoreUpdates.find((u) => u.full_name === mod.slug) && (
+                                  <Badge variant="outline" className="text-xs px-1.5 py-0 border-primary/50 text-primary bg-primary/10">
+                                    {thunderstoreUpdates.find((u) => u.full_name === mod.slug)?.latest_version} available
                                   </Badge>
                                 )}
                               </div>
-                              <p className="text-xs text-muted-foreground">by {mod.author}</p>
+                              {mod.filename && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{mod.filename}</p>}
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm">{mod.version}</p>
-                              {modpack.is_owner && thunderstoreUpdates.find((u) => u.full_name === mod.slug) && (
-                                <Badge variant="outline" className="text-xs px-1.5 py-0 border-primary/50 text-primary bg-primary/10">
-                                  {thunderstoreUpdates.find((u) => u.full_name === mod.slug)?.latest_version} available
-                                </Badge>
+                          </TableCell>
+                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              {modpack.is_owner && modUpdates[mod.slug] && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-primary"
+                                  disabled={updatingMod === mod.slug}
+                                  onClick={() => handleUpdateMod(mod)}
+                                  title={`Update to ${modUpdates[mod.slug]}`}
+                                >
+                                  {updatingMod === mod.slug ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Download className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              )}
+                              {thunderstoreUpdates.find((u) => u.full_name === mod.slug) && modpack.is_owner && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-primary"
+                                  disabled={updatingMod === mod.slug || isUpdatingAll}
+                                  onClick={() => {
+                                    const updateInfo = thunderstoreUpdates.find((u) => u.full_name === mod.slug);
+                                    if (updateInfo) handleUpdateThunderstoreMod(updateInfo);
+                                  }}
+                                  title={`Update to ${thunderstoreUpdates.find((u) => u.full_name === mod.slug)?.latest_version}`}
+                                >
+                                  {updatingMod === mod.slug ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Download className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              )}
+                              <Switch
+                                checked={mod.enabled !== false}
+                                disabled={togglingMod === mod.slug || mod.is_loader === true || !modpack.is_owner}
+                                onCheckedChange={() => handleToggleMod(mod.slug, mod.title, mod.enabled !== false)}
+                              />
+                              {modpack.is_owner && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  title="Remove mod"
+                                  disabled={removingMod === mod.slug}
+                                  onClick={() => handleRemoveMod(mod.slug, mod.title)}
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                >
+                                  {removingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                </Button>
                               )}
                             </div>
-                            {mod.filename && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{mod.filename}</p>}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            {modpack.is_owner && modUpdates[mod.slug] && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-primary"
-                                disabled={updatingMod === mod.slug}
-                                onClick={() => handleUpdateMod(mod)}
-                                title={`Update to ${modUpdates[mod.slug]}`}
-                              >
-                                {updatingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                              </Button>
-                            )}
-                            {thunderstoreUpdates.find((u) => u.full_name === mod.slug) && modpack.is_owner && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-primary"
-                                disabled={updatingMod === mod.slug || isUpdatingAll}
-                                onClick={() => {
-                                  const updateInfo = thunderstoreUpdates.find((u) => u.full_name === mod.slug);
-                                  if (updateInfo) handleUpdateThunderstoreMod(updateInfo);
-                                }}
-                                title={`Update to ${thunderstoreUpdates.find((u) => u.full_name === mod.slug)?.latest_version}`}
-                              >
-                                {updatingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                              </Button>
-                            )}
-                            <Switch
-                              checked={mod.enabled !== false}
-                              disabled={togglingMod === mod.slug || mod.is_loader === true || !modpack.is_owner}
-                              onCheckedChange={() => handleToggleMod(mod.slug, mod.title, mod.enabled !== false)}
-                            />
-                            {modpack.is_owner && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                title="Remove mod"
-                                disabled={removingMod === mod.slug}
-                                onClick={() => handleRemoveMod(mod.slug, mod.title)}
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                              >
-                                {removingMod === mod.slug ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      {selectedModSlug && (
-        <div className="flex-[2] min-w-0 border-l border-border overflow-hidden">
-          <ModDetailPanel
-            mod={modDetail}
-            loading={detailLoading}
-            error={detailError}
-            onClose={() => { setSelectedModSlug(null); setModDetail(null); }}
-            mode="modpack-view"
-          />
-        </div>
-      )}
+        {selectedModSlug && (
+          <div className="flex-[2] min-w-0 border-l border-border overflow-hidden">
+            <ModDetailPanel
+              mod={modDetail}
+              loading={detailLoading}
+              error={detailError}
+              onClose={() => {
+                setSelectedModSlug(null);
+                setModDetail(null);
+              }}
+              mode="modpack-view"
+            />
+          </div>
+        )}
       </div>
 
       <AddModsDialog

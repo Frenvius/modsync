@@ -164,7 +164,9 @@ export function ShareModpackDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="customAddress">Custom IP or Domain <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Label htmlFor="customAddress">
+                Custom IP or Domain <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
               <Input
                 id="customAddress"
                 value={customAddress}

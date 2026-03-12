@@ -4,8 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Check, Loader2, Package } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
-import { useGame } from '~/contexts/GameContext';
 import { toast } from '~/usecase/hooks/use-toast';
+import { useGame } from '~/usecase/contexts/GameContext';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { AddModWithDepsDialog } from '../AddModWithDepsDialog';

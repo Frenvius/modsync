@@ -73,9 +73,7 @@ export function ModDetailHeader({ mod, mode, onAddClick }: ModDetailHeaderProps)
         </div>
       </div>
 
-      {mod.description && (
-        <p className="text-sm text-muted-foreground mt-3 line-clamp-3">{mod.description}</p>
-      )}
+      {mod.description && <p className="text-sm text-muted-foreground mt-3 line-clamp-3">{mod.description}</p>}
     </div>
   );
 }

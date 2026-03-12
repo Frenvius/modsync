@@ -4,22 +4,18 @@ import { AlertCircle, Loader2, X } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
+import { formatDate } from '~/usecase/util/dateUtils';
 import { ScrollArea } from '~/components/ui/scroll-area';
+import { formatFileSize } from '~/usecase/util/numberUtils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
 
 import { AddToModpackDialog } from '../AddToModpackDialog';
 
+import { ModDetailPanelProps } from './types';
 import { MarkdownContent } from './MarkdownContent';
 import { ModDetailHeader } from './ModDetailHeader';
-import { ModDetailPanelProps } from './types';
 
-export function ModDetailPanel({
-  mod,
-  loading,
-  error,
-  onClose,
-  mode
-}: ModDetailPanelProps) {
+export function ModDetailPanel({ mod, loading, error, onClose, mode }: ModDetailPanelProps) {
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
 
   if (loading) {
@@ -67,20 +63,22 @@ export function ModDetailPanel({
           </Button>
         </div>
 
-        <ModDetailHeader
-          mod={mod}
-          mode={mode}
-          onAddClick={mode === 'browse' ? () => setAddDialogOpen(true) : undefined}
-        />
+        <ModDetailHeader mod={mod} mode={mode} onAddClick={mode === 'browse' ? () => setAddDialogOpen(true) : undefined} />
 
         <Tabs defaultValue="readme" className="flex-1 flex flex-col overflow-hidden min-h-0">
           <TabsList className="mx-4 mt-3 flex-shrink-0 w-auto self-start">
-            <TabsTrigger value="readme" className="text-xs">README</TabsTrigger>
-            <TabsTrigger value="changelog" className="text-xs">Changelog</TabsTrigger>
+            <TabsTrigger value="readme" className="text-xs">
+              README
+            </TabsTrigger>
+            <TabsTrigger value="changelog" className="text-xs">
+              Changelog
+            </TabsTrigger>
             <TabsTrigger value="dependencies" className="text-xs">
               Deps {mod.dependencies.length > 0 && `(${mod.dependencies.length})`}
             </TabsTrigger>
-            <TabsTrigger value="info" className="text-xs">Info</TabsTrigger>
+            <TabsTrigger value="info" className="text-xs">
+              Info
+            </TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-hidden min-h-0 mt-2">
@@ -182,18 +180,4 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <p className="text-sm text-foreground">{value}</p>
     </div>
   );
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  } catch {
-    return iso;
-  }
 }

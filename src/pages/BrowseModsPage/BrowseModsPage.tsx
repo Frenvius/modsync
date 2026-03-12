@@ -6,13 +6,13 @@ import { ArrowDownAZ, Clock, Filter, Loader2, Search, Sparkles, Star, TrendingUp
 import { Input } from '~/components/ui/input';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
-import { useGame } from '~/contexts/GameContext';
 import { Progress } from '~/components/ui/progress';
 import { ModCard } from '~/components/modpack/ModCard';
-import { formatDownloads } from '~/usecase/util/stringUtils';
+import { useGame } from '~/usecase/contexts/GameContext';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
 import { ModDetailPanel } from '~/components/modpack/ModDetailPanel';
 import { ModDetails } from '~/components/modpack/ModDetailPanel/types';
+import { capitalize, formatDownloads } from '~/usecase/util/stringUtils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 
 import { Category, FetchProgress, GameVersion, ModLoader, ModrinthMod, SearchResult } from './types';
@@ -218,7 +218,7 @@ export default function BrowseModsPage() {
     setInstalledMods((prev) => (prev.includes(modSlug) ? prev.filter((n) => n !== modSlug) : [...prev, modSlug]));
   };
 
-  const displayCategories = ['All', ...categories.map((c) => c.name.charAt(0).toUpperCase() + c.name.slice(1))];
+  const displayCategories = ['All', ...categories.map((c) => capitalize(c.name))];
 
   const sourceLabel = isThunderstore ? 'Thunderstore' : 'Modrinth';
 
@@ -277,7 +277,7 @@ export default function BrowseModsPage() {
                   <SelectItem value="all">All Loaders</SelectItem>
                   {loaders.map((l) => (
                     <SelectItem key={l.name} value={l.name}>
-                      {l.name.charAt(0).toUpperCase() + l.name.slice(1)}
+                      {capitalize(l.name)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -360,7 +360,7 @@ export default function BrowseModsPage() {
               downloads={formatDownloads(mod.downloads)}
               isInstalled={installedMods.includes(mod.slug)}
               version={selectedVersion || mod.versions[0] || ''}
-              categories={mod.categories.map((c) => c.charAt(0).toUpperCase() + c.slice(1))}
+              categories={mod.categories.map((c) => capitalize(c))}
               isDeprecated={mod.is_deprecated}
             />
           ))}
@@ -395,16 +395,16 @@ export default function BrowseModsPage() {
           <div style={{ width: `${leftPanelWidth}%` }} className="flex-shrink-0 overflow-auto p-6">
             {modListContent}
           </div>
-          <div
-            className="w-1 bg-border hover:bg-primary/50 cursor-col-resize flex-shrink-0"
-            onMouseDown={handleDividerMouseDown}
-          />
+          <div className="w-1 bg-border hover:bg-primary/50 cursor-col-resize flex-shrink-0" onMouseDown={handleDividerMouseDown} />
           <div className="flex-1 overflow-hidden border-l border-border">
             <ModDetailPanel
               mod={modDetail}
               loading={detailLoading}
               error={detailError}
-              onClose={() => { setSelectedModSlug(null); setModDetail(null); }}
+              onClose={() => {
+                setSelectedModSlug(null);
+                setModDetail(null);
+              }}
               mode="browse"
             />
           </div>
@@ -413,9 +413,5 @@ export default function BrowseModsPage() {
     );
   }
 
-  return (
-    <AppLayout>
-      {modListContent}
-    </AppLayout>
-  );
+  return <AppLayout>{modListContent}</AppLayout>;
 }

@@ -11,6 +11,7 @@ import { toast } from '~/usecase/hooks/use-toast';
 import { Separator } from '~/components/ui/separator';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
+import { getJavaMajorVersion, isJavaCompatible } from '~/usecase/util/versionUtils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 
 import { AppSettings, JavaRuntime } from './types';
@@ -82,17 +83,6 @@ export default function SettingsPage() {
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     setHasChanges(true);
-  };
-
-  const getJavaMajorVersion = (version: string): number => {
-    const v = version.replace(/^1\./, '');
-    const match = v.match(/^(\d+)/);
-    return match ? parseInt(match[1]) : 0;
-  };
-
-  const isJavaCompatible = (version: string): boolean => {
-    const major = getJavaMajorVersion(version);
-    return major >= 17;
   };
 
   return (

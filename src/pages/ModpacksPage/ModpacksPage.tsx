@@ -7,8 +7,8 @@ import { Grid3X3, Link, List, Loader2, Package, Plus, Search } from 'lucide-reac
 
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
-import { useGame } from '~/contexts/GameContext';
 import { toast } from '~/usecase/hooks/use-toast';
+import { useGame } from '~/usecase/contexts/GameContext';
 import { ModpackCard } from '~/components/modpack/ModpackCard';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
 import { JoinModpackDialog } from '~/components/modpack/JoinModpackDialog';

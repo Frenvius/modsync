@@ -1,6 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 
-import { useGame } from '~/contexts/GameContext';
+import { useGame } from '~/usecase/contexts/GameContext';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu';
 
 export function GameSelector() {

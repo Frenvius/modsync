@@ -1,7 +1,7 @@
+import { cn } from '~/usecase/util/stringUtils';
+
 import { Sidebar } from '../Sidebar';
 import { TopBar } from '../TopBar/TopBar';
-
-import { cn } from '~/usecase/util/stringUtils';
 
 import { AppLayoutProps } from './types';
 

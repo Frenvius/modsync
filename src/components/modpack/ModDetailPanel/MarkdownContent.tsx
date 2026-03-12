@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown';
+
 import remarkGfm from 'remark-gfm';
 
 import { ScrollArea } from '~/components/ui/scroll-area';
@@ -10,11 +11,7 @@ interface MarkdownContentProps {
 
 export function MarkdownContent({ content, emptyMessage = 'No content available' }: MarkdownContentProps) {
   if (!content) {
-    return (
-      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        {emptyMessage}
-      </div>
-    );
+    return <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">{emptyMessage}</div>;
   }
 
   return (

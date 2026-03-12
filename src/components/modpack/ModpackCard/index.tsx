@@ -24,6 +24,7 @@ import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { toast } from '~/usecase/hooks/use-toast';
 import { Progress } from '~/components/ui/progress';
+import { getStageLabel } from '~/usecase/util/labelUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,23 +102,6 @@ export function ModpackCard({
 
   const handleCardClick = () => {
     navigate(`/modpack/${id}`);
-  };
-
-  const getStageLabel = (stage: string): string => {
-    switch (stage) {
-      case 'downloading_minecraft':
-        return 'Downloading Minecraft...';
-      case 'extracting_natives':
-        return 'Extracting natives...';
-      case 'installing_loader':
-        return 'Installing loader...';
-      case 'downloading_mods':
-        return 'Downloading mods...';
-      case 'complete':
-        return 'Complete!';
-      default:
-        return 'Installing...';
-    }
   };
 
   const handleDuplicate = () => {

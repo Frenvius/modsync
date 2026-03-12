@@ -5,6 +5,7 @@ import { Calendar, ChevronRight, Loader2, Package } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { toast } from '~/usecase/hooks/use-toast';
+import { formatDate } from '~/usecase/util/dateUtils';
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
@@ -44,15 +45,6 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
 
     loadVersions();
   }, [mod, open, gameVersion, loader]);
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
 
   const handleSelect = (version: ModVersion) => {
     onVersionSelect(version);
