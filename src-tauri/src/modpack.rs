@@ -25,6 +25,8 @@ pub struct Modpack {
     #[serde(default)]
     pub owner_address: Option<String>,
     #[serde(default)]
+    pub owner_modpack_id: Option<String>,
+    #[serde(default)]
     pub image_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -47,6 +49,8 @@ pub struct ModpackMod {
     pub filename: Option<String>,
     #[serde(default)]
     pub is_loader: bool,
+    #[serde(default)]
+    pub is_deprecated: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,6 +85,7 @@ impl Modpack {
             is_owner: true,
             share_code: None,
             owner_address: None,
+            owner_modpack_id: None,
             image_path: None,
             created_at: now.clone(),
             updated_at: now,
@@ -88,10 +93,12 @@ impl Modpack {
     }
 
     pub fn from_joined(mut modpack: Modpack, owner_address: String) -> Self {
+        let owner_modpack_id = modpack.id.clone();
         modpack.id = uuid::Uuid::new_v4().to_string();
         modpack.is_owner = false;
         modpack.share_code = None;
         modpack.owner_address = Some(owner_address);
+        modpack.owner_modpack_id = Some(owner_modpack_id);
         modpack.created_at = chrono::Utc::now().to_rfc3339();
         modpack.updated_at = modpack.created_at.clone();
         modpack

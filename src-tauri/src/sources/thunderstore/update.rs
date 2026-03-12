@@ -86,7 +86,7 @@ pub async fn check_for_updates(
         }
         let (owner, name) = (parts[0], parts[1]);
 
-        match api::get_package_versions(community, owner, name).await {
+        match api::get_package_versions(community, owner, name, cache_dir).await {
             Ok(versions) => {
                 if let Some(latest) = versions.first() {
                     let installed_version = manifest.version_number.clone();
@@ -147,7 +147,7 @@ pub async fn update_mod(
     }
     let (owner, name) = (parts[0], parts[1]);
 
-    let versions = api::get_package_versions(community, owner, name).await?;
+    let versions = api::get_package_versions(community, owner, name, Some(cache_base)).await?;
     let latest = versions
         .first()
         .ok_or_else(|| "No versions available".to_string())?;

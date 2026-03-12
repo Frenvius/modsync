@@ -11,6 +11,16 @@ const THUNDERSTORE_API_BASE: &str = "https://thunderstore.io";
 const USER_AGENT: &str = "ModSync/0.1.0 (https://github.com/Frenvius/modpack-sync)";
 const MEMORY_CACHE_DURATION: Duration = Duration::from_secs(300);
 
+
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .pool_max_idle_per_host(10)
+        .pool_idle_timeout(Duration::from_secs(90))
+        .build()
+        .expect("Failed to build HTTP client")
+});
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ThunderstorePackage {
     pub name: String,
@@ -157,10 +167,7 @@ pub async fn fetch_all_packages(
         }
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let client = HTTP_CLIENT.clone();
 
     let index_url = format!(
         "{}/c/{}/api/v1/package-listing-index/",
@@ -315,10 +322,7 @@ async fn validate_and_refresh_cache(
     meta_path: &Path,
     packages_path: &Path,
 ) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let client = HTTP_CLIENT.clone();
 
     let index_url = format!(
         "{}/c/{}/api/v1/package-listing-index/",
@@ -399,10 +403,26 @@ async fn validate_and_refresh_cache(
     Ok(())
 }
 
+pub fn load_cache_from_disk(community: &str, cache_dir: &Path) -> Result<bool, String> {
+    let packages_path = cache_dir
+        .join("thunderstore")
+        .join(community)
+        .join("packages.json");
+
+    if !packages_path.exists() {
+        return Ok(false);
+    }
+
+    let packages = load_packages_from_disk(&packages_path)?;
+    update_memory_cache(community, packages);
+    Ok(true)
+}
+
 pub async fn get_package_versions(
     community: &str,
     owner: &str,
     name: &str,
+    cache_dir: Option<&Path>,
 ) -> Result<Vec<PackageVersionInfo>, String> {
     let full_name = format!("{}-{}", owner, name);
 
@@ -417,15 +437,26 @@ pub async fn get_package_versions(
         }
     }
 
-    let client = reqwest::Client::new();
+    if let Some(dir) = cache_dir {
+        if load_cache_from_disk(community, dir)? {
+            let cache = CACHE
+                .lock()
+                .map_err(|e| format!("Cache lock error: {}", e))?;
+            if let Some(cached) = cache.get(community) {
+                if let Some(pkg) = cached.packages.iter().find(|p| p.full_name == full_name) {
+                    return Ok(package_to_versions(pkg));
+                }
+            }
+        }
+    }
+
     let url = format!(
         "{}/api/v1/package/{}/{}/",
         THUNDERSTORE_API_BASE, owner, name
     );
 
-    let response = client
+    let response = HTTP_CLIENT
         .get(&url)
-        .header("User-Agent", USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("Failed to send request: {}", e))?;
@@ -463,7 +494,7 @@ pub async fn get_latest_version(
     full_name: &str,
 ) -> Result<PackageVersionInfo, String> {
     let (owner, name) = parse_full_name(full_name)?;
-    let versions = get_package_versions(community, &owner, &name).await?;
+    let versions = get_package_versions(community, &owner, &name, None).await?;
     versions
         .into_iter()
         .next()
@@ -476,6 +507,80 @@ fn parse_full_name(full_name: &str) -> Result<(String, String), String> {
         return Err(format!("Invalid package name: {}", full_name));
     }
     Ok((parts[0].to_string(), parts[1].to_string()))
+}
+
+pub async fn get_package_readme(
+    owner: &str,
+    name: &str,
+    version: &str,
+) -> Result<Option<String>, String> {
+    let url = format!(
+        "{}/api/experimental/package/{}/{}/{}/readme/",
+        THUNDERSTORE_API_BASE, owner, name, version
+    );
+
+    let response = HTTP_CLIENT
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch README: {}", e))?;
+
+    if response.status() == 404 {
+        return Ok(None);
+    }
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    #[derive(serde::Deserialize)]
+    struct MarkdownResponse {
+        markdown: Option<String>,
+    }
+
+    let result: MarkdownResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse README response: {}", e))?;
+
+    Ok(result.markdown)
+}
+
+pub async fn get_package_changelog(
+    owner: &str,
+    name: &str,
+    version: &str,
+) -> Result<Option<String>, String> {
+    let url = format!(
+        "{}/api/experimental/package/{}/{}/{}/changelog/",
+        THUNDERSTORE_API_BASE, owner, name, version
+    );
+
+    let response = HTTP_CLIENT
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch changelog: {}", e))?;
+
+    if response.status() == 404 {
+        return Ok(None);
+    }
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    #[derive(serde::Deserialize)]
+    struct MarkdownResponse {
+        markdown: Option<String>,
+    }
+
+    let result: MarkdownResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse changelog response: {}", e))?;
+
+    Ok(result.markdown)
 }
 
 pub fn clear_cache(community: Option<&str>, cache_base: Option<&Path>) {

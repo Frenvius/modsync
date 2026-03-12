@@ -8,6 +8,7 @@ export interface ModpackMod {
   filename?: null | string;
   version_id: null | string;
   is_loader?: boolean;
+  is_deprecated?: boolean;
 }
 
 export interface Modpack {
@@ -24,6 +25,7 @@ export interface Modpack {
   image_path: null | string;
   description: null | string;
   owner_address: null | string;
+  owner_modpack_id: null | string;
 }
 
 export interface SyncStatus {

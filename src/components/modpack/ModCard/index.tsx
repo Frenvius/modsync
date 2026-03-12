@@ -20,17 +20,28 @@ export function ModCard({
   categories,
   description,
   onAdd: _onAdd,
-  isInstalled = false
+  onSelect,
+  isSelected = false,
+  isInstalled = false,
+  isDeprecated = false
 }: ModCardProps) {
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
 
-  const handleAddClick = () => {
+  const handleAddClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     setAddDialogOpen(true);
   };
 
   return (
     <>
-      <div className="group p-4 bg-card hover:bg-card-hover border border-border rounded-xl transition-all duration-200 hover:border-primary/30 animate-fade-in">
+      <div
+        className={cn(
+          'group p-4 bg-card hover:bg-card-hover border border-border rounded-xl transition-all duration-200 hover:border-primary/30 animate-fade-in',
+          onSelect && 'cursor-pointer',
+          isSelected && 'border-primary/60 bg-card-hover ring-1 ring-primary/30'
+        )}
+        onClick={onSelect}
+      >
         <div className="flex gap-4">
           <div className="w-16 h-16 rounded-lg bg-secondary flex items-center justify-center overflow-hidden flex-shrink-0">
             {iconUrl ? (
@@ -42,7 +53,14 @@ export function ModCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{name}</h3>
+                  {isDeprecated && (
+                    <Badge variant="outline" className="text-xs border-yellow-500/50 text-yellow-500 bg-yellow-500/10">
+                      Deprecated
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">by {author}</p>
               </div>
               <Button

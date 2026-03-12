@@ -21,7 +21,8 @@ export default function SettingsPage() {
   const [settings, setSettings] = React.useState<AppSettings>({
     java_path: null,
     memory_max: '4G',
-    memory_min: '512M'
+    memory_min: '512M',
+    last_custom_address: null
   });
   const [saving, setSaving] = React.useState(false);
   const [hasChanges, setHasChanges] = React.useState(false);
@@ -49,7 +50,8 @@ export default function SettingsPage() {
       setSettings({
         java_path: loaded.java_path,
         memory_max: loaded.memory_max || '4G',
-        memory_min: loaded.memory_min || '512M'
+        memory_min: loaded.memory_min || '512M',
+        last_custom_address: loaded.last_custom_address ?? null
       });
     } catch (err) {
       console.error('Failed to load settings:', err);

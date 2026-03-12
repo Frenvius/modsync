@@ -20,7 +20,16 @@ export function ShareModpackDialog({
   onShareStatusChange
 }: ShareModpackDialogProps) {
   const [port, setPort] = React.useState('7878');
+  const [customAddress, setCustomAddress] = React.useState('');
   const [shareCode, setShareCode] = React.useState<null | string>(currentShareCode || null);
+
+  React.useEffect(() => {
+    invoke<{ last_custom_address?: string | null }>('get_settings')
+      .then((s) => {
+        if (s.last_custom_address) setCustomAddress(s.last_custom_address);
+      })
+      .catch(() => {});
+  }, []);
   const [isSharing, setIsSharing] = React.useState(!!currentShareCode);
   const [isLoading, setIsLoading] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -63,9 +72,15 @@ export function ShareModpackDialog({
 
     setIsLoading(true);
     try {
+      const trimmedAddress = customAddress.trim();
+      invoke<{ last_custom_address?: string | null }>('get_settings')
+        .then((s) => invoke('save_settings', { settings: { ...s, last_custom_address: trimmedAddress || null } }))
+        .catch(() => {});
+
       const code = await invoke<string>('begin_sharing', {
         modpackId,
-        port: portNum
+        port: portNum,
+        customAddress: trimmedAddress || null
       });
 
       setShareCode(code);
@@ -146,6 +161,17 @@ export function ShareModpackDialog({
               <Label htmlFor="port">Port</Label>
               <Input id="port" value={port} placeholder="7878" onChange={(e) => setPort(e.target.value)} />
               <p className="text-xs text-muted-foreground">Make sure to forward this port on your router</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="customAddress">Custom IP or Domain <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input
+                id="customAddress"
+                value={customAddress}
+                placeholder="e.g. 203.0.113.5 or myserver.duckdns.org"
+                onChange={(e) => setCustomAddress(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Leave empty to auto-detect your public IP</p>
             </div>
 
             <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">

@@ -8,20 +8,33 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
+use std::time::SystemTime;
 use tauri::AppHandle;
 use tokio::sync::RwLock;
 use walkdir::WalkDir;
 
 use crate::games;
 use crate::instance;
+use tauri::Manager;
 use crate::modpack::{Modpack, ModpackMod};
 use crate::sources::thunderstore;
 use crate::storage;
 
 static SERVER_HANDLE: RwLock<Option<tokio::task::JoinHandle<()>>> = RwLock::const_new(None);
 static CURRENT_MODPACK_ID: RwLock<Option<String>> = RwLock::const_new(None);
+
+#[derive(Clone)]
+struct CachedFileHash {
+    mtime: SystemTime,
+    hash: String,
+    size: u64,
+}
+
+static HASH_CACHE: LazyLock<RwLock<HashMap<String, CachedFileHash>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
@@ -298,6 +311,30 @@ async fn get_modpack(State(state): State<Arc<AppState>>) -> Result<Json<Modpack>
                 {
                     if instance_dir.exists() {
                         if let Ok(mods) = thunderstore::profile::load_mods_yml(&instance_dir) {
+                            let deprecated_set: std::collections::HashSet<String> =
+                                if let Some(community) =
+                                    game.as_ref().and_then(|g| g.thunderstore_community.as_deref())
+                                {
+                                    if let Ok(cache_dir) =
+                                        state.app_handle.path().app_data_dir()
+                                    {
+                                        thunderstore::api::fetch_all_packages(
+                                            community,
+                                            &cache_dir,
+                                        )
+                                        .await
+                                        .unwrap_or_default()
+                                        .into_iter()
+                                        .filter(|p| p.is_deprecated)
+                                        .map(|p| p.full_name)
+                                        .collect()
+                                    } else {
+                                        std::collections::HashSet::new()
+                                    }
+                                } else {
+                                    std::collections::HashSet::new()
+                                };
+
                             modpack.mods = mods
                                 .into_iter()
                                 .map(|m| ModpackMod {
@@ -311,6 +348,7 @@ async fn get_modpack(State(state): State<Arc<AppState>>) -> Result<Json<Modpack>
                                     enabled: m.enabled,
                                     filename: None,
                                     is_loader: games::is_loader_package(&m.name),
+                                    is_deprecated: deprecated_set.contains(&m.name),
                                 })
                                 .collect();
                         }
@@ -370,6 +408,8 @@ async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoRespo
     let mut p2p_files = Vec::new();
     let sync_patterns = vec!["BepInEx/config/", "BepInEx/plugins/", "config/", "mods.yml"];
 
+    let mut cache = HASH_CACHE.write().await;
+
     for entry in WalkDir::new(&instance_dir)
         .follow_links(false)
         .into_iter()
@@ -397,6 +437,23 @@ async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoRespo
             continue;
         }
 
+        let metadata = match std::fs::metadata(path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let mtime = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+
+        if let Some(cached) = cache.get(&relative_path) {
+            if cached.mtime == mtime {
+                p2p_files.push(P2PFile {
+                    path: relative_path,
+                    hash: cached.hash.clone(),
+                    size: cached.size,
+                });
+                continue;
+            }
+        }
+
         let mut file = match std::fs::File::open(path) {
             Ok(f) => f,
             Err(_) => continue,
@@ -413,10 +470,14 @@ async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoRespo
         }
         let hash = format!("{:x}", hasher.finalize());
 
-        let metadata = match std::fs::metadata(path) {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
+        cache.insert(
+            relative_path.clone(),
+            CachedFileHash {
+                mtime,
+                hash: hash.clone(),
+                size: metadata.len(),
+            },
+        );
 
         p2p_files.push(P2PFile {
             path: relative_path,

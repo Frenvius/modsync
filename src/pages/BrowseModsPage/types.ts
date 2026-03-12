@@ -8,6 +8,7 @@ export interface ModrinthMod {
   description: string;
   categories: string[];
   icon_url: null | string;
+  is_deprecated?: boolean;
 }
 
 export interface SearchResult {

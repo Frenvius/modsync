@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::io::Read as IoRead;
 use std::path::{Path, PathBuf};
@@ -5,7 +6,14 @@ use std::path::{Path, PathBuf};
 use super::api;
 use super::manifest::DependencyString;
 
-const USER_AGENT: &str = "ModSync/0.1.0 (https://github.com/Frenvius/modpack-sync)";
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .user_agent("ModSync/0.1.0 (https://github.com/Frenvius/modpack-sync)")
+        .pool_max_idle_per_host(10)
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .build()
+        .expect("Failed to build HTTP client")
+});
 
 #[derive(Debug, Clone)]
 pub struct ResolvedDep {
@@ -33,12 +41,7 @@ pub async fn download_and_extract(
     std::fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("Failed to create cache dir: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
-    let response = client
+    let response = HTTP_CLIENT
         .get(download_url)
         .send()
         .await
@@ -57,7 +60,11 @@ pub async fn download_and_extract(
         .await
         .map_err(|e| format!("Failed to read response for {}: {}", full_name, e))?;
 
-    extract_zip(&bytes, &cache_dir)?;
+    let zip_bytes = bytes.to_vec();
+    let zip_dir = cache_dir.clone();
+    tokio::task::spawn_blocking(move || extract_zip(&zip_bytes, &zip_dir))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))??;
 
     std::fs::write(cache_dir.join(".cached"), "")
         .map_err(|e| format!("Failed to mark cache: {}", e))?;
@@ -108,6 +115,7 @@ pub fn resolve_dependencies_with_visited<'a>(
     community: &'a str,
     dep_strings: &'a [String],
     visited: &'a mut HashSet<String>,
+    cache_dir: Option<&'a Path>,
 ) -> std::pin::Pin<
     Box<dyn std::future::Future<Output = Result<Vec<ResolvedDep>, String>> + Send + 'a>,
 > {
@@ -127,7 +135,7 @@ pub fn resolve_dependencies_with_visited<'a>(
             visited.insert(full_name.clone());
 
             let versions =
-                api::get_package_versions(community, &parsed.owner, &parsed.name).await?;
+                api::get_package_versions(community, &parsed.owner, &parsed.name, cache_dir).await?;
             let version_info = versions.iter().find(|v| v.version_number == parsed.version);
 
             let chosen = version_info.or_else(|| versions.first());
@@ -135,7 +143,7 @@ pub fn resolve_dependencies_with_visited<'a>(
             if let Some(ver) = chosen {
                 if !ver.dependencies.is_empty() {
                     let sub_deps =
-                        resolve_dependencies_with_visited(community, &ver.dependencies, visited)
+                        resolve_dependencies_with_visited(community, &ver.dependencies, visited, cache_dir)
                             .await?;
                     result.extend(sub_deps);
                 }
@@ -159,9 +167,10 @@ pub fn resolve_dependencies_with_visited<'a>(
 pub async fn resolve_dependencies(
     community: &str,
     dep_strings: &[String],
+    cache_dir: Option<&Path>,
 ) -> Result<Vec<ResolvedDep>, String> {
     let mut visited = HashSet::new();
-    resolve_dependencies_with_visited(community, dep_strings, &mut visited).await
+    resolve_dependencies_with_visited(community, dep_strings, &mut visited, cache_dir).await
 }
 
 pub fn clear_package_cache(cache_base: &Path, full_name: Option<&str>) -> Result<(), String> {

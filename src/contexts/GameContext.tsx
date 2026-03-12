@@ -52,6 +52,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     loadGames();
   }, []);
 
+  React.useEffect(() => {
+    if (selectedGame?.mod_source === 'thunderstore') {
+      invoke('warm_thunderstore_cache', { gameId: selectedGame.id }).catch(() => {});
+    }
+  }, [selectedGame?.id]);
+
   const setSelectedGame = (game: GameInfo) => {
     setSelectedGameState(game);
     localStorage.setItem(STORAGE_KEY, game.id);

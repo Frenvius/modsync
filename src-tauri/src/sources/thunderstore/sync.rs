@@ -11,9 +11,10 @@ pub async fn get_package_version(
     community: &str,
     full_name: &str,
     target_version: &str,
+    cache_dir: Option<&Path>,
 ) -> Result<PackageVersionInfo, String> {
     let (owner, name) = parse_full_name(full_name)?;
-    let versions = api::get_package_versions(community, &owner, &name).await?;
+    let versions = api::get_package_versions(community, &owner, &name, cache_dir).await?;
 
     versions
         .into_iter()
@@ -30,8 +31,9 @@ pub async fn sync_install_mod(
     enabled: bool,
     game_id: &str,
     loader: Option<&str>,
+    api_cache_dir: Option<&Path>,
 ) -> Result<(), String> {
-    let version_info = get_package_version(community, full_name, version).await?;
+    let version_info = get_package_version(community, full_name, version, api_cache_dir).await?;
 
     if !version_info.dependencies.is_empty() {
         let mut visited: HashSet<String> = HashSet::new();
@@ -56,7 +58,7 @@ pub async fn sync_install_mod(
 
         if !deps_to_install.is_empty() {
             let resolved_deps =
-                cache::resolve_dependencies_with_visited(community, &deps_to_install, &mut visited)
+                cache::resolve_dependencies_with_visited(community, &deps_to_install, &mut visited, api_cache_dir)
                     .await?;
 
             for dep in resolved_deps {
@@ -116,6 +118,7 @@ pub async fn sync_update_mod(
     preserve_enabled: bool,
     game_id: &str,
     loader: Option<&str>,
+    api_cache_dir: Option<&Path>,
 ) -> Result<(), String> {
     let mods = load_mods_yml(instance_dir)?;
     let current_mod = profile::find_mod_in_list(&mods, full_name);
@@ -123,7 +126,7 @@ pub async fn sync_update_mod(
     let icon = current_mod.and_then(|m| m.icon.clone());
     let position = mods.iter().position(|m| m.name == full_name);
 
-    let version_info = get_package_version(community, full_name, new_version).await?;
+    let version_info = get_package_version(community, full_name, new_version, api_cache_dir).await?;
 
     let installer = ModInstaller::new(instance_dir.to_path_buf(), game_id, loader);
     if let Err(e) = installer.uninstall_mod(full_name) {

@@ -45,7 +45,7 @@ fn get_library_paths(steam_info: &SteamInfo) -> Vec<PathBuf> {
         for line in content.lines() {
             let line = line.trim();
             if line.starts_with('"') {
-                let parts: Vec<&str> = line.splitn(4, '"').collect();
+                let parts: Vec<&str> = line.splitn(5, '"').collect();
                 if parts.len() >= 4 && parts[1] == "path" {
                     let lib_path = PathBuf::from(parts[3].replace("\\\\", "\\"));
                     paths.push(lib_path.join("steamapps"));
@@ -82,7 +82,7 @@ fn parse_acf_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
     for line in content.lines() {
         let line = line.trim();
         if line.starts_with('"') {
-            let parts: Vec<&str> = line.splitn(4, '"').collect();
+            let parts: Vec<&str> = line.splitn(5, '"').collect();
             if parts.len() >= 4 && parts[1] == key {
                 return Some(parts[3]);
             }

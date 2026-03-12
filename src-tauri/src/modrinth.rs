@@ -12,6 +12,29 @@ pub struct Project {
     pub id: String,
     #[serde(default)]
     pub team: String,
+    pub body: Option<String>,
+    pub source_url: Option<String>,
+    pub issues_url: Option<String>,
+    pub wiki_url: Option<String>,
+    pub discord_url: Option<String>,
+    #[serde(default)]
+    pub published: String,
+    #[serde(default)]
+    pub updated: String,
+    #[serde(default)]
+    pub downloads: i64,
+    #[serde(default)]
+    pub followers: i64,
+    #[serde(default)]
+    pub categories: Vec<String>,
+    pub license: Option<License>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct License {
+    pub id: String,
+    pub name: String,
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -84,6 +107,8 @@ pub struct ModrinthMod {
     pub thunderstore_community: Option<String>,
     #[serde(default)]
     pub thunderstore_full_name: Option<String>,
+    #[serde(default)]
+    pub is_deprecated: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -206,6 +231,7 @@ pub async fn search_mods(params: SearchParams) -> Result<SearchResult, String> {
             source: Some("modrinth".to_string()),
             thunderstore_community: None,
             thunderstore_full_name: None,
+            is_deprecated: false,
         })
         .collect();
 

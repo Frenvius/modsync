@@ -56,6 +56,30 @@ pub struct DependencyInfo {
     pub dependency_type: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ModDetails {
+    pub slug: String,
+    pub title: String,
+    pub author: String,
+    pub icon_url: Option<String>,
+    pub description: String,
+    pub body: Option<String>,
+    pub readme: Option<String>,
+    pub changelog: Option<String>,
+    pub website_url: Option<String>,
+    pub source_url: Option<String>,
+    pub issues_url: Option<String>,
+    pub downloads: i64,
+    pub follows: i64,
+    pub categories: Vec<String>,
+    pub date_created: String,
+    pub date_updated: String,
+    pub latest_version: Option<String>,
+    pub file_size: Option<i64>,
+    pub dependencies: Vec<DependencyInfo>,
+    pub source: String,
+}
+
 #[tauri::command]
 async fn list_games() -> Result<Vec<GameInfo>, String> {
     Ok(games::list_games())
@@ -226,6 +250,32 @@ async fn check_thunderstore_updates(
         Some(&cache_dir),
     )
     .await
+}
+
+#[tauri::command]
+async fn warm_thunderstore_cache(
+    app_handle: tauri::AppHandle,
+    game_id: String,
+) -> Result<bool, String> {
+    let game = games::get_game(&game_id)
+        .ok_or_else(|| format!("Unknown game: {}", game_id))?;
+
+    if game.mod_source != "thunderstore" {
+        return Ok(false);
+    }
+
+    let community = game
+        .thunderstore_community
+        .as_ref()
+        .ok_or("Game has no Thunderstore community configured")?;
+
+    let cache_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("cache");
+
+    sources::thunderstore::api::load_cache_from_disk(community, &cache_dir)
 }
 
 #[tauri::command]
@@ -443,6 +493,7 @@ async fn list_modpacks(app_handle: tauri::AppHandle) -> Result<Vec<Modpack>, Str
                                 enabled: m.enabled,
                                 filename: None,
                                 is_loader: games::is_loader_package(&m.name),
+                                is_deprecated: false,
                             })
                             .collect();
                     }
@@ -478,6 +529,24 @@ async fn get_modpack(app_handle: tauri::AppHandle, id: String) -> Result<Modpack
         if let Ok(instance_dir) = instance::get_instance_dir(&app_handle, &id) {
             if instance_dir.exists() {
                 if let Ok(mods) = sources::thunderstore::profile::load_mods_yml(&instance_dir) {
+                    let deprecated_set: std::collections::HashSet<String> = if let Some(community) =
+                        game.as_ref().and_then(|g| g.thunderstore_community.as_deref())
+                    {
+                        if let Ok(cache_dir) = app_handle.path().app_data_dir() {
+                            sources::thunderstore::api::fetch_all_packages(community, &cache_dir)
+                                .await
+                                .unwrap_or_default()
+                                .into_iter()
+                                .filter(|p| p.is_deprecated)
+                                .map(|p| p.full_name)
+                                .collect()
+                        } else {
+                            std::collections::HashSet::new()
+                        }
+                    } else {
+                        std::collections::HashSet::new()
+                    };
+
                     modpack.mods = mods
                         .into_iter()
                         .map(|m| ModpackMod {
@@ -491,6 +560,7 @@ async fn get_modpack(app_handle: tauri::AppHandle, id: String) -> Result<Modpack
                             enabled: m.enabled,
                             filename: None,
                             is_loader: games::is_loader_package(&m.name),
+                            is_deprecated: deprecated_set.contains(&m.name),
                         })
                         .collect();
                 }
@@ -663,6 +733,7 @@ async fn clone_modpack(
         is_owner: true,
         share_code: None,
         owner_address: None,
+        owner_modpack_id: None,
         image_path: None,
         created_at: now.clone(),
         updated_at: now,
@@ -772,6 +843,7 @@ async fn add_mod_to_modpack(
             enabled: true,
             filename: filename.clone(),
             is_loader,
+            is_deprecated: false,
         };
         modpack.add_mod(mod_info);
         storage::save_modpack(&app_handle, &modpack)?;
@@ -1313,6 +1385,7 @@ async fn import_detected_mod(
         enabled: true,
         filename: Some(filename),
         is_loader: false,
+        is_deprecated: false,
     };
 
     modpack.add_mod(mod_info);
@@ -1446,6 +1519,7 @@ async fn get_thunderstore_mod_with_dependencies(
             &community,
             &latest_version.dependencies,
             &mut visited,
+            None,
         )
         .await?;
 
@@ -1490,6 +1564,184 @@ async fn get_mod_with_dependencies(
     }
 }
 
+async fn get_modrinth_mod_details(
+    slug: String,
+    game_version: Option<String>,
+    loader: Option<String>,
+) -> Result<ModDetails, String> {
+    let (project, versions) = tokio::join!(
+        modrinth::get_project(&slug),
+        modrinth::get_project_versions(&slug, game_version.as_deref(), loader.as_deref())
+    );
+
+    let project = project?;
+    let versions = versions.unwrap_or_default();
+
+    let team = modrinth::get_project_team(&project.id).await.unwrap_or_default();
+    let author = team
+        .iter()
+        .find(|m| m.role == "Owner")
+        .or_else(|| team.first())
+        .map(|m| m.user.username.clone())
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    let latest = versions.first();
+
+    let mut dependencies = Vec::new();
+    if let Some(ver) = latest {
+        let required_dep_ids: Vec<String> = ver
+            .dependencies
+            .iter()
+            .filter(|d| d.dependency_type == "required")
+            .filter_map(|d| d.project_id.clone())
+            .collect();
+
+        if !required_dep_ids.is_empty() {
+            if let Ok(dep_projects) = modrinth::get_projects_batch(&required_dep_ids).await {
+                for dep_project in dep_projects {
+                    dependencies.push(DependencyInfo {
+                        slug: dep_project.slug.clone(),
+                        title: dep_project.title.clone(),
+                        author: String::new(),
+                        icon_url: dep_project.icon_url.clone(),
+                        project_id: dep_project.id.clone(),
+                        dependency_type: "required".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(ModDetails {
+        slug: project.slug,
+        title: project.title,
+        author,
+        icon_url: project.icon_url,
+        description: project.description,
+        body: project.body,
+        readme: None,
+        changelog: None,
+        website_url: project.source_url.clone(),
+        source_url: project.source_url,
+        issues_url: project.issues_url,
+        downloads: project.downloads,
+        follows: project.followers,
+        categories: project.categories,
+        date_created: project.published,
+        date_updated: project.updated,
+        latest_version: latest.map(|v| v.version_number.clone()),
+        file_size: latest.and_then(|v| v.files.first().map(|f| f.size as i64)),
+        dependencies,
+        source: "modrinth".to_string(),
+    })
+}
+
+async fn get_thunderstore_mod_details(
+    slug: String,
+    community: Option<String>,
+    app_handle: tauri::AppHandle,
+) -> Result<ModDetails, String> {
+    let community = community.ok_or_else(|| "Thunderstore community is required".to_string())?;
+
+    let parts: Vec<&str> = slug.splitn(2, '-').collect();
+    if parts.len() != 2 {
+        return Err(format!("Invalid Thunderstore slug format: {}", slug));
+    }
+    let owner = parts[0];
+    let name = parts[1];
+
+    let cache_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("cache");
+
+    let all_packages =
+        sources::thunderstore::api::fetch_all_packages(&community, &cache_dir).await?;
+
+    let pkg = all_packages
+        .iter()
+        .find(|p| p.full_name == slug || (p.owner == owner && p.name == name))
+        .ok_or_else(|| format!("Package not found: {}", slug))?;
+
+    let latest = pkg
+        .latest()
+        .ok_or_else(|| format!("No versions for {}", slug))?;
+
+    let (readme_result, changelog_result) = tokio::join!(
+        sources::thunderstore::api::get_package_readme(owner, name, &latest.version_number),
+        sources::thunderstore::api::get_package_changelog(owner, name, &latest.version_number)
+    );
+
+    let readme = readme_result.unwrap_or(None);
+    let changelog = changelog_result.unwrap_or(None);
+
+    let mut dependencies = Vec::new();
+    if !latest.dependencies.is_empty() {
+        let mut visited = std::collections::HashSet::new();
+        visited.insert(slug.clone());
+        let resolved = sources::thunderstore::resolve_dependencies_with_visited(
+            &community,
+            &latest.dependencies,
+            &mut visited,
+            None,
+        )
+        .await
+        .unwrap_or_default();
+
+        for dep in resolved {
+            dependencies.push(DependencyInfo {
+                slug: dep.full_name.clone(),
+                title: dep.name.clone(),
+                author: dep.owner.clone(),
+                icon_url: dep.icon.clone(),
+                project_id: dep.full_name.clone(),
+                dependency_type: "required".to_string(),
+            });
+        }
+    }
+
+    Ok(ModDetails {
+        slug: pkg.full_name.clone(),
+        title: latest.name.clone(),
+        author: pkg.owner.clone(),
+        icon_url: latest.icon.clone(),
+        description: latest.description.clone(),
+        body: None,
+        readme,
+        changelog,
+        website_url: latest.website_url.clone(),
+        source_url: None,
+        issues_url: None,
+        downloads: pkg.total_downloads(),
+        follows: pkg.rating_score,
+        categories: pkg.categories.clone(),
+        date_created: pkg.date_created.clone(),
+        date_updated: pkg.date_updated.clone(),
+        latest_version: Some(latest.version_number.clone()),
+        file_size: latest.file_size,
+        dependencies,
+        source: "thunderstore".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn get_mod_details(
+    app_handle: tauri::AppHandle,
+    slug: String,
+    game_version: Option<String>,
+    loader: Option<String>,
+    source: Option<String>,
+    thunderstore_community: Option<String>,
+) -> Result<ModDetails, String> {
+    match source.as_deref().unwrap_or("modrinth") {
+        "thunderstore" => {
+            get_thunderstore_mod_details(slug, thunderstore_community, app_handle).await
+        }
+        _ => get_modrinth_mod_details(slug, game_version, loader).await,
+    }
+}
+
 #[tauri::command]
 async fn get_public_ip() -> Result<String, String> {
     reqwest::get("https://api.ipify.org")
@@ -1505,16 +1757,20 @@ async fn begin_sharing(
     app_handle: tauri::AppHandle,
     modpack_id: String,
     port: u16,
+    custom_address: Option<String>,
 ) -> Result<String, String> {
     let mut modpack = storage::load_modpack(&app_handle, &modpack_id)?;
     if !modpack.is_owner {
         return Err("You can only share modpacks you own".to_string());
     }
 
-    let public_ip = get_public_ip().await?;
+    let address = match custom_address {
+        Some(addr) if !addr.trim().is_empty() => addr.trim().to_string(),
+        _ => get_public_ip().await?,
+    };
     server::start_server(app_handle.clone(), modpack_id.clone(), port).await?;
 
-    let share_data = format!("{}:{}:{}", public_ip, port, modpack_id);
+    let share_data = format!("{}:{}:{}", address, port, modpack_id);
     let share_code = BASE64.encode(share_data.as_bytes());
 
     modpack.share_code = Some(share_code.clone());
@@ -1606,30 +1862,49 @@ async fn sync_modpack(app_handle: tauri::AppHandle, modpack_id: String) -> Resul
         .ok_or("This modpack doesn't have an owner address. It may not be a joined modpack.")?
         .clone();
 
-    let url = format!("http://{}/modpack", owner_address);
-    let client = reqwest::Client::new();
+    let modpack_url = format!("http://{}/modpack", owner_address);
+    let manifest_url = format!("http://{}/sync-manifest", owner_address);
 
-    let response = client
-        .get(&url)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
+    let client = reqwest::Client::builder()
+        .user_agent("ModSync/0.1.0")
+        .build()
+        .map_err(|e| format!("Failed to create client: {}", e))?;
+
+    let (modpack_resp, manifest_resp) = tokio::join!(
+        client.get(&modpack_url).timeout(std::time::Duration::from_secs(10)).send(),
+        client.get(&manifest_url).timeout(std::time::Duration::from_secs(30)).send(),
+    );
+
+    let modpack_response = modpack_resp
         .map_err(|e| format!("Failed to connect to owner: {}. They may be offline.", e))?;
 
-    if !response.status().is_success() {
-        return Err(format!("Owner returned error: {}", response.status()));
+    if !modpack_response.status().is_success() {
+        return Err(format!("Owner returned error: {}", modpack_response.status()));
     }
 
-    let remote_modpack: Modpack = response
+    let remote_modpack: Modpack = modpack_response
         .json()
         .await
         .map_err(|e| format!("Failed to parse modpack data: {}", e))?;
 
-    let sync_result = sync::hybrid_sync_from_owner(
+    let manifest_response = manifest_resp
+        .map_err(|e| format!("Failed to fetch sync manifest: {}", e))?;
+
+    if !manifest_response.status().is_success() {
+        return Err(format!("Failed to fetch sync manifest: HTTP {}", manifest_response.status()));
+    }
+
+    let sync_manifest: server::SyncManifest = manifest_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse sync manifest: {}", e))?;
+
+    let sync_result = sync::hybrid_sync_from_owner_with_manifest(
         app_handle.clone(),
         modpack.id.clone(),
         modpack.name.clone(),
         owner_address.clone(),
+        sync_manifest,
     )
     .await;
 
@@ -1709,10 +1984,11 @@ async fn check_sync_status(
         .await
         .map_err(|e| format!("Failed to parse: {}", e))?;
 
-    if remote_modpack.id != modpack.id {
+    let expected_owner_id = modpack.owner_modpack_id.as_ref().unwrap_or(&modpack.id);
+    if remote_modpack.id != *expected_owner_id {
         return Ok(SyncStatus {
             is_synced: false,
-            owner_online: false,
+            owner_online: true,
             remote_mod_count: None,
             local_mod_count: modpack.mods.len(),
         });
@@ -2208,6 +2484,7 @@ async fn do_install_thunderstore_instance(
                 community,
                 &version_info.dependencies,
                 &mut visited,
+                None,
             )
             .await
             .unwrap_or_default();
@@ -2411,6 +2688,7 @@ pub struct AppSettings {
     pub memory_max: Option<String>,
     #[serde(default)]
     pub game_paths: HashMap<String, String>,
+    pub last_custom_address: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2550,17 +2828,19 @@ async fn launch_thunderstore_instance(
     let custom_path = settings.game_paths.get(&modpack.game_id).cloned();
 
     let launch_mode = if let Some(custom) = custom_path {
+        let game_dir = std::path::PathBuf::from(&custom);
         let exe_name = game
             .exe_name
             .as_deref()
             .ok_or("Game has no exe name configured")?;
-        let exe_path = std::path::PathBuf::from(&custom).join(exe_name);
-        thunderstore_launcher::LaunchMode::Direct { exe_path }
+        let exe_path = game_dir.join(exe_name);
+        thunderstore_launcher::LaunchMode::Direct { exe_path, game_dir }
     } else if let Some(app_id) = game.steam_app_id {
         let steam_info = steam::detect_steam_install()
-            .map_err(|_| "Steam not found. Please set a custom game path in the modpack settings.".to_string())?;
+            .map_err(|_| "Steam not found. Please set a custom game path in Settings.".to_string())?;
         let steam_exe = steam_info.steam_exe();
-        thunderstore_launcher::LaunchMode::Steam { steam_exe, app_id }
+        let game_dir = steam::find_game_path(&steam_info, app_id)?;
+        thunderstore_launcher::LaunchMode::Steam { steam_exe, app_id, game_dir }
     } else {
         return Err("No game path configured and no Steam app ID available. Please set a custom game path.".to_string());
     };
@@ -2599,6 +2879,7 @@ pub fn run() {
             get_mod_categories,
             get_thunderstore_fetch_progress,
             check_thunderstore_updates,
+            warm_thunderstore_cache,
             update_thunderstore_mod,
             update_all_thunderstore_mods,
             get_mod_loaders,
@@ -2617,6 +2898,7 @@ pub fn run() {
             sync_mod_filenames,
             import_detected_mod,
             get_mod_with_dependencies,
+            get_mod_details,
             get_public_ip,
             begin_sharing,
             stop_sharing,

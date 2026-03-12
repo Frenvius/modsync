@@ -43,7 +43,7 @@ pub async fn search_mods(
 
     let mut filtered: Vec<&ThunderstorePackage> = all_packages
         .iter()
-        .filter(|p| !p.is_deprecated && !p.has_nsfw_content && !p.versions.is_empty())
+        .filter(|p| !p.has_nsfw_content && !p.versions.is_empty())
         .collect();
 
     if let Some(q) = query {
@@ -150,6 +150,7 @@ fn thunderstore_to_modrinth(pkg: &ThunderstorePackage, community: &str) -> Modri
         source: Some("thunderstore".to_string()),
         thunderstore_community: Some(community.to_string()),
         thunderstore_full_name: Some(pkg.full_name.clone()),
+        is_deprecated: pkg.is_deprecated,
     }
 }
 
@@ -158,7 +159,7 @@ pub async fn get_package_versions(
     owner: &str,
     name: &str,
 ) -> Result<Vec<PackageVersionInfo>, String> {
-    api::get_package_versions(community, owner, name).await
+    api::get_package_versions(community, owner, name, None).await
 }
 
 pub async fn get_latest_package_version(
@@ -171,8 +172,9 @@ pub async fn get_latest_package_version(
 pub async fn resolve_dependencies(
     community: &str,
     dep_strings: &[String],
+    cache_dir: Option<&Path>,
 ) -> Result<Vec<ResolvedDep>, String> {
-    cache::resolve_dependencies(community, dep_strings).await
+    cache::resolve_dependencies(community, dep_strings, cache_dir).await
 }
 
 pub async fn download_and_cache(

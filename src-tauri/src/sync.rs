@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+use rayon::prelude::*;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -12,8 +14,17 @@ use std::path::PathBuf;
 use crate::games;
 use crate::instance;
 use crate::modpack::{Modpack, ModpackMod};
-use crate::server::{FileEntry, ProfileManifest, SourceMod};
+use crate::server::{FileEntry, ProfileManifest, SourceMod, SyncManifest};
 use crate::sources::thunderstore;
+
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .user_agent("ModSync/0.1.0 (https://github.com/Frenvius/modpack-sync)")
+        .pool_max_idle_per_host(10)
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .build()
+        .expect("Failed to build HTTP client")
+});
 
 #[derive(Debug, Clone)]
 pub struct SyncActions {
@@ -238,6 +249,7 @@ pub async fn sync_thunderstore_modpack(
             local_mod.enabled,
             &modpack.game_id,
             loader_name,
+            None,
         )
         .await
         {
@@ -275,6 +287,7 @@ pub async fn sync_thunderstore_modpack(
             mod_to_add.enabled,
             &modpack.game_id,
             loader_name,
+            None,
         )
         .await
         {
@@ -425,55 +438,55 @@ fn is_empty_profile(instance_dir: &Path) -> bool {
 }
 
 fn generate_local_manifest(instance_dir: &Path) -> Result<ProfileManifest, String> {
-    let mut files = Vec::new();
-
     if !instance_dir.exists() {
-        return Ok(ProfileManifest { files });
+        return Ok(ProfileManifest { files: Vec::new() });
     }
 
-    for entry in WalkDir::new(instance_dir)
+    let entries: Vec<_> = WalkDir::new(instance_dir)
         .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
-    {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-
-        let path = entry.path();
-        let relative_path = path
-            .strip_prefix(instance_dir)
-            .map_err(|e| e.to_string())?
-            .to_string_lossy()
-            .replace('\\', "/");
-
-        if should_exclude(&relative_path) {
-            continue;
-        }
-
-        let mut file = std::fs::File::open(path)
-            .map_err(|e| format!("Failed to open {}: {}", relative_path, e))?;
-        let mut hasher = Sha256::new();
-        let mut buffer = [0u8; 8192];
-        loop {
-            let bytes_read = file.read(&mut buffer).map_err(|e| e.to_string())?;
-            if bytes_read == 0 {
-                break;
+        .filter(|e| e.file_type().is_file())
+        .filter_map(|e| {
+            let path = e.path().to_path_buf();
+            let relative = path
+                .strip_prefix(instance_dir)
+                .ok()?
+                .to_string_lossy()
+                .replace('\\', "/");
+            if should_exclude(&relative) {
+                None
+            } else {
+                Some((path, relative))
             }
-            hasher.update(&buffer[..bytes_read]);
-        }
-        let hash = format!("{:x}", hasher.finalize());
+        })
+        .collect();
 
-        let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    let files: Result<Vec<FileEntry>, String> = entries
+        .par_iter()
+        .map(|(path, relative_path)| {
+            let mut file = std::fs::File::open(path)
+                .map_err(|e| format!("Failed to open {}: {}", relative_path, e))?;
+            let mut hasher = Sha256::new();
+            let mut buffer = [0u8; 8192];
+            loop {
+                let bytes_read = file.read(&mut buffer).map_err(|e| e.to_string())?;
+                if bytes_read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..bytes_read]);
+            }
+            let hash = format!("{:x}", hasher.finalize());
+            let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+            Ok(FileEntry {
+                path: relative_path.clone(),
+                hash,
+                size: metadata.len(),
+            })
+        })
+        .collect();
 
-        files.push(FileEntry {
-            path: relative_path,
-            hash,
-            size: metadata.len(),
-        });
-    }
-
-    Ok(ProfileManifest { files })
+    Ok(ProfileManifest { files: files? })
 }
 
 fn compute_manifest_diff(local: &ProfileManifest, remote: &ProfileManifest) -> ManifestDiff {
@@ -509,9 +522,8 @@ fn compute_manifest_diff(local: &ProfileManifest, remote: &ProfileManifest) -> M
 
 async fn fetch_remote_manifest(owner_address: &str) -> Result<ProfileManifest, String> {
     let url = format!("http://{}/manifest", owner_address);
-    let client = reqwest::Client::new();
 
-    let response = client
+    let response = HTTP_CLIENT
         .get(&url)
         .timeout(std::time::Duration::from_secs(30))
         .send()
@@ -542,9 +554,8 @@ async fn sync_full_profile(
     );
 
     let url = format!("http://{}/profile", owner_address);
-    let client = reqwest::Client::new();
 
-    let response = client
+    let response = HTTP_CLIENT
         .get(&url)
         .timeout(std::time::Duration::from_secs(300))
         .send()
@@ -631,9 +642,8 @@ async fn download_file(
     instance_dir: &Path,
 ) -> Result<u64, String> {
     let url = format!("http://{}/files/{}", owner_address, file_path);
-    let client = reqwest::Client::new();
 
-    let response = client
+    let response = HTTP_CLIENT
         .get(&url)
         .timeout(std::time::Duration::from_secs(60))
         .send()
@@ -816,8 +826,6 @@ pub async fn sync_from_owner(
     }
 }
 
-use crate::server::SyncManifest;
-
 #[derive(Debug, Clone)]
 struct CachedMod {
     identifier: String,
@@ -832,15 +840,53 @@ struct CachedMod {
 
 type DownloadResult = Result<CachedMod, HybridSyncError>;
 
+fn read_deps_from_cached_manifest(cache_dir: &Path) -> Vec<String> {
+    let manifest_path = cache_dir.join("manifest.json");
+    let Ok(content) = std::fs::read_to_string(manifest_path) else {
+        return vec![];
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return vec![];
+    };
+    json["dependencies"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|d| d.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 async fn download_single_mod_to_cache(
     cache_base: &Path,
     community: &str,
     source_mod: &SourceMod,
+    api_cache_dir: Option<&Path>,
 ) -> DownloadResult {
+    let cache_dir = cache_base
+        .join(&source_mod.identifier)
+        .join(&source_mod.version);
+
+    if cache_dir.exists() && cache_dir.join(".cached").exists() {
+        let dependencies = read_deps_from_cached_manifest(&cache_dir);
+        return Ok(CachedMod {
+            identifier: source_mod.identifier.clone(),
+            version: source_mod.version.clone(),
+            enabled: source_mod.enabled,
+            cache_dir,
+            download_url: String::new(),
+            dependencies,
+            display_name: source_mod.display_name.clone(),
+            is_loader: crate::games::is_loader_package(&source_mod.identifier),
+        });
+    }
+
     let version_info = thunderstore::sync::get_package_version(
         community,
         &source_mod.identifier,
         &source_mod.version,
+        api_cache_dir,
     )
     .await
     .map_err(|e| HybridSyncError {
@@ -880,12 +926,14 @@ async fn download_mods_to_cache(
     mods: Vec<SourceMod>,
     app_handle: AppHandle,
     concurrency_limit: usize,
+    api_cache_dir: Option<PathBuf>,
 ) -> Vec<DownloadResult> {
     let total = mods.len();
     let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let cache_base = std::sync::Arc::new(cache_base);
     let community = std::sync::Arc::new(community);
     let app_handle = std::sync::Arc::new(app_handle);
+    let api_cache_dir = std::sync::Arc::new(api_cache_dir);
 
     let results: Vec<DownloadResult> = stream::iter(mods.into_iter().enumerate())
         .map(|(idx, source_mod)| {
@@ -893,6 +941,7 @@ async fn download_mods_to_cache(
             let community = community.clone();
             let app_handle = app_handle.clone();
             let counter = counter.clone();
+            let api_cache_dir = api_cache_dir.clone();
 
             async move {
                                 let current = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
@@ -910,7 +959,7 @@ async fn download_mods_to_cache(
                     }),
                 );
 
-                let result = download_single_mod_to_cache(&*cache_base, &*community, &source_mod).await;
+                let result = download_single_mod_to_cache(&*cache_base, &*community, &source_mod, api_cache_dir.as_deref()).await;
 
                                 let status = if result.is_ok() { "downloaded" } else { "failed" };
                 let _ = app_handle.emit(
@@ -977,6 +1026,11 @@ fn install_cached_mods(
     let installer = ModInstaller::new(instance_dir.to_path_buf(), game_id, loader);
 
     for (idx, cached_mod) in cached_mods.iter().enumerate() {
+        if mods_list.iter().any(|m| m.name == cached_mod.identifier) {
+            installed.push(cached_mod.identifier.clone());
+            continue;
+        }
+
         let _ = app_handle.emit(
             "sync:progress",
             serde_json::json!({
@@ -988,11 +1042,6 @@ fn install_cached_mods(
                 "action": "installing"
             }),
         );
-
-        if mods_list.iter().any(|m| m.name == cached_mod.identifier) {
-            installed.push(cached_mod.identifier.clone());
-            continue;
-        }
 
         let (author, display_name) = cached_mod
             .identifier
@@ -1069,6 +1118,7 @@ async fn resolve_and_cache_dependencies(
     existing_mods: &[String],
     app_handle: AppHandle,
     concurrency_limit: usize,
+    api_cache_dir: Option<PathBuf>,
 ) -> Vec<CachedMod> {
     use crate::sources::thunderstore::cache::resolve_dependencies_with_visited;
     use std::collections::HashSet;
@@ -1107,6 +1157,7 @@ async fn resolve_and_cache_dependencies(
         &community,
         &all_deps,
         &mut resolve_visited,
+        api_cache_dir.as_deref(),
     )
     .await
     {
@@ -1150,6 +1201,7 @@ async fn resolve_and_cache_dependencies(
         dep_source_mods,
         app_handle,
         concurrency_limit,
+        api_cache_dir,
     )
     .await;
     let (cached_deps, _errors) = partition_download_results(results);
@@ -1159,9 +1211,8 @@ async fn resolve_and_cache_dependencies(
 
 async fn fetch_sync_manifest(owner_address: &str) -> Result<SyncManifest, String> {
     let url = format!("http://{}/sync-manifest", owner_address);
-    let client = reqwest::Client::new();
 
-    let response = client
+    let response = HTTP_CLIENT
         .get(&url)
         .timeout(std::time::Duration::from_secs(30))
         .send()
@@ -1181,7 +1232,7 @@ async fn fetch_sync_manifest(owner_address: &str) -> Result<SyncManifest, String
         .map_err(|e| format!("Failed to parse sync manifest: {}", e))
 }
 
-const DOWNLOAD_CONCURRENCY: usize = 4;
+const DOWNLOAD_CONCURRENCY: usize = 8;
 
 fn compute_file_hash(path: &std::path::Path) -> Result<String, std::io::Error> {
     let mut file = std::fs::File::open(path)?;
@@ -1197,11 +1248,63 @@ fn compute_file_hash(path: &std::path::Path) -> Result<String, std::io::Error> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+fn mods_already_synced(instance_dir: &Path, source_mods: &[SourceMod]) -> bool {
+    let Ok(all_local) = thunderstore::profile::load_mods_yml(instance_dir) else {
+        return false;
+    };
+
+    let local_mods: Vec<_> = all_local
+        .into_iter()
+        .filter(|m| !games::is_loader_package(&m.name))
+        .collect();
+
+    if local_mods.len() != source_mods.len() {
+        return false;
+    }
+
+    let source_set: HashSet<(&str, &str)> = source_mods
+        .iter()
+        .map(|m| (m.identifier.as_str(), m.version.as_str()))
+        .collect();
+
+    local_mods.iter().all(|m| {
+        let ver = m.version_number.to_string();
+        source_set.contains(&(m.name.as_str(), ver.as_str()))
+    })
+}
+
 pub async fn hybrid_sync_from_owner(
     app_handle: AppHandle,
     modpack_id: String,
     modpack_name: String,
     owner_address: String,
+) -> Result<HybridSyncResult, String> {
+    let _ = app_handle.emit(
+        "sync:progress",
+        serde_json::json!({
+            "phase": "connecting",
+            "message": "Connecting to owner..."
+        }),
+    );
+
+    let manifest = fetch_sync_manifest(&owner_address).await?;
+
+    hybrid_sync_from_owner_with_manifest(
+        app_handle,
+        modpack_id,
+        modpack_name,
+        owner_address,
+        manifest,
+    )
+    .await
+}
+
+pub async fn hybrid_sync_from_owner_with_manifest(
+    app_handle: AppHandle,
+    modpack_id: String,
+    modpack_name: String,
+    owner_address: String,
+    manifest: SyncManifest,
 ) -> Result<HybridSyncResult, String> {
     let _ = instance::get_or_create_folder_name(&app_handle, &modpack_id, &modpack_name);
 
@@ -1212,22 +1315,10 @@ pub async fn hybrid_sync_from_owner(
             .map_err(|e| format!("Failed to create instance directory: {}", e))?;
     }
 
-    let manifest = fetch_sync_manifest(&owner_address).await?;
+    let mods_in_sync = mods_already_synced(&instance_dir, &manifest.source_mods);
 
     let total_mods = manifest.source_mods.len();
     let total_files = manifest.p2p_files.len();
-
-    let _ = app_handle.emit(
-        "sync:started",
-        serde_json::json!({
-            "mode": "hybrid",
-            "total_mods": total_mods,
-            "total_configs": total_files,
-            "message": "Starting hybrid sync with parallel downloads...",
-            "parallel": true,
-            "concurrency": DOWNLOAD_CONCURRENCY
-        }),
-    );
 
     let mut result = HybridSyncResult {
         mods_downloaded: vec![],
@@ -1237,9 +1328,31 @@ pub async fn hybrid_sync_from_owner(
         bytes_from_p2p: 0,
     };
 
-    if manifest.mod_source == "thunderstore" {
+    if !mods_in_sync && manifest.mod_source == "thunderstore" {
+        let _ = app_handle.emit(
+            "sync:started",
+            serde_json::json!({
+                "mode": "hybrid",
+                "total_mods": total_mods,
+                "total_configs": total_files,
+                "message": "Starting hybrid sync with parallel downloads...",
+                "parallel": true,
+                "concurrency": DOWNLOAD_CONCURRENCY
+            }),
+        );
+    }
+
+    if !mods_in_sync && manifest.mod_source == "thunderstore" {
         if let Some(community) = &manifest.community {
             let cache_base = instance::get_cache_dir(&app_handle)?;
+            let api_cache_dir = cache_base
+                .parent()
+                .map(|p| p.to_path_buf());
+
+            if let Some(ref acd) = api_cache_dir {
+                let _ = thunderstore::api::load_cache_from_disk(community, acd);
+            }
+
             let game = games::get_game(&manifest.game_id);
             let loader_config = game.as_ref().and_then(|g| g.loader.as_ref());
             let loader_name = loader_config.map(|lc| lc.loader_type.name());
@@ -1282,6 +1395,7 @@ pub async fn hybrid_sync_from_owner(
                     manifest.source_mods.clone(),
                     app_handle.clone(),
                     DOWNLOAD_CONCURRENCY,
+                    api_cache_dir.clone(),
                 )
                 .await;
 
@@ -1304,6 +1418,7 @@ pub async fn hybrid_sync_from_owner(
                     &existing_mods,
                     app_handle.clone(),
                     DOWNLOAD_CONCURRENCY,
+                    api_cache_dir.clone(),
                 )
                 .await;
 
@@ -1336,11 +1451,12 @@ pub async fn hybrid_sync_from_owner(
     }
 
     if !manifest.p2p_files.is_empty() {
+        let inst_dir_for_hash = instance_dir.clone();
         let files_to_download: Vec<_> = manifest
             .p2p_files
-            .iter()
+            .par_iter()
             .filter(|f| {
-                let local_path = instance_dir.join(&f.path);
+                let local_path = inst_dir_for_hash.join(&f.path);
                 if !local_path.exists() {
                     return true;
                 }
@@ -1349,6 +1465,7 @@ pub async fn hybrid_sync_from_owner(
                     Err(_) => true,
                 }
             })
+            .cloned()
             .collect();
 
         let files_to_download_count = files_to_download.len();
@@ -1362,7 +1479,23 @@ pub async fn hybrid_sync_from_owner(
             }),
         );
 
-        for (idx, p2p_file) in files_to_download.iter().enumerate() {
+        let paths_to_download: Vec<String> =
+            files_to_download.iter().map(|f| f.path.clone()).collect();
+
+        let download_results: Vec<_> = stream::iter(paths_to_download)
+            .map(|file_path| {
+                let owner_addr = owner_address.clone();
+                let inst_dir = instance_dir.clone();
+                async move {
+                    let res = download_file(&owner_addr, &file_path, &inst_dir).await;
+                    (file_path, res)
+                }
+            })
+            .buffer_unordered(8)
+            .collect()
+            .await;
+
+        for (idx, (file_path, res)) in download_results.into_iter().enumerate() {
             let _ = app_handle.emit(
                 "sync:progress",
                 serde_json::json!({
@@ -1370,21 +1503,43 @@ pub async fn hybrid_sync_from_owner(
                     "phase": "configs",
                     "current": idx + 1,
                     "total": files_to_download_count,
-                    "file_name": &p2p_file.path,
+                    "file_name": &file_path,
                     "action": "downloading_file"
                 }),
             );
-
-            match download_file(&owner_address, &p2p_file.path, &instance_dir).await {
+            match res {
                 Ok(size) => {
                     result.bytes_from_p2p += size;
                     result.configs_synced += 1;
                 }
                 Err(e) => {
-                    eprintln!("Failed to download {}: {}", p2p_file.path, e);
+                    eprintln!("Failed to download {}: {}", file_path, e);
                 }
             }
         }
+
+        let sync_patterns = ["BepInEx/config/", "BepInEx/plugins/", "config/"];
+        let owner_paths: HashSet<&str> = manifest.p2p_files.iter().map(|f| f.path.as_str()).collect();
+
+        let stale_files: Vec<_> = WalkDir::new(&instance_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| {
+                let path = e.path().to_path_buf();
+                let relative = path.strip_prefix(&instance_dir).ok()?.to_string_lossy().replace('\\', "/");
+                if sync_patterns.iter().any(|p| relative.starts_with(p)) && !owner_paths.contains(relative.as_str()) {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        stale_files.par_iter().for_each(|path| {
+            let _ = std::fs::remove_file(path);
+        });
     }
 
     let _ = app_handle.emit("sync:completed", &result);

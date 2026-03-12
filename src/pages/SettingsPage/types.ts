@@ -7,4 +7,5 @@ export interface AppSettings {
   java_path: null | string;
   memory_min: null | string;
   memory_max: null | string;
+  last_custom_address: null | string;
 }
