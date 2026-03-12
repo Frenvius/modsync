@@ -139,8 +139,7 @@ fn thunderstore_to_modrinth(pkg: &ThunderstorePackage, community: &str) -> Modri
         downloads: pkg.total_downloads(),
         icon_url: latest.and_then(|v| v.icon.clone()),
         author: pkg.owner.clone(),
-        versions: pkg
-            .latest()
+        versions: latest
             .map(|v| vec![v.version_number.clone()])
             .unwrap_or_default(),
         follows: pkg.rating_score,

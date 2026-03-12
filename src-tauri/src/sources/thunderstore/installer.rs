@@ -344,29 +344,16 @@ pub async fn install_mod_full(
         .map(|(a, n)| (a.to_string(), n.to_string()))
         .unwrap_or_else(|| ("unknown".to_string(), full_name.to_string()));
 
-    let manifest = if is_loader {
-        ManifestV2::new_loader(
-            full_name,
-            &author,
-            &display_name,
-            version,
-            None,
-            None,
-            dependencies.to_vec(),
-            None,
-        )
-    } else {
-        ManifestV2::new(
-            full_name,
-            &author,
-            &display_name,
-            version,
-            None,
-            None,
-            dependencies.to_vec(),
-            None,
-        )
-    };
+    let manifest = ManifestV2::new(
+        full_name,
+        &author,
+        &display_name,
+        version,
+        None,
+        None,
+        dependencies.to_vec(),
+        None,
+    );
 
     let installer = ModInstaller::new(instance_dir.to_path_buf(), game_id, loader);
 

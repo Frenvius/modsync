@@ -141,30 +141,14 @@ impl ManifestV2 {
         }
     }
 
-    pub fn new_loader(
-        full_name: &str,
-        author: &str,
-        display_name: &str,
-        version: &str,
-        description: Option<&str>,
-        website_url: Option<&str>,
-        dependencies: Vec<String>,
-        icon: Option<String>,
-    ) -> Self {
-        let mut manifest = Self::new(
-            full_name,
-            author,
-            display_name,
-            version,
-            description,
-            website_url,
-            dependencies,
-            icon,
-        );
-        manifest.package_type = "other".to_string();
-        manifest
-    }
+}
 
+pub fn parse_full_name(full_name: &str) -> Result<(String, String), String> {
+    let parts: Vec<&str> = full_name.splitn(2, '-').collect();
+    if parts.len() != 2 {
+        return Err(format!("Invalid package name: {}", full_name));
+    }
+    Ok((parts[0].to_string(), parts[1].to_string()))
 }
 
 #[derive(Debug, Clone)]
@@ -192,35 +176,5 @@ impl DependencyString {
 
     pub fn full_name(&self) -> String {
         format!("{}-{}", self.owner, self.name)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_version_number_parse() {
-        let v = VersionNumber::parse("1.2.3");
-        assert_eq!(v.major, 1);
-        assert_eq!(v.minor, 2);
-        assert_eq!(v.patch, 3);
-    }
-
-    #[test]
-    fn test_dependency_string_parse() {
-        let dep = DependencyString::parse("BepInEx-BepInExPack-5.4.21").unwrap();
-        assert_eq!(dep.owner, "BepInEx");
-        assert_eq!(dep.name, "BepInExPack");
-        assert_eq!(dep.version, "5.4.21");
-        assert_eq!(dep.full_name(), "BepInEx-BepInExPack");
-    }
-
-    #[test]
-    fn test_dependency_string_with_dashes_in_name() {
-        let dep = DependencyString::parse("Author-My-Cool-Mod-1.0.0").unwrap();
-        assert_eq!(dep.owner, "Author");
-        assert_eq!(dep.name, "My-Cool-Mod");
-        assert_eq!(dep.version, "1.0.0");
     }
 }

@@ -7,19 +7,12 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use crate::http::HTTP_CLIENT;
+
+use super::manifest;
+
 const THUNDERSTORE_API_BASE: &str = "https://thunderstore.io";
-const USER_AGENT: &str = "ModSync/0.1.0 (https://github.com/Frenvius/modpack-sync)";
 const MEMORY_CACHE_DURATION: Duration = Duration::from_secs(300);
-
-
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .pool_max_idle_per_host(10)
-        .pool_idle_timeout(Duration::from_secs(90))
-        .build()
-        .expect("Failed to build HTTP client")
-});
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ThunderstorePackage {
@@ -493,7 +486,7 @@ pub async fn get_latest_version(
     community: &str,
     full_name: &str,
 ) -> Result<PackageVersionInfo, String> {
-    let (owner, name) = parse_full_name(full_name)?;
+    let (owner, name) = manifest::parse_full_name(full_name)?;
     let versions = get_package_versions(community, &owner, &name, None).await?;
     versions
         .into_iter()
@@ -501,13 +494,6 @@ pub async fn get_latest_version(
         .ok_or_else(|| format!("No versions found for {}", full_name))
 }
 
-fn parse_full_name(full_name: &str) -> Result<(String, String), String> {
-    let parts: Vec<&str> = full_name.splitn(2, '-').collect();
-    if parts.len() != 2 {
-        return Err(format!("Invalid package name: {}", full_name));
-    }
-    Ok((parts[0].to_string(), parts[1].to_string()))
-}
 
 pub async fn get_package_readme(
     owner: &str,

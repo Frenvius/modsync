@@ -1,9 +1,6 @@
-use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::io::Read;
 use std::path::Path;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
@@ -12,18 +9,11 @@ use futures_util::stream::{self, StreamExt};
 use std::path::PathBuf;
 
 use crate::games;
+use crate::http::HTTP_CLIENT;
 use crate::instance;
 use crate::server::{SourceMod, SyncManifest};
 use crate::sources::thunderstore;
-
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    reqwest::Client::builder()
-        .user_agent("ModSync/0.1.0 (https://github.com/Frenvius/modpack-sync)")
-        .pool_max_idle_per_host(10)
-        .pool_idle_timeout(std::time::Duration::from_secs(90))
-        .build()
-        .expect("Failed to build HTTP client")
-});
+use crate::utils;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct HybridSyncResult {
@@ -251,7 +241,6 @@ fn partition_download_results(
 }
 
 fn install_cached_mods(
-    _cache_base: &Path,
     instance_dir: &Path,
     cached_mods: &[CachedMod],
     game_id: &str,
@@ -302,29 +291,16 @@ fn install_cached_mods(
             .map(|(a, n)| (a.to_string(), n.to_string()))
             .unwrap_or_else(|| ("unknown".to_string(), cached_mod.identifier.clone()));
 
-        let manifest = if cached_mod.is_loader {
-            ManifestV2::new_loader(
-                &cached_mod.identifier,
-                &author,
-                &display_name,
-                &cached_mod.version,
-                None,
-                None,
-                cached_mod.dependencies.clone(),
-                None,
-            )
-        } else {
-            ManifestV2::new(
-                &cached_mod.identifier,
-                &author,
-                &display_name,
-                &cached_mod.version,
-                None,
-                None,
-                cached_mod.dependencies.clone(),
-                None,
-            )
-        };
+        let manifest = ManifestV2::new(
+            &cached_mod.identifier,
+            &author,
+            &display_name,
+            &cached_mod.version,
+            None,
+            None,
+            cached_mod.dependencies.clone(),
+            None,
+        );
 
         let install_result = if cached_mod.is_loader {
             installer.install_loader(&cached_mod.cache_dir, &manifest)
@@ -465,17 +441,7 @@ async fn resolve_and_cache_dependencies(
 const DOWNLOAD_CONCURRENCY: usize = 8;
 
 fn compute_file_hash(path: &std::path::Path) -> Result<String, std::io::Error> {
-    let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        let n = file.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+    utils::compute_file_hash(path)
 }
 
 fn mods_already_synced(instance_dir: &Path, source_mods: &[SourceMod]) -> bool {
@@ -640,7 +606,6 @@ pub async fn hybrid_sync_from_owner_with_manifest(
                 );
 
                 let (installed, install_errors) = install_cached_mods(
-                    &cache_base,
                     &instance_dir,
                     &all_cached,
                     &manifest.game_id,

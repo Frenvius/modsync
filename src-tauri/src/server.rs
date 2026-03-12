@@ -7,7 +7,6 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, LazyLock};
@@ -18,6 +17,7 @@ use walkdir::WalkDir;
 
 use crate::games;
 use crate::instance;
+use crate::utils;
 use tauri::Manager;
 use crate::modpack::{Modpack, ModpackMod};
 use crate::sources::thunderstore;
@@ -123,18 +123,8 @@ fn generate_manifest(instance_dir: &std::path::Path) -> Result<ProfileManifest, 
             continue;
         }
 
-        let mut file = std::fs::File::open(path)
-            .map_err(|e| format!("Failed to open {}: {}", relative_path, e))?;
-        let mut hasher = Sha256::new();
-        let mut buffer = [0u8; 8192];
-        loop {
-            let bytes_read = file.read(&mut buffer).map_err(|e| e.to_string())?;
-            if bytes_read == 0 {
-                break;
-            }
-            hasher.update(&buffer[..bytes_read]);
-        }
-        let hash = format!("{:x}", hasher.finalize());
+        let hash = utils::compute_file_hash(path)
+            .map_err(|e| format!("Failed to hash {}: {}", relative_path, e))?;
 
         let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
 
@@ -454,21 +444,10 @@ async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoRespo
             }
         }
 
-        let mut file = match std::fs::File::open(path) {
-            Ok(f) => f,
+        let hash = match utils::compute_file_hash(path) {
+            Ok(h) => h,
             Err(_) => continue,
         };
-        let mut hasher = Sha256::new();
-        let mut buffer = [0u8; 8192];
-        loop {
-            let bytes_read = match file.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(n) => n,
-                Err(_) => break,
-            };
-            hasher.update(&buffer[..bytes_read]);
-        }
-        let hash = format!("{:x}", hasher.finalize());
 
         cache.insert(
             relative_path.clone(),

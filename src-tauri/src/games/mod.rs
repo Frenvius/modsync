@@ -8,8 +8,6 @@ pub const KNOWN_LOADER_PACKAGES: &[&str] = &[
     "denikson-BepInExPack_Valheim",
     "1F31A-BepInEx_Valheim_Full",
     "BepInEx-BepInEx_MonoMod_Loader",
-    "LavaGang-MelonLoader",
-    "VTOL_VR_Modding-MelonLoader",
     "Thunderstore-unreal_shimloader",
     "NotNet-GDWeave",
 ];
@@ -19,7 +17,7 @@ pub fn is_loader_package(full_name: &str) -> bool {
         return true;
     }
     let lower = full_name.to_lowercase();
-    lower.contains("bepinexpack") || lower.contains("melonloader") || lower.ends_with("-shimloader")
+    lower.contains("bepinexpack") || lower.ends_with("-shimloader")
 }
 
 #[derive(Debug, Serialize, Clone)]

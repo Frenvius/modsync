@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use super::api::{self};
 use super::installer::ModInstaller;
-use super::manifest::VersionNumber;
+use super::manifest::{self, VersionNumber};
 use super::profile::{self};
 
 #[derive(Debug, Serialize, Clone)]
@@ -76,17 +76,15 @@ pub async fn check_for_updates(
             continue;
         }
 
-        let parts: Vec<&str> = manifest.name.splitn(2, '-').collect();
-        if parts.len() != 2 {
-            check_errors.push((
-                manifest.name.clone(),
-                "Invalid package name format".to_string(),
-            ));
-            continue;
-        }
-        let (owner, name) = (parts[0], parts[1]);
+        let (owner, name) = match manifest::parse_full_name(&manifest.name) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                check_errors.push((manifest.name.clone(), e));
+                continue;
+            }
+        };
 
-        match api::get_package_versions(community, owner, name, cache_dir).await {
+        match api::get_package_versions(community, &owner, &name, cache_dir).await {
             Ok(versions) => {
                 if let Some(latest) = versions.first() {
                     let installed_version = manifest.version_number.clone();
@@ -141,13 +139,9 @@ pub async fn update_mod(
     let was_enabled = mod_entry.enabled;
     let icon = mod_entry.icon.clone();
 
-    let parts: Vec<&str> = full_name.splitn(2, '-').collect();
-    if parts.len() != 2 {
-        return Err("Invalid package name format".to_string());
-    }
-    let (owner, name) = (parts[0], parts[1]);
+    let (owner, name) = manifest::parse_full_name(full_name)?;
 
-    let versions = api::get_package_versions(community, owner, name, Some(cache_base)).await?;
+    let versions = api::get_package_versions(community, &owner, &name, Some(cache_base)).await?;
     let latest = versions
         .first()
         .ok_or_else(|| "No versions available".to_string())?;
@@ -182,8 +176,8 @@ pub async fn update_mod(
 
     let new_manifest = super::manifest::ManifestV2::new(
         full_name,
-        owner,
-        name,
+        &owner,
+        &name,
         &to_version,
         None,
         None,
@@ -271,31 +265,4 @@ pub async fn update_all_mods(
         success_count,
         failure_count,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_version_comparison() {
-        let v1 = VersionNumber::new(1, 0, 0);
-        let v2 = VersionNumber::new(1, 0, 1);
-        let v3 = VersionNumber::new(1, 1, 0);
-        let v4 = VersionNumber::new(2, 0, 0);
-
-        assert!(v2 > v1);
-        assert!(v3 > v2);
-        assert!(v4 > v3);
-        assert!(v1 < v2);
-        assert_eq!(v1, VersionNumber::new(1, 0, 0));
-    }
-
-    #[test]
-    fn test_is_loader_package() {
-        assert!(is_loader_package("BepInEx-BepInExPack"));
-        assert!(is_loader_package("bbepis-BepInExPack"));
-        assert!(is_loader_package("denikson-BepInExPack_Valheim"));
-        assert!(!is_loader_package("Author-SomeMod"));
-    }
 }

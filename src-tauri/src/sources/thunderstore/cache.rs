@@ -1,19 +1,11 @@
-use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::io::Read as IoRead;
 use std::path::{Path, PathBuf};
 
+use crate::http::HTTP_CLIENT;
+
 use super::api;
 use super::manifest::DependencyString;
-
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    reqwest::Client::builder()
-        .user_agent("ModSync/0.1.0 (https://github.com/Frenvius/modpack-sync)")
-        .pool_max_idle_per_host(10)
-        .pool_idle_timeout(std::time::Duration::from_secs(90))
-        .build()
-        .expect("Failed to build HTTP client")
-});
 
 #[derive(Debug, Clone)]
 pub struct ResolvedDep {

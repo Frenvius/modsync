@@ -1,6 +1,7 @@
 mod auth;
 mod downloader;
 mod games;
+pub(crate) mod http;
 mod instance;
 mod launcher;
 mod loaders;
@@ -13,6 +14,7 @@ mod steam;
 mod storage;
 mod sync;
 mod thunderstore_launcher;
+pub(crate) mod utils;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use games::GameInfo;
