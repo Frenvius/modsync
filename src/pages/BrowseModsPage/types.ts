@@ -4,8 +4,8 @@ export interface ModrinthMod {
   author: string;
   follows: number;
   downloads: number;
-  versions: string[];
   description: string;
+  date_modified: string;
   categories: string[];
   icon_url: null | string;
   is_deprecated?: boolean;

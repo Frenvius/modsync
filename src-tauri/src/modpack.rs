@@ -19,6 +19,7 @@ pub struct Modpack {
     pub game_version: String,
     #[serde(default)]
     pub loader: Option<String>,
+    #[serde(default)]
     pub mods: Vec<ModpackMod>,
     pub is_owner: bool,
     pub share_code: Option<String>,
@@ -30,6 +31,73 @@ pub struct Modpack {
     pub image_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModpackIdentity {
+    pub id: String,
+    #[serde(default = "default_game_id")]
+    pub game_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    #[serde(alias = "minecraft_version")]
+    pub game_version: String,
+    #[serde(default)]
+    pub loader: Option<String>,
+    pub is_owner: bool,
+    pub share_code: Option<String>,
+    #[serde(default)]
+    pub owner_address: Option<String>,
+    #[serde(default)]
+    pub owner_modpack_id: Option<String>,
+    #[serde(default)]
+    pub image_path: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(default, rename = "mods", skip_serializing)]
+    pub legacy_mods: Option<Vec<ModpackMod>>,
+}
+
+impl From<&Modpack> for ModpackIdentity {
+    fn from(m: &Modpack) -> Self {
+        Self {
+            id: m.id.clone(),
+            game_id: m.game_id.clone(),
+            name: m.name.clone(),
+            description: m.description.clone(),
+            game_version: m.game_version.clone(),
+            loader: m.loader.clone(),
+            is_owner: m.is_owner,
+            share_code: m.share_code.clone(),
+            owner_address: m.owner_address.clone(),
+            owner_modpack_id: m.owner_modpack_id.clone(),
+            image_path: m.image_path.clone(),
+            created_at: m.created_at.clone(),
+            updated_at: m.updated_at.clone(),
+            legacy_mods: None,
+        }
+    }
+}
+
+impl ModpackIdentity {
+    pub fn into_modpack(self, mods: Vec<ModpackMod>) -> Modpack {
+        Modpack {
+            id: self.id,
+            game_id: self.game_id,
+            name: self.name,
+            description: self.description,
+            game_version: self.game_version,
+            loader: self.loader,
+            mods,
+            is_owner: self.is_owner,
+            share_code: self.share_code,
+            owner_address: self.owner_address,
+            owner_modpack_id: self.owner_modpack_id,
+            image_path: self.image_path,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

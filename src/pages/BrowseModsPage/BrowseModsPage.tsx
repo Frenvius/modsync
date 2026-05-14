@@ -1,12 +1,21 @@
 import React from 'react';
 
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowDownAZ, Clock, Filter, Loader2, Search, Sparkles, Star, TrendingUp } from 'lucide-react';
+import { ArrowDownAZ, Clock, Loader2, Search, Sparkles, Star, TrendingUp } from 'lucide-react';
 
+import { ActiveFilterBadges, TagMultiSelect } from '~/components/TagMultiSelect';
 import { Input } from '~/components/ui/input';
-import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Progress } from '~/components/ui/progress';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious
+} from '~/components/ui/pagination';
 import { ModCard } from '~/components/modpack/ModCard';
 import { useGame } from '~/usecase/contexts/GameContext';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
@@ -20,7 +29,8 @@ import { Category, FetchProgress, GameVersion, ModLoader, ModrinthMod, SearchRes
 export default function BrowseModsPage() {
   const { selectedGame } = useGame();
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [selectedCategory, setSelectedCategory] = React.useState('All');
+  const [selectedCategories, setSelectedCategories] = React.useState<string[]>([]);
+  const [excludedCategories, setExcludedCategories] = React.useState<string[]>([]);
   const [selectedVersion, setSelectedVersion] = React.useState('');
   const [selectedLoader, setSelectedLoader] = React.useState('all');
   const [sortBy, setSortBy] = React.useState('downloads');
@@ -32,9 +42,8 @@ export default function BrowseModsPage() {
   const [loaders, setLoaders] = React.useState<ModLoader[]>([]);
 
   const [loading, setLoading] = React.useState(false);
-  const [loadingMore, setLoadingMore] = React.useState(false);
   const [totalHits, setTotalHits] = React.useState(0);
-  const [offset, setOffset] = React.useState(0);
+  const [currentPage, setCurrentPage] = React.useState(1);
   const [error, setError] = React.useState<null | string>(null);
   const [fetchProgress, setFetchProgress] = React.useState<FetchProgress | null>(null);
 
@@ -79,7 +88,8 @@ export default function BrowseModsPage() {
 
   React.useEffect(() => {
     setMods([]);
-    setSelectedCategory('All');
+    setSelectedCategories([]);
+    setExcludedCategories([]);
     setSelectedVersion('');
     setSelectedLoader('all');
     setSortBy('downloads');
@@ -135,27 +145,33 @@ export default function BrowseModsPage() {
     };
   }, [loading, isThunderstore, thunderstoreCommunity]);
 
+  const ITEMS_PER_PAGE = 20;
+  const totalPages = Math.ceil(totalHits / ITEMS_PER_PAGE);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedQuery, selectedVersion, selectedLoader, selectedCategories, excludedCategories, sortBy]);
+
   React.useEffect(() => {
     async function searchMods() {
       setLoading(true);
       setError(null);
-      setOffset(0);
 
       try {
         const result = await invoke<SearchResult>('search_mods', {
           gameId,
-          offset: 0,
-          limit: 20,
+          offset: (currentPage - 1) * ITEMS_PER_PAGE,
+          limit: ITEMS_PER_PAGE,
           sort: sortBy,
           query: debouncedQuery || null,
           gameVersion: selectedVersion || null,
           loader: requiresLoader && selectedLoader !== 'all' ? selectedLoader : null,
-          categories: selectedCategory !== 'All' ? [selectedCategory.toLowerCase()] : null
+          categories: selectedCategories.length > 0 ? selectedCategories.map((c) => c.toLowerCase()) : null,
+          excludedCategories: excludedCategories.length > 0 ? excludedCategories.map((c) => c.toLowerCase()) : null
         });
 
         setMods(result.mods);
         setTotalHits(result.total_hits);
-        setOffset(result.limit);
       } catch (err) {
         setError(err as string);
         console.error('Search failed:', err);
@@ -165,7 +181,7 @@ export default function BrowseModsPage() {
     }
 
     searchMods();
-  }, [gameId, debouncedQuery, selectedVersion, selectedLoader, selectedCategory, sortBy]);
+  }, [gameId, debouncedQuery, selectedVersion, selectedLoader, selectedCategories, excludedCategories, sortBy, currentPage]);
 
   React.useEffect(() => {
     if (!selectedModSlug) {
@@ -189,36 +205,27 @@ export default function BrowseModsPage() {
       .finally(() => setDetailLoading(false));
   }, [selectedModSlug, selectedGame?.mod_source, thunderstoreCommunity, selectedVersion, selectedLoader, requiresLoader]);
 
-  const loadMore = async () => {
-    if (loadingMore || offset >= totalHits) return;
-
-    setLoadingMore(true);
-    try {
-      const result = await invoke<SearchResult>('search_mods', {
-        gameId,
-        offset,
-        limit: 20,
-        sort: sortBy,
-        query: debouncedQuery || null,
-        gameVersion: selectedVersion || null,
-        loader: requiresLoader && selectedLoader !== 'all' ? selectedLoader : null,
-        categories: selectedCategory !== 'All' ? [selectedCategory.toLowerCase()] : null
-      });
-
-      setMods((prev) => [...prev, ...result.mods]);
-      setOffset((prev) => prev + result.limit);
-    } catch (err) {
-      console.error('Load more failed:', err);
-    } finally {
-      setLoadingMore(false);
+  const getPageNumbers = () => {
+    const pages: (number | 'ellipsis')[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push('ellipsis');
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push('ellipsis');
+      pages.push(totalPages);
     }
+    return pages;
   };
 
   const handleToggleMod = (modSlug: string) => {
     setInstalledMods((prev) => (prev.includes(modSlug) ? prev.filter((n) => n !== modSlug) : [...prev, modSlug]));
   };
 
-  const displayCategories = ['All', ...categories.map((c) => capitalize(c.name))];
+  const categoryNames = categories.map((c) => capitalize(c.name));
 
   const sourceLabel = isThunderstore ? 'Thunderstore' : 'Modrinth';
 
@@ -301,26 +308,34 @@ export default function BrowseModsPage() {
             </SelectContent>
           </Select>
 
-          {requiresLoader && (
-            <Button size="icon" variant="outline">
-              <Filter className="w-4 h-4" />
-            </Button>
+          {categoryNames.length > 0 && (
+            <>
+              <TagMultiSelect
+                categories={categoryNames}
+                selected={selectedCategories}
+                onSelectedChange={setSelectedCategories}
+                disabledItems={excludedCategories}
+                label="Tags"
+              />
+              <TagMultiSelect
+                categories={categoryNames}
+                selected={excludedCategories}
+                onSelectedChange={setExcludedCategories}
+                disabledItems={selectedCategories}
+                label="Exclude"
+                variant="destructive"
+              />
+            </>
           )}
         </div>
       </div>
-      {categories.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {displayCategories.slice(0, 15).map((category) => (
-            <Badge
-              key={category}
-              onClick={() => setSelectedCategory(category)}
-              variant={selectedCategory === category ? 'default' : 'outline'}
-              className="cursor-pointer hover:bg-primary/20 transition-colors px-3 py-1.5"
-            >
-              {category}
-            </Badge>
-          ))}
-        </div>
+      {(selectedCategories.length > 0 || excludedCategories.length > 0) && (
+        <ActiveFilterBadges
+          selectedCategories={selectedCategories}
+          excludedCategories={excludedCategories}
+          onRemoveSelected={(cat) => setSelectedCategories((prev) => prev.filter((c) => c !== cat))}
+          onRemoveExcluded={(cat) => setExcludedCategories((prev) => prev.filter((c) => c !== cat))}
+        />
       )}
       {!loading && <p className="text-sm text-muted-foreground">{totalHits.toLocaleString()} mods found</p>}
       {error && (
@@ -359,26 +374,47 @@ export default function BrowseModsPage() {
               isSelected={selectedModSlug === mod.slug}
               downloads={formatDownloads(mod.downloads)}
               isInstalled={installedMods.includes(mod.slug)}
-              version={selectedVersion || mod.versions[0] || ''}
+              dateModified={mod.date_modified}
               categories={mod.categories.map((c) => capitalize(c))}
               isDeprecated={mod.is_deprecated}
             />
           ))}
         </div>
       )}
-      {!loading && !error && mods.length > 0 && offset < totalHits && (
-        <div className="text-center pt-4">
-          <Button size="lg" variant="outline" onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Loading...
-              </>
-            ) : (
-              'Load More Mods'
+      {!loading && !error && totalPages > 1 && (
+        <Pagination className="pt-4">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                className={currentPage <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+              />
+            </PaginationItem>
+            {getPageNumbers().map((page, i) =>
+              page === 'ellipsis' ? (
+                <PaginationItem key={`ellipsis-${i}`}>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              ) : (
+                <PaginationItem key={page}>
+                  <PaginationLink
+                    className="cursor-pointer"
+                    isActive={currentPage === page}
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </PaginationLink>
+                </PaginationItem>
+              )
             )}
-          </Button>
-        </div>
+            <PaginationItem>
+              <PaginationNext
+                className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
       )}
       {!loading && !error && mods.length === 0 && (
         <div className="text-center py-12">

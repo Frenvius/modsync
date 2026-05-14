@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { AlertCircle, Loader2, X } from 'lucide-react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -143,10 +144,9 @@ export function ModDetailPanel({ mod, loading, error, onClose, mode }: ModDetail
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Issues</p>
                       <a
-                        href={mod.issues_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-primary hover:underline truncate block"
+                        href="#"
+                        onClick={(e) => { e.preventDefault(); openUrl(mod.issues_url!); }}
+                        className="text-xs text-primary hover:underline truncate block cursor-pointer"
                       >
                         {mod.issues_url}
                       </a>

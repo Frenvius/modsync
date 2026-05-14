@@ -133,7 +133,7 @@ pub async fn fetch_all_packages(
         }
     }
 
-    let community_cache_dir = cache_dir.join("thunderstore").join(community);
+    let community_cache_dir = cache_dir.join(community);
     std::fs::create_dir_all(&community_cache_dir)
         .map_err(|e| format!("Failed to create cache dir: {}", e))?;
 
@@ -397,10 +397,7 @@ async fn validate_and_refresh_cache(
 }
 
 pub fn load_cache_from_disk(community: &str, cache_dir: &Path) -> Result<bool, String> {
-    let packages_path = cache_dir
-        .join("thunderstore")
-        .join(community)
-        .join("packages.json");
+    let packages_path = cache_dir.join(community).join("packages.json");
 
     if !packages_path.exists() {
         return Ok(false);

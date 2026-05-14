@@ -1,8 +1,10 @@
-import { ExternalLink, Globe } from 'lucide-react';
+import { Clock, ExternalLink, Globe } from 'lucide-react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { formatDownloads } from '~/usecase/util/stringUtils';
+import { formatDate } from '~/usecase/util/dateUtils';
 
 import { ModDetails } from './types';
 
@@ -46,12 +48,17 @@ export function ModDetailHeader({ mod, mode, onAddClick }: ModDetailHeaderProps)
               </Badge>
             )}
             <span className="text-xs text-muted-foreground">{formattedDownloads} downloads</span>
+            {mod.date_updated && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="w-3 h-3" />
+                {formatDate(mod.date_updated)}
+              </span>
+            )}
             {mod.website_url && (
               <a
-                href={mod.website_url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                href="#"
+                onClick={(e) => { e.preventDefault(); openUrl(mod.website_url!); }}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
               >
                 <Globe className="w-3 h-3" />
                 Website
@@ -60,10 +67,9 @@ export function ModDetailHeader({ mod, mode, onAddClick }: ModDetailHeaderProps)
             )}
             {mod.source_url && mod.source_url !== mod.website_url && (
               <a
-                href={mod.source_url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                href="#"
+                onClick={(e) => { e.preventDefault(); openUrl(mod.source_url!); }}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
               >
                 Source
                 <ExternalLink className="w-2.5 h-2.5" />

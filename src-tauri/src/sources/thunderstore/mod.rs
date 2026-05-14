@@ -33,6 +33,7 @@ pub async fn search_mods(
     community: &str,
     query: Option<&str>,
     categories_filter: Option<&[String]>,
+    excluded_categories: Option<&[String]>,
     sort: Option<&str>,
     page: Option<i32>,
     page_size: Option<i32>,
@@ -70,6 +71,18 @@ pub async fn search_mods(
                     p.categories.iter().map(|c| c.to_lowercase()).collect();
                 cats.iter()
                     .all(|c| pkg_cats_lower.contains(&c.to_lowercase()))
+            });
+        }
+    }
+
+    if let Some(excluded) = excluded_categories {
+        if !excluded.is_empty() {
+            filtered.retain(|p| {
+                let pkg_cats_lower: Vec<String> =
+                    p.categories.iter().map(|c| c.to_lowercase()).collect();
+                !excluded
+                    .iter()
+                    .any(|c| pkg_cats_lower.contains(&c.to_lowercase()))
             });
         }
     }

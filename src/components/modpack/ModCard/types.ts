@@ -2,7 +2,7 @@ export interface ModCardProps {
   slug: string;
   name: string;
   author: string;
-  version: string;
+  dateModified: string;
   iconUrl?: string;
   downloads: string;
   onAdd?: () => void;

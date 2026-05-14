@@ -43,17 +43,8 @@ pub struct BatchUpdateResult {
     pub failure_count: usize,
 }
 
-const LOADER_PACKAGES: &[&str] = &[
-    "BepInExPack",
-    "BepInEx-BepInExPack",
-    "bbepis-BepInExPack",
-    "BepInEx_Wormhole",
-];
-
 fn is_loader_package(name: &str) -> bool {
-    LOADER_PACKAGES
-        .iter()
-        .any(|loader| name.contains(loader) || name.to_lowercase().contains("bepinex"))
+    crate::games::is_loader_package(name)
 }
 
 pub async fn check_for_updates(
@@ -120,7 +111,8 @@ pub async fn check_for_updates(
 
 ///
 pub async fn update_mod(
-    cache_base: &Path,
+    downloads_dir: &Path,
+    api_cache_dir: &Path,
     instance_dir: &Path,
     community: &str,
     full_name: &str,
@@ -141,7 +133,8 @@ pub async fn update_mod(
 
     let (owner, name) = manifest::parse_full_name(full_name)?;
 
-    let versions = api::get_package_versions(community, &owner, &name, Some(cache_base)).await?;
+    let versions =
+        api::get_package_versions(community, &owner, &name, Some(api_cache_dir)).await?;
     let latest = versions
         .first()
         .ok_or_else(|| "No versions available".to_string())?;
@@ -167,7 +160,7 @@ pub async fn update_mod(
     }
 
     let cache_dir = super::cache::download_and_extract(
-        cache_base,
+        downloads_dir,
         full_name,
         &to_version,
         &latest.download_url,
@@ -216,7 +209,8 @@ pub async fn update_mod(
 }
 
 pub async fn update_all_mods(
-    cache_base: &Path,
+    downloads_dir: &Path,
+    api_cache_dir: &Path,
     instance_dir: &Path,
     community: &str,
     game_id: &str,
@@ -224,7 +218,7 @@ pub async fn update_all_mods(
     skip_loaders: bool,
 ) -> Result<BatchUpdateResult, String> {
     let check_result =
-        check_for_updates(community, instance_dir, skip_loaders, Some(cache_base)).await?;
+        check_for_updates(community, instance_dir, skip_loaders, Some(api_cache_dir)).await?;
 
     let mut results = Vec::new();
     let mut success_count = 0;
@@ -232,7 +226,8 @@ pub async fn update_all_mods(
 
     for update_info in check_result.available_updates {
         match update_mod(
-            cache_base,
+            downloads_dir,
+            api_cache_dir,
             instance_dir,
             community,
             &update_info.full_name,

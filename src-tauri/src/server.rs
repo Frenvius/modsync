@@ -18,8 +18,7 @@ use walkdir::WalkDir;
 use crate::games;
 use crate::instance;
 use crate::utils;
-use tauri::Manager;
-use crate::modpack::{Modpack, ModpackMod};
+use crate::modpack::Modpack;
 use crate::sources::thunderstore;
 use crate::storage;
 
@@ -287,69 +286,32 @@ async fn get_file(
 }
 
 async fn get_modpack(State(state): State<Arc<AppState>>) -> Result<Json<Modpack>, StatusCode> {
-    match storage::load_modpack(&state.app_handle, &state.modpack_id) {
-        Ok(mut modpack) => {
-            let game = games::get_game(&modpack.game_id);
-            let is_thunderstore = game
-                .as_ref()
-                .map(|g| g.mod_source == "thunderstore")
-                .unwrap_or(false);
+    let mut modpack = storage::load_modpack(&state.app_handle, &state.modpack_id)
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
-            if is_thunderstore {
-                if let Ok(instance_dir) =
-                    instance::get_instance_dir(&state.app_handle, &state.modpack_id)
-                {
-                    if instance_dir.exists() {
-                        if let Ok(mods) = thunderstore::profile::load_mods_yml(&instance_dir) {
-                            let deprecated_set: std::collections::HashSet<String> =
-                                if let Some(community) =
-                                    game.as_ref().and_then(|g| g.thunderstore_community.as_deref())
-                                {
-                                    if let Ok(cache_dir) =
-                                        state.app_handle.path().app_data_dir()
-                                    {
-                                        thunderstore::api::fetch_all_packages(
-                                            community,
-                                            &cache_dir,
-                                        )
-                                        .await
-                                        .unwrap_or_default()
-                                        .into_iter()
-                                        .filter(|p| p.is_deprecated)
-                                        .map(|p| p.full_name)
-                                        .collect()
-                                    } else {
-                                        std::collections::HashSet::new()
-                                    }
-                                } else {
-                                    std::collections::HashSet::new()
-                                };
+    let game = games::get_game(&modpack.game_id);
+    if let Some(community) = game
+        .as_ref()
+        .filter(|g| g.mod_source == "thunderstore")
+        .and_then(|g| g.thunderstore_community.as_deref())
+    {
+        if let Ok(cache_dir) = instance::get_api_cache_dir(&state.app_handle) {
+            let deprecated_set: std::collections::HashSet<String> =
+                thunderstore::api::fetch_all_packages(community, &cache_dir)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|p| p.is_deprecated)
+                    .map(|p| p.full_name)
+                    .collect();
 
-                            modpack.mods = mods
-                                .into_iter()
-                                .map(|m| ModpackMod {
-                                    slug: m.name.clone(),
-                                    title: m.display_name.clone(),
-                                    version: m.version_number.to_string(),
-                                    author: m.author_name.clone(),
-                                    icon_url: m.icon.clone(),
-                                    project_id: None,
-                                    version_id: None,
-                                    enabled: m.enabled,
-                                    filename: None,
-                                    is_loader: games::is_loader_package(&m.name),
-                                    is_deprecated: deprecated_set.contains(&m.name),
-                                })
-                                .collect();
-                        }
-                    }
-                }
+            for m in &mut modpack.mods {
+                m.is_deprecated = deprecated_set.contains(&m.slug);
             }
-
-            Ok(Json(modpack))
         }
-        Err(_) => Err(StatusCode::NOT_FOUND),
     }
+
+    Ok(Json(modpack))
 }
 
 async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoResponse {

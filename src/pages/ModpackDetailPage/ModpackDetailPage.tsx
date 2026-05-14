@@ -80,6 +80,7 @@ export default function ModpackDetailPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<null | string>(null);
   const [removingMod, setRemovingMod] = React.useState<null | string>(null);
+  const [reinstallingLoader, setReinstallingLoader] = React.useState(false);
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [syncStatus, setSyncStatus] = React.useState<null | SyncStatus>(null);
   const [isCheckingSync, setIsCheckingSync] = React.useState(false);
@@ -361,6 +362,29 @@ export default function ModpackDetailPage() {
       });
     } finally {
       setRemovingMod(null);
+    }
+  };
+
+  const handleReinstallLoader = async () => {
+    if (!modpack) return;
+    setReinstallingLoader(true);
+    try {
+      const newVersion = await invoke<string>('reinstall_loader', { modpackId: modpack.id });
+      const updated = await invoke<Modpack>('get_modpack', { id: modpack.id });
+      setModpack(updated);
+      toast({
+        title: 'Loader reinstalled',
+        description: `Mod loader reinstalled (v${newVersion}).`
+      });
+    } catch (err) {
+      console.error('Failed to reinstall loader:', err);
+      toast({
+        title: 'Error',
+        variant: 'destructive',
+        description: `Failed to reinstall loader: ${err}`
+      });
+    } finally {
+      setReinstallingLoader(false);
     }
   };
 
@@ -1213,7 +1237,19 @@ export default function ModpackDetailPage() {
                                 disabled={togglingMod === mod.slug || mod.is_loader === true || !modpack.is_owner}
                                 onCheckedChange={() => handleToggleMod(mod.slug, mod.title, mod.enabled !== false)}
                               />
-                              {modpack.is_owner && (
+                              {modpack.is_owner && mod.is_loader === true && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  title="Reinstall mod loader"
+                                  disabled={reinstallingLoader}
+                                  onClick={handleReinstallLoader}
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                >
+                                  {reinstallingLoader ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                </Button>
+                              )}
+                              {modpack.is_owner && mod.is_loader !== true && (
                                 <Button
                                   size="icon"
                                   variant="ghost"

@@ -1,10 +1,11 @@
 import React from 'react';
 
-import { Check, Download, Plus } from 'lucide-react';
+import { Check, Clock, Download, Plus } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { cn } from '~/usecase/util/stringUtils';
+import { formatDate } from '~/usecase/util/dateUtils';
 
 import { AddToModpackDialog } from '../AddToModpackDialog';
 
@@ -14,7 +15,7 @@ export function ModCard({
   slug,
   name,
   author,
-  version,
+  dateModified,
   iconUrl,
   downloads,
   categories,
@@ -90,9 +91,10 @@ export function ModCard({
                 <Download className="w-3.5 h-3.5" />
                 {downloads}
               </div>
-              <Badge variant="secondary" className="text-xs">
-                {version}
-              </Badge>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Clock className="w-3.5 h-3.5" />
+                {formatDate(dateModified)}
+              </div>
               {categories.slice(0, 2).map((cat) => (
                 <Badge key={cat} variant="outline" className="text-xs">
                   {cat}

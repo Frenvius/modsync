@@ -289,10 +289,61 @@ pub fn update_last_played(app_handle: &AppHandle, modpack_id: &str) -> Result<()
     Ok(())
 }
 
-pub fn get_cache_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+fn cache_root(app_handle: &AppHandle) -> Result<PathBuf, String> {
     let app_data = app_handle
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-    Ok(app_data.join("cache").join("thunderstore"))
+    Ok(app_data.join("cache"))
+}
+
+pub fn get_api_cache_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    Ok(cache_root(app_handle)?.join("listings"))
+}
+
+pub fn get_downloads_cache_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    Ok(cache_root(app_handle)?.join("downloads"))
+}
+
+pub fn migrate_cache_layout(app_handle: &AppHandle) -> Result<(), String> {
+    let legacy = cache_root(app_handle)?.join("thunderstore");
+    if !legacy.exists() {
+        return Ok(());
+    }
+
+    let listings_root = get_api_cache_dir(app_handle)?;
+    let downloads_root = get_downloads_cache_dir(app_handle)?;
+
+    let entries = match std::fs::read_dir(&legacy) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = match entry.file_name().into_string() {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if !path.is_dir() {
+            continue;
+        }
+
+        let target_root = if path.join("packages.json").exists() {
+            &listings_root
+        } else {
+            &downloads_root
+        };
+
+        let _ = std::fs::create_dir_all(target_root);
+        let target = target_root.join(&name);
+        if target.exists() {
+            continue;
+        }
+        let _ = std::fs::rename(&path, &target);
+    }
+
+    let _ = std::fs::remove_dir(&legacy);
+
+    Ok(())
 }

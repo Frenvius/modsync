@@ -514,10 +514,8 @@ pub async fn hybrid_sync_from_owner_with_manifest(
 
     if !mods_in_sync && manifest.mod_source == "thunderstore" {
         if let Some(community) = &manifest.community {
-            let cache_base = instance::get_cache_dir(&app_handle)?;
-            let api_cache_dir = cache_base
-                .parent()
-                .map(|p| p.to_path_buf());
+            let cache_base = instance::get_downloads_cache_dir(&app_handle)?;
+            let api_cache_dir = Some(instance::get_api_cache_dir(&app_handle)?);
 
             if let Some(ref acd) = api_cache_dir {
                 let _ = thunderstore::api::load_cache_from_disk(community, acd);

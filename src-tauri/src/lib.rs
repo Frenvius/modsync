@@ -6,6 +6,7 @@ mod instance;
 mod launcher;
 mod loaders;
 mod minecraft;
+mod mod_linker;
 mod modpack;
 mod modrinth;
 mod server;
@@ -95,6 +96,7 @@ async fn search_mods(
     game_version: Option<String>,
     loader: Option<String>,
     categories: Option<Vec<String>>,
+    excluded_categories: Option<Vec<String>>,
     sort: Option<String>,
     offset: Option<i32>,
     limit: Option<i32>,
@@ -109,15 +111,12 @@ async fn search_mods(
                         let size = limit.unwrap_or(20);
                         (o / size) + 1
                     });
-                    let cache_dir = app_handle
-                        .path()
-                        .app_data_dir()
-                        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-                        .join("cache");
+                    let cache_dir = instance::get_api_cache_dir(&app_handle)?;
                     return sources::thunderstore::search_mods(
                         &community,
                         query.as_deref(),
                         categories.as_deref(),
+                        excluded_categories.as_deref(),
                         sort.as_deref(),
                         page,
                         limit,
@@ -173,7 +172,21 @@ async fn search_mods(
         limit,
     };
 
-    modrinth::search_mods(params).await
+    let mut result = modrinth::search_mods(params).await?;
+
+    if let Some(ref excluded) = excluded_categories {
+        if !excluded.is_empty() {
+            result.mods.retain(|m| {
+                !excluded.iter().any(|exc| {
+                    m.categories
+                        .iter()
+                        .any(|c| c.eq_ignore_ascii_case(exc))
+                })
+            });
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -187,11 +200,7 @@ async fn get_mod_categories(
         if let Some(game) = games::get_game(resolved) {
             if game.mod_source == "thunderstore" {
                 if let Some(community) = game.thunderstore_community {
-                    let cache_dir = app_handle
-                        .path()
-                        .app_data_dir()
-                        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-                        .join("cache");
+                    let cache_dir = instance::get_api_cache_dir(&app_handle)?;
                     let cat_names =
                         sources::thunderstore::get_categories(&community, &cache_dir).await?;
                     return Ok(cat_names
@@ -239,11 +248,7 @@ async fn check_thunderstore_updates(
         .ok_or("Game has no Thunderstore community configured")?;
 
     let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
-    let cache_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("cache");
+    let cache_dir = instance::get_api_cache_dir(&app_handle)?;
 
     sources::thunderstore::check_for_updates(
         community,
@@ -271,11 +276,7 @@ async fn warm_thunderstore_cache(
         .as_ref()
         .ok_or("Game has no Thunderstore community configured")?;
 
-    let cache_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("cache");
+    let cache_dir = instance::get_api_cache_dir(&app_handle)?;
 
     sources::thunderstore::api::load_cache_from_disk(community, &cache_dir)
 }
@@ -304,10 +305,12 @@ async fn update_thunderstore_mod(
     let loader_name = loader_config.map(|lc| lc.loader_type.name());
 
     let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
-    let cache_base = instance::get_cache_dir(&app_handle)?;
+    let downloads_dir = instance::get_downloads_cache_dir(&app_handle)?;
+    let api_cache_dir = instance::get_api_cache_dir(&app_handle)?;
 
     sources::thunderstore::update_mod(
-        &cache_base,
+        &downloads_dir,
+        &api_cache_dir,
         &instance_dir,
         community,
         &full_name,
@@ -341,10 +344,12 @@ async fn update_all_thunderstore_mods(
     let loader_name = loader_config.map(|lc| lc.loader_type.name());
 
     let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
-    let cache_base = instance::get_cache_dir(&app_handle)?;
+    let downloads_dir = instance::get_downloads_cache_dir(&app_handle)?;
+    let api_cache_dir = instance::get_api_cache_dir(&app_handle)?;
 
     sources::thunderstore::update_all_mods(
-        &cache_base,
+        &downloads_dir,
+        &api_cache_dir,
         &instance_dir,
         community,
         &modpack.game_id,
@@ -445,7 +450,6 @@ async fn create_modpack(
     };
 
     let modpack = Modpack::new(request);
-    storage::save_modpack(&app_handle, &modpack)?;
 
     let game = games::get_game(&resolved_game_id);
     let is_thunderstore = game
@@ -453,16 +457,15 @@ async fn create_modpack(
         .map(|g| g.mod_source == "thunderstore")
         .unwrap_or(false);
 
+    let profile_type = if is_thunderstore { Some("thunderstore") } else { None };
+    instance::create_instance_dirs_for_game(&app_handle, &modpack.id, &name, profile_type)?;
+
     if is_thunderstore {
-        instance::create_instance_dirs_for_game(
-            &app_handle,
-            &modpack.id,
-            &name,
-            Some("thunderstore"),
-        )?;
         let instance_dir = instance::get_instance_dir(&app_handle, &modpack.id)?;
         sources::thunderstore::profile::save_mods_yml(&instance_dir, &vec![])?;
     }
+
+    storage::save_modpack(&app_handle, &modpack)?;
 
     Ok(modpack)
 }
@@ -470,39 +473,6 @@ async fn create_modpack(
 #[tauri::command]
 async fn list_modpacks(app_handle: tauri::AppHandle) -> Result<Vec<Modpack>, String> {
     let mut modpacks = storage::load_all_modpacks(&app_handle)?;
-
-    for modpack in &mut modpacks {
-        let game = games::get_game(&modpack.game_id);
-        let is_thunderstore = game
-            .as_ref()
-            .map(|g| g.mod_source == "thunderstore")
-            .unwrap_or(false);
-
-        if is_thunderstore {
-            if let Ok(instance_dir) = instance::get_instance_dir(&app_handle, &modpack.id) {
-                if instance_dir.exists() {
-                    if let Ok(mods) = sources::thunderstore::profile::load_mods_yml(&instance_dir) {
-                        modpack.mods = mods
-                            .into_iter()
-                            .map(|m| ModpackMod {
-                                slug: m.name.clone(),
-                                title: m.display_name.clone(),
-                                version: m.version_number.to_string(),
-                                author: m.author_name.clone(),
-                                icon_url: m.icon.clone(),
-                                project_id: None,
-                                version_id: None,
-                                enabled: m.enabled,
-                                filename: None,
-                                is_loader: games::is_loader_package(&m.name),
-                                is_deprecated: false,
-                            })
-                            .collect();
-                    }
-                }
-            }
-        }
-    }
 
     let server_running = server::is_server_running().await;
     if !server_running {
@@ -522,50 +492,23 @@ async fn get_modpack(app_handle: tauri::AppHandle, id: String) -> Result<Modpack
     let mut modpack = storage::load_modpack(&app_handle, &id)?;
 
     let game = games::get_game(&modpack.game_id);
-    let is_thunderstore = game
+    if let Some(community) = game
         .as_ref()
-        .map(|g| g.mod_source == "thunderstore")
-        .unwrap_or(false);
+        .filter(|g| g.mod_source == "thunderstore")
+        .and_then(|g| g.thunderstore_community.as_deref())
+    {
+        if let Ok(cache_dir) = instance::get_api_cache_dir(&app_handle) {
+            let deprecated_set: std::collections::HashSet<String> =
+                sources::thunderstore::api::fetch_all_packages(community, &cache_dir)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|p| p.is_deprecated)
+                    .map(|p| p.full_name)
+                    .collect();
 
-    if is_thunderstore {
-        if let Ok(instance_dir) = instance::get_instance_dir(&app_handle, &id) {
-            if instance_dir.exists() {
-                if let Ok(mods) = sources::thunderstore::profile::load_mods_yml(&instance_dir) {
-                    let deprecated_set: std::collections::HashSet<String> = if let Some(community) =
-                        game.as_ref().and_then(|g| g.thunderstore_community.as_deref())
-                    {
-                        if let Ok(cache_dir) = app_handle.path().app_data_dir() {
-                            sources::thunderstore::api::fetch_all_packages(community, &cache_dir)
-                                .await
-                                .unwrap_or_default()
-                                .into_iter()
-                                .filter(|p| p.is_deprecated)
-                                .map(|p| p.full_name)
-                                .collect()
-                        } else {
-                            std::collections::HashSet::new()
-                        }
-                    } else {
-                        std::collections::HashSet::new()
-                    };
-
-                    modpack.mods = mods
-                        .into_iter()
-                        .map(|m| ModpackMod {
-                            slug: m.name.clone(),
-                            title: m.display_name.clone(),
-                            version: m.version_number.to_string(),
-                            author: m.author_name.clone(),
-                            icon_url: m.icon.clone(),
-                            project_id: None,
-                            version_id: None,
-                            enabled: m.enabled,
-                            filename: None,
-                            is_loader: games::is_loader_package(&m.name),
-                            is_deprecated: deprecated_set.contains(&m.name),
-                        })
-                        .collect();
-                }
+            for m in &mut modpack.mods {
+                m.is_deprecated = deprecated_set.contains(&m.slug);
             }
         }
     }
@@ -741,24 +684,27 @@ async fn clone_modpack(
         updated_at: now,
     };
 
-    storage::save_modpack(&app_handle, &cloned)?;
-
     let game = games::get_game(&cloned.game_id);
     let is_thunderstore = game
         .as_ref()
         .map(|g| g.mod_source == "thunderstore")
         .unwrap_or(false);
 
+    let profile_type = if is_thunderstore { Some("thunderstore") } else { None };
+    instance::create_instance_dirs_for_game(&app_handle, &new_id, &cloned.name, profile_type)?;
+
     if is_thunderstore {
-        instance::create_instance_dirs_for_game(
-            &app_handle,
-            &new_id,
-            &cloned.name,
-            Some("thunderstore"),
-        )?;
-        let instance_dir = instance::get_instance_dir(&app_handle, &new_id)?;
-        sources::thunderstore::profile::save_mods_yml(&instance_dir, &vec![])?;
+        let src_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+        let dst_dir = instance::get_instance_dir(&app_handle, &new_id)?;
+        let src_yml = src_dir.join("mods.yml");
+        if src_yml.exists() {
+            let _ = std::fs::copy(&src_yml, dst_dir.join("mods.yml"));
+        } else {
+            sources::thunderstore::profile::save_mods_yml(&dst_dir, &vec![])?;
+        }
     }
+
+    storage::save_modpack(&app_handle, &cloned)?;
 
     Ok(cloned)
 }
@@ -865,7 +811,7 @@ async fn add_mod_to_modpack(
             Some("thunderstore"),
         )?;
         let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
-        let cache_base = instance::get_cache_dir(&app_handle)?;
+        let cache_base = instance::get_downloads_cache_dir(&app_handle)?;
 
         let loader_name = loader_config.map(|lc| lc.loader_type.name());
         let loader_ver = if let Some(lc) = loader_config {
@@ -1036,6 +982,79 @@ async fn remove_mod_from_modpack(
     }
 
     get_modpack(app_handle, modpack_id).await
+}
+
+#[tauri::command]
+async fn reinstall_loader(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+) -> Result<String, String> {
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+
+    let game = games::get_game(&modpack.game_id)
+        .ok_or_else(|| format!("Unknown game: {}", modpack.game_id))?;
+
+    if game.mod_source != "thunderstore" {
+        return Err("Reinstall loader is only for Thunderstore games".to_string());
+    }
+
+    let loader_config = game
+        .loader
+        .as_ref()
+        .ok_or("No loader configured for this game")?;
+
+    let community = game
+        .thunderstore_community
+        .as_deref()
+        .ok_or("No Thunderstore community for this game")?;
+
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+    let cache_base = instance::get_downloads_cache_dir(&app_handle)?;
+    let loader_name = loader_config.loader_type.name();
+
+    let installer = sources::thunderstore::installer::ModInstaller::new(
+        instance_dir.clone(),
+        &modpack.game_id,
+        Some(loader_name),
+    );
+    let _ = installer.uninstall_mod(&loader_config.package_name);
+
+    let bepinex_dir = instance_dir.join("BepInEx");
+    if bepinex_dir.exists() {
+        std::fs::remove_dir_all(&bepinex_dir)
+            .map_err(|e| format!("Failed to remove BepInEx directory: {}", e))?;
+    }
+
+    for name in &["winhttp.dll", "doorstop_config.ini", ".doorstop_version"] {
+        let p = instance_dir.join(name);
+        if p.exists() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+    let doorstop_libs = instance_dir.join("doorstop_libs");
+    if doorstop_libs.exists() {
+        let _ = std::fs::remove_dir_all(&doorstop_libs);
+    }
+
+    let mut mods = sources::thunderstore::profile::load_mods_yml(&instance_dir)?;
+    sources::thunderstore::profile::remove_mod_from_list(&mut mods, &loader_config.package_name);
+    sources::thunderstore::profile::save_mods_yml(&instance_dir, &mods)?;
+
+    let version = sources::thunderstore::ensure_loader_installed(
+        &cache_base,
+        &instance_dir,
+        community,
+        loader_config,
+        &modpack.game_id,
+    )
+    .await?;
+
+    if let Some(mut inst) = instance::load_instance(&app_handle, &modpack_id)? {
+        inst.loader_version = Some(version.clone());
+        instance::save_instance(&app_handle, &inst)?;
+    }
+
+    Ok(version)
 }
 
 #[tauri::command]
@@ -1652,11 +1671,7 @@ async fn get_thunderstore_mod_details(
     let owner = parts[0];
     let name = parts[1];
 
-    let cache_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("cache");
+    let cache_dir = instance::get_api_cache_dir(&app_handle)?;
 
     let all_packages =
         sources::thunderstore::api::fetch_all_packages(&community, &cache_dir).await?;
@@ -2369,7 +2384,7 @@ async fn do_install_thunderstore_instance(
     )?;
 
     let instance_dir = instance::get_instance_dir(app_handle, modpack_id)?;
-    let cache_base = instance::get_cache_dir(app_handle)?;
+    let cache_base = instance::get_downloads_cache_dir(app_handle)?;
 
     let loader_name = loader_config
         .map(|lc| lc.loader_type.name())
@@ -2816,7 +2831,12 @@ async fn launch_thunderstore_instance(
     app_handle: tauri::AppHandle,
     modpack_id: String,
 ) -> Result<(), String> {
+    println!("[launch] === Launch Thunderstore Instance ===");
+    println!("[launch] modpack_id: {}", modpack_id);
+
     let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+    println!("[launch] modpack name: {}, game_id: {}, is_owner: {}", modpack.name, modpack.game_id, modpack.is_owner);
+
     let game = games::get_game(&modpack.game_id)
         .ok_or_else(|| format!("Unknown game: {}", modpack.game_id))?;
 
@@ -2825,9 +2845,25 @@ async fn launch_thunderstore_instance(
     }
 
     let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+    println!("[launch] instance_dir: {}", instance_dir.display());
+    println!("[launch] instance_dir exists: {}", instance_dir.exists());
+
+    if instance_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&instance_dir) {
+            let items: Vec<String> = entries
+                .flatten()
+                .map(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    if e.path().is_dir() { format!("{}/", name) } else { name }
+                })
+                .collect();
+            println!("[launch] instance contents: {:?}", items);
+        }
+    }
 
     let settings = storage::load_settings(&app_handle).unwrap_or_default();
     let custom_path = settings.game_paths.get(&modpack.game_id).cloned();
+    println!("[launch] custom_path: {:?}", custom_path);
 
     let launch_mode = if let Some(custom) = custom_path {
         let game_dir = std::path::PathBuf::from(&custom);
@@ -2836,12 +2872,14 @@ async fn launch_thunderstore_instance(
             .as_deref()
             .ok_or("Game has no exe name configured")?;
         let exe_path = game_dir.join(exe_name);
+        println!("[launch] mode: Direct, exe: {}, game_dir: {}", exe_path.display(), game_dir.display());
         thunderstore_launcher::LaunchMode::Direct { exe_path, game_dir }
     } else if let Some(app_id) = game.steam_app_id {
         let steam_info = steam::detect_steam_install()
             .map_err(|_| "Steam not found. Please set a custom game path in Settings.".to_string())?;
         let steam_exe = steam_info.steam_exe();
         let game_dir = steam::find_game_path(&steam_info, app_id)?;
+        println!("[launch] mode: Steam, app_id: {}, steam_exe: {}, game_dir: {}", app_id, steam_exe.display(), game_dir.display());
         thunderstore_launcher::LaunchMode::Steam { steam_exe, app_id, game_dir }
     } else {
         return Err("No game path configured and no Steam app ID available. Please set a custom game path.".to_string());
@@ -2855,6 +2893,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            let _ = instance::migrate_cache_layout(&app.handle());
+
             let window = app.get_webview_window("main").unwrap();
             window.with_webview(|webview| {
                 #[cfg(windows)]
@@ -2895,6 +2935,7 @@ pub fn run() {
             clone_modpack,
             add_mod_to_modpack,
             remove_mod_from_modpack,
+            reinstall_loader,
             toggle_mod_enabled,
             scan_mods_folder,
             sync_mod_filenames,
