@@ -4,10 +4,15 @@ import { invoke } from '@tauri-apps/api/core';
 import { Check, ChevronDown, Loader2, Package, Plus, Search } from 'lucide-react';
 
 import { Input } from '~/components/ui/input';
+import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { toast } from '~/usecase/hooks/use-toast';
 import { useGame } from '~/usecase/contexts/GameContext';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
+import { formatDate } from '~/usecase/util/dateUtils';
+import { formatDownloads } from '~/usecase/util/stringUtils';
+import { Dialog, DialogContent } from '~/components/ui/dialog';
+import { ModDetails } from '~/components/modpack/ModDetailPanel/types';
+import { MarkdownContent } from '~/components/modpack/ModDetailPanel/MarkdownContent';
 
 import { SelectVersionDialog } from '../SelectVersionDialog';
 import { AddModWithDepsDialog } from '../AddModWithDepsDialog';
@@ -42,6 +47,10 @@ export function AddModsDialog({
   const [pendingModInfo, setPendingModInfo] = React.useState<null | ModInfo>(null);
   const [pendingDependencies, setPendingDependencies] = React.useState<DependencyInfo[]>([]);
 
+  const [previewSlug, setPreviewSlug] = React.useState<string | null>(null);
+  const [previewDetail, setPreviewDetail] = React.useState<ModDetails | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+
   React.useEffect(() => {
     setLocalExistingMods(existingMods);
   }, [existingMods]);
@@ -72,8 +81,29 @@ export function AddModsDialog({
       setSearchResults([]);
       setHasSearched(false);
       setLoadingSlug(null);
+      setPreviewSlug(null);
+      setPreviewDetail(null);
     }
   }, [open]);
+
+  React.useEffect(() => {
+    if (!previewSlug) {
+      setPreviewDetail(null);
+      return;
+    }
+
+    setPreviewLoading(true);
+    invoke<ModDetails>('get_mod_details', {
+      slug: previewSlug,
+      source: game?.mod_source ?? 'modrinth',
+      thunderstoreCommunity: game?.thunderstore_community ?? null,
+      gameVersion: gameVersion || null,
+      loader: loader || null
+    })
+      .then((detail) => setPreviewDetail(detail))
+      .catch(() => setPreviewDetail(null))
+      .finally(() => setPreviewLoading(false));
+  }, [previewSlug, game?.mod_source, game?.thunderstore_community, gameVersion, loader]);
 
   const performSearch = React.useCallback(
     async (query: string) => {
@@ -245,103 +275,131 @@ export function AddModsDialog({
     onModsAdded?.();
   };
 
-  const formatDownloads = (downloads: number): string => {
-    if (downloads >= 1000000) {
-      return `${(downloads / 1000000).toFixed(1)}M`;
-    } else if (downloads >= 1000) {
-      return `${(downloads / 1000).toFixed(1)}K`;
-    }
+  const fmtDownloads = (downloads: number): string => {
+    if (downloads >= 1000000) return `${(downloads / 1000000).toFixed(1)}M`;
+    if (downloads >= 1000) return `${(downloads / 1000).toFixed(1)}K`;
     return downloads.toString();
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add Mods</DialogTitle>
-          <DialogDescription>
-            Search for mods compatible with {gameVersion}
-            {loader ? ` (${loader})` : ''}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input value={search} className="pl-9" placeholder="Search mods..." onChange={(e) => setSearch(e.target.value)} />
+      <DialogContent style={{ maxWidth: 1060, height: '80vh' }} className="p-0 gap-0 flex flex-col overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Add Mods</h2>
+            <p className="text-sm text-muted-foreground">
+              Search for mods compatible with {gameVersion}
+              {loader ? ` (${loader})` : ''}
+            </p>
+          </div>
         </div>
 
-        <div className="overflow-y-auto space-y-2 h-[350px]">
-          {isSearching ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        <div className="flex flex-1 overflow-hidden min-h-0">
+          <div style={{ width: 460, minWidth: 460 }} className="flex flex-col">
+            <div className="px-4 py-3 shrink-0">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input value={search} className="pl-9" placeholder="Search mods..." onChange={(e) => setSearch(e.target.value)} />
+              </div>
             </div>
-          ) : searchResults.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <Package className="w-10 h-10 mb-2 opacity-50" />
-              <p className="text-sm">{hasSearched ? 'No mods found' : 'Search for mods to add'}</p>
-            </div>
-          ) : (
-            searchResults.map((mod) => {
-              const isInModpack = isModInModpack(mod.slug);
-              const isLoading = loadingSlug === mod.slug;
 
-              return (
-                <div
-                  key={mod.slug}
-                  className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg hover:bg-card-hover transition-colors"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                    {mod.icon_url ? (
-                      <img alt={mod.title} src={mod.icon_url} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="w-5 h-5 text-muted-foreground" />
-                    )}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+              <div className="px-4 pb-4 space-y-1.5">
+                {isSearching ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-sm text-foreground truncate">{mod.title}</h3>
-                    <p className="text-xs text-muted-foreground truncate">
-                      by {mod.author} • {formatDownloads(mod.downloads)} downloads
-                    </p>
+                ) : searchResults.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                    <Package className="w-10 h-10 mb-2 opacity-50" />
+                    <p className="text-sm">{hasSearched ? 'No mods found' : 'Search for mods to add'}</p>
                   </div>
-                  <div className="flex items-center shrink-0">
-                    {isInModpack ? (
-                      <div className="flex items-center gap-1 text-primary px-2 h-7">
-                        <Check className="w-3 h-3" />
-                        <span className="text-xs">Added</span>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleAddLatest(mod)}
-                        disabled={isLoading || loadingSlug !== null}
-                        className="rounded-r-none border-r-0 gap-1 h-7 px-2"
+                ) : (
+                  searchResults.map((mod) => {
+                    const isInModpack = isModInModpack(mod.slug);
+                    const isLoading = loadingSlug === mod.slug;
+                    const isSelected = previewSlug === mod.slug;
+
+                    return (
+                      <div
+                        key={mod.slug}
+                        onClick={() => setPreviewSlug(mod.slug === previewSlug ? null : mod.slug)}
+                        className={`flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-accent border border-primary/40'
+                            : 'bg-card border border-border hover:bg-card-hover hover:border-border'
+                        }`}
                       >
-                        {isLoading ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <>
-                            <Plus className="w-3 h-3" />
-                            Add
-                          </>
-                        )}
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleSelectMod(mod)}
-                      disabled={isLoading || loadingSlug !== null}
-                      title={isInModpack ? 'Change version' : 'Choose version'}
-                      className={`h-7 px-1.5 ${isInModpack ? '' : 'rounded-l-none'}`}
-                    >
-                      <ChevronDown className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })
-          )}
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                          {mod.icon_url ? (
+                            <img alt={mod.title} src={mod.icon_url} className="w-full h-full object-cover" />
+                          ) : (
+                            <Package className="w-5 h-5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          <h3 className="font-medium text-sm text-foreground truncate">{mod.title}</h3>
+                          <p className="text-xs text-muted-foreground truncate">
+                            by {mod.author} • {fmtDownloads(mod.downloads)} downloads
+                          </p>
+                        </div>
+                        <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                          {isInModpack ? (
+                            <div className="flex items-center gap-1 text-primary px-2 h-7">
+                              <Check className="w-3 h-3" />
+                              <span className="text-xs">Added</span>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleAddLatest(mod)}
+                              disabled={isLoading || loadingSlug !== null}
+                              className="rounded-r-none border-r-0 gap-1 h-7 px-2"
+                            >
+                              {isLoading ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <>
+                                  <Plus className="w-3 h-3" />
+                                  Add
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSelectMod(mod)}
+                            disabled={isLoading || loadingSlug !== null}
+                            title={isInModpack ? 'Change version' : 'Choose version'}
+                            className={`h-7 px-1.5 ${isInModpack ? '' : 'rounded-l-none'}`}
+                          >
+                            <ChevronDown className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col overflow-hidden bg-card border-l border-border" style={{ minWidth: 0 }}>
+            {previewSlug && previewLoading ? (
+              <div className="flex-1 flex items-center justify-center">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : previewSlug && previewDetail ? (
+              <ModPreview detail={previewDetail} />
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
+                <Package className="w-12 h-12 opacity-30" />
+                <p className="text-sm text-center">Click on a mod to see its details</p>
+              </div>
+            )}
+          </div>
         </div>
       </DialogContent>
       <SelectVersionDialog
@@ -365,3 +423,73 @@ export function AddModsDialog({
     </Dialog>
   );
 }
+
+const ModPreview = React.memo(function ModPreview({ detail }: { detail: ModDetails }) {
+  const readmeContent = detail.readme ?? detail.body;
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="p-4 border-b border-border shrink-0">
+        <div className="flex gap-3">
+          <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center overflow-hidden shrink-0">
+            {detail.icon_url ? (
+              <img alt={detail.title} src={detail.icon_url} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-primary/30 to-primary/10" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-sm text-foreground truncate">{detail.title}</h3>
+            <p className="text-xs text-muted-foreground">by {detail.author}</p>
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              {detail.latest_version && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  v{detail.latest_version}
+                </Badge>
+              )}
+              <span className="text-[10px] text-muted-foreground">{formatDownloads(detail.downloads)} downloads</span>
+              {detail.date_updated && (
+                <span className="text-[10px] text-muted-foreground">{formatDate(detail.date_updated)}</span>
+              )}
+            </div>
+          </div>
+        </div>
+        {detail.description && (
+          <p className="text-xs text-muted-foreground mt-3 line-clamp-2">{detail.description}</p>
+        )}
+        {detail.categories.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {detail.categories.slice(0, 5).map((cat) => (
+              <Badge key={cat} variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                {cat}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {detail.dependencies.length > 0 && (
+        <div className="px-4 py-2 border-b border-border shrink-0">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+            Dependencies ({detail.dependencies.length})
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {detail.dependencies.map((dep) => (
+              <Badge
+                key={dep.slug}
+                variant={dep.dependency_type === 'required' ? 'secondary' : 'outline'}
+                className="text-[10px] px-1.5 py-0 h-4"
+              >
+                {dep.title || dep.slug}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-hidden min-h-0">
+        <MarkdownContent content={readmeContent} emptyMessage="No description available" />
+      </div>
+    </div>
+  );
+});

@@ -40,11 +40,12 @@ import { DeleteModpackDialog } from '../DeleteModpackDialog';
 
 import { ModpackCardProps } from './types';
 
-export function ModpackCard({
+export const ModpackCard = React.memo(function ModpackCard({
   id,
   name,
   onEdit,
   version,
+  loader,
   modCount,
   gameId,
   modSource,
@@ -335,6 +336,7 @@ export function ModpackCard({
         modpackId={id}
         onSave={onEdit}
         modpackName={name}
+        modpackLoader={loader ?? ''}
         open={editDialogOpen}
         modpackVersion={version}
         modpackImagePath={imagePath}
@@ -346,4 +348,4 @@ export function ModpackCard({
       )}
     </>
   );
-}
+});

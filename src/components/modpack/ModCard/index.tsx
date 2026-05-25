@@ -11,7 +11,7 @@ import { AddToModpackDialog } from '../AddToModpackDialog';
 
 import { ModCardProps } from './types';
 
-export function ModCard({
+export const ModCard = React.memo(function ModCard({
   slug,
   name,
   author,
@@ -115,4 +115,4 @@ export function ModCard({
       />
     </>
   );
-}
+});

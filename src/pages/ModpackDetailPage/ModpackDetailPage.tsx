@@ -100,12 +100,20 @@ export default function ModpackDetailPage() {
   const [modSearch, setModSearch] = React.useState('');
   const [syncProgress, setSyncProgress] = React.useState<SyncProgress | null>(null);
   const [isCloning, setIsCloning] = React.useState(false);
+  const [modpackImageUrl, setModpackImageUrl] = React.useState<null | string>(null);
   const autoSyncTriggeredRef = React.useRef(false);
 
   const [selectedModSlug, setSelectedModSlug] = React.useState<string | null>(null);
   const [modDetail, setModDetail] = React.useState<ModDetails | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [detailError, setDetailError] = React.useState<string | null>(null);
+
+  const currentGame = React.useMemo(
+    () => games.find((g) => g.id === modpack?.game_id),
+    [games, modpack?.game_id]
+  );
+
+  const isThunderstoreGame = currentGame?.mod_source === 'thunderstore';
 
   const checkModUpdates = React.useCallback(async (mods: ModpackMod[], gameVersion: string, loader: string) => {
     if (mods.length === 0) return;
@@ -169,9 +177,11 @@ export default function ModpackDetailPage() {
   }, []);
 
   const loadModpack = React.useCallback(
-    async (modpackId: string) => {
-      setIsLoading(true);
-      setError(null);
+    async (modpackId: string, { silent = false } = {}) => {
+      if (!silent) {
+        setIsLoading(true);
+        setError(null);
+      }
       try {
         const data = await invoke<Modpack>('get_modpack', { id: modpackId });
         setModpack(data);
@@ -185,12 +195,17 @@ export default function ModpackDetailPage() {
         }
       } catch (err) {
         console.error('Failed to load modpack:', err);
-        setError(`Failed to load modpack: ${err}`);
+        if (!silent) setError(`Failed to load modpack: ${err}`);
       } finally {
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
       }
     },
     [checkModUpdates, checkThunderstoreUpdates, games]
+  );
+
+  const refreshModpack = React.useCallback(
+    (modpackId: string) => loadModpack(modpackId, { silent: true }),
+    [loadModpack]
   );
 
   const checkSyncStatus = React.useCallback(async (modpackId: string) => {
@@ -225,6 +240,16 @@ export default function ModpackDetailPage() {
       checkInstallStatus(id);
     }
   }, [id, loadModpack, checkInstallStatus]);
+
+  React.useEffect(() => {
+    if (modpack?.image_path) {
+      invoke<string>('get_image_data', { relativePath: modpack.image_path })
+        .then(setModpackImageUrl)
+        .catch(() => setModpackImageUrl(null));
+    } else {
+      setModpackImageUrl(null);
+    }
+  }, [modpack?.image_path]);
 
   React.useEffect(() => {
     const unlisten = listen<InstallProgress>('install-progress', (event) => {
@@ -419,8 +444,6 @@ export default function ModpackDetailPage() {
   const handleUpdateMod = async (mod: ModpackMod) => {
     if (!modpack) return;
 
-    const game = games.find((g) => g.id === modpack.game_id);
-
     setUpdatingMod(mod.slug);
     try {
       const modInfo = await invoke<{
@@ -437,8 +460,8 @@ export default function ModpackDetailPage() {
         slug: mod.slug,
         loader: modpack.loader,
         gameVersion: modpack.game_version,
-        source: game?.mod_source ?? 'modrinth',
-        thunderstoreCommunity: game?.thunderstore_community
+        source: currentGame?.mod_source ?? 'modrinth',
+        thunderstoreCommunity: currentGame?.thunderstore_community
       });
 
       await invoke('remove_mod_from_modpack', {
@@ -465,7 +488,7 @@ export default function ModpackDetailPage() {
 
       if (id) {
         delete _updateCache[id];
-        loadModpack(id);
+        refreshModpack(id);
         setModUpdates((prev) => {
           const next = { ...prev };
           delete next[mod.slug];
@@ -574,12 +597,12 @@ export default function ModpackDetailPage() {
     }
   };
 
-  const handleModsAdded = () => {
+  const handleModsAdded = React.useCallback(() => {
     if (id) {
       delete _updateCache[id];
-      loadModpack(id);
+      refreshModpack(id);
     }
-  };
+  }, [id, refreshModpack]);
 
   const scanForMods = React.useCallback(async (modpackId: string) => {
     setIsScanning(true);
@@ -616,6 +639,9 @@ export default function ModpackDetailPage() {
     syncAndScan();
   }, [id, installStatus?.installed, modpack?.is_owner, scanForMods]);
 
+  const modpackGameVersion = modpack?.game_version;
+  const modpackLoader = modpack?.loader;
+
   React.useEffect(() => {
     if (!selectedModSlug || !modpack) {
       setModDetail(null);
@@ -626,19 +652,17 @@ export default function ModpackDetailPage() {
     setDetailLoading(true);
     setDetailError(null);
 
-    const game = games.find((g) => g.id === modpack.game_id);
-
     invoke<ModDetails>('get_mod_details', {
       slug: selectedModSlug,
-      source: game?.mod_source ?? 'modrinth',
-      thunderstoreCommunity: game?.thunderstore_community ?? null,
-      gameVersion: modpack.game_version || null,
-      loader: modpack.loader || null
+      source: currentGame?.mod_source ?? 'modrinth',
+      thunderstoreCommunity: currentGame?.thunderstore_community ?? null,
+      gameVersion: modpackGameVersion || null,
+      loader: modpackLoader || null
     })
       .then((detail) => setModDetail(detail))
       .catch((err) => setDetailError(String(err)))
       .finally(() => setDetailLoading(false));
-  }, [selectedModSlug, modpack, games]);
+  }, [selectedModSlug, currentGame, modpackGameVersion, modpackLoader]);
 
   const handleImportMod = async (mod: DetectedMod) => {
     if (!modpack) return;
@@ -679,16 +703,13 @@ export default function ModpackDetailPage() {
   const handleLaunch = async () => {
     if (!modpack) return;
 
-    const game = games.find((g) => g.id === modpack.game_id);
-    const isThunderstoreGame = game?.mod_source === 'thunderstore';
-
     if (!isThunderstoreGame && !installStatus?.installed) return;
 
     setIsLaunching(true);
     try {
       if (isThunderstoreGame) {
         await invoke('launch_thunderstore_instance', { modpackId: modpack.id });
-        toast({ title: 'Game launched', description: `${game?.display_name ?? 'Game'} is starting...` });
+        toast({ title: 'Game launched', description: `${currentGame?.display_name ?? 'Game'} is starting...` });
       } else {
         await invoke('launch_instance', { modpackId: modpack.id });
         toast({ title: 'Game launched', description: 'Minecraft is starting...' });
@@ -794,6 +815,25 @@ export default function ModpackDetailPage() {
       : 0
     : 0;
 
+  const existingModSlugs = React.useMemo(
+    () => modpack?.mods.map((m) => m.slug) ?? [],
+    [modpack?.mods]
+  );
+
+  const filteredMods = React.useMemo(() => {
+    if (!modpack) return [];
+    const search = modSearch.toLowerCase();
+    return [...modpack.mods]
+      .reverse()
+      .filter(
+        (mod) =>
+          !search ||
+          mod.title.toLowerCase().includes(search) ||
+          mod.author.toLowerCase().includes(search) ||
+          mod.slug.toLowerCase().includes(search)
+      );
+  }, [modpack?.mods, modSearch]);
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -824,8 +864,14 @@ export default function ModpackDetailPage() {
       <div className="flex-1 flex gap-0 overflow-hidden">
         <div className={cn('space-y-6 p-6 transition-all overflow-auto h-full', selectedModSlug ? 'flex-[3] min-w-0' : 'w-full')}>
           <div className="flex items-start gap-4">
-            <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-primary/20 via-card to-card flex items-center justify-center shrink-0">
-              <Package className="w-10 h-10 text-primary/50" />
+            <div className="w-20 h-20 rounded-lg overflow-hidden shrink-0">
+              {modpackImageUrl ? (
+                <img alt={modpack.name} src={modpackImageUrl} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-primary/20 via-card to-card flex items-center justify-center">
+                  <Package className="w-10 h-10 text-primary/50" />
+                </div>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3">
@@ -914,7 +960,7 @@ export default function ModpackDetailPage() {
                     <FolderOpen className="w-4 h-4 mr-2" />
                     Open Instance Folder
                   </DropdownMenuItem>
-                  {games.find((g) => g.id === modpack.game_id)?.mod_source === 'thunderstore' && (
+                  {isThunderstoreGame && (
                     <DropdownMenuItem onClick={() => setGamePathDialogOpen(true)}>
                       <FolderOpen className="w-4 h-4 mr-2" />
                       Set Game Path
@@ -937,8 +983,7 @@ export default function ModpackDetailPage() {
                 onClick={handleLaunch}
                 disabled={
                   isLaunching ||
-                  (games.find((g) => g.id === modpack.game_id)?.mod_source !== 'thunderstore' &&
-                    (isInstalling || !installStatus?.installed))
+                  (!isThunderstoreGame && (isInstalling || !installStatus?.installed))
                 }
               >
                 {isLaunching ? (
@@ -946,7 +991,7 @@ export default function ModpackDetailPage() {
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Launching...
                   </>
-                ) : isInstalling && games.find((g) => g.id === modpack.game_id)?.mod_source !== 'thunderstore' ? (
+                ) : isInstalling && !isThunderstoreGame ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Installing...
@@ -1133,16 +1178,7 @@ export default function ModpackDetailPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {[...modpack.mods]
-                      .reverse()
-                      .filter(
-                        (mod) =>
-                          !modSearch ||
-                          mod.title.toLowerCase().includes(modSearch.toLowerCase()) ||
-                          mod.author.toLowerCase().includes(modSearch.toLowerCase()) ||
-                          mod.slug.toLowerCase().includes(modSearch.toLowerCase())
-                      )
-                      .map((mod) => (
+                    {filteredMods.map((mod) => (
                         <TableRow
                           key={mod.slug}
                           className={cn(
@@ -1296,7 +1332,7 @@ export default function ModpackDetailPage() {
         onOpenChange={setAddModsOpen}
         onModsAdded={handleModsAdded}
         gameVersion={modpack.game_version}
-        existingMods={modpack.mods.map((m) => m.slug)}
+        existingMods={existingModSlugs}
       />
 
       {modpack.is_owner && (
@@ -1306,7 +1342,7 @@ export default function ModpackDetailPage() {
           modpackName={modpack.name}
           onOpenChange={setShareDialogOpen}
           currentShareCode={modpack.share_code}
-          onShareStatusChange={() => loadModpack(modpack.id)}
+          onShareStatusChange={() => refreshModpack(modpack.id)}
         />
       )}
 
@@ -1314,17 +1350,18 @@ export default function ModpackDetailPage() {
         open={editDialogOpen}
         modpackId={modpack.id}
         modpackName={modpack.name}
+        modpackLoader={modpack.loader ?? ''}
         onOpenChange={setEditDialogOpen}
         modpackImagePath={modpack.image_path}
-        onSave={() => loadModpack(modpack.id)}
+        onSave={() => refreshModpack(modpack.id)}
         modpackVersion={modpack.game_version}
       />
 
-      {games.find((g) => g.id === modpack.game_id)?.mod_source === 'thunderstore' && (
+      {isThunderstoreGame && (
         <GamePathDialog
           open={gamePathDialogOpen}
           gameId={modpack.game_id}
-          gameName={games.find((g) => g.id === modpack.game_id)?.display_name ?? modpack.game_id}
+          gameName={currentGame?.display_name ?? modpack.game_id}
           onOpenChange={setGamePathDialogOpen}
         />
       )}

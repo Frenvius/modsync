@@ -6,6 +6,7 @@ import { ImagePlus, Loader2, X } from 'lucide-react';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
+import { Switch } from '~/components/ui/switch';
 import { toast } from '~/usecase/hooks/use-toast';
 import { Textarea } from '~/components/ui/textarea';
 import { useGame } from '~/usecase/contexts/GameContext';
@@ -22,6 +23,7 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
   const [gameVersion, setGameVersion] = React.useState('');
   const [loader, setLoader] = React.useState('');
   const [versions, setVersions] = React.useState<GameVersion[]>([]);
+  const [includeSnapshots, setIncludeSnapshots] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isCreating, setIsCreating] = React.useState(false);
   const [imagePreview, setImagePreview] = React.useState<null | string>(null);
@@ -64,7 +66,9 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
     if (open) {
       loadVersions();
     }
-  }, [open, selectedGame]);
+  }, [open, selectedGame, includeSnapshots]);
+
+  const isMinecraft = selectedGame?.id === 'minecraft';
 
   const loadVersions = async () => {
     if (!selectedGame?.requires_loader) {
@@ -73,7 +77,10 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
     }
     setIsLoading(true);
     try {
-      const gameVersions = await invoke<GameVersion[]>('get_game_versions', { gameId: selectedGame.id });
+      const gameVersions = await invoke<GameVersion[]>('get_game_versions', {
+        gameId: selectedGame.id,
+        includeSnapshots: isMinecraft && includeSnapshots
+      });
       setVersions(gameVersions);
     } catch (error) {
       console.error('Failed to load game versions:', error);
@@ -169,6 +176,7 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
       setLoader('');
       setImagePreview(null);
       setImageData(null);
+      setIncludeSnapshots(false);
     }
     onOpenChange(newOpen);
   };
@@ -243,7 +251,25 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
           {selectedGame?.requires_loader && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="version">Game Version *</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="version">Game Version *</Label>
+                  {isMinecraft && (
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="snapshots" className="text-xs text-muted-foreground font-normal">
+                        Show snapshots
+                      </Label>
+                      <Switch
+                        id="snapshots"
+                        checked={includeSnapshots}
+                        disabled={isCreating || isLoading}
+                        onCheckedChange={(checked) => {
+                          setIncludeSnapshots(checked);
+                          setGameVersion('');
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
                 <Select disabled={isCreating} value={gameVersion} onValueChange={setGameVersion}>
                   <SelectTrigger>
                     <SelectValue placeholder={isLoading ? 'Loading...' : 'Select version'} />
@@ -252,6 +278,7 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
                     {versions.map((v) => (
                       <SelectItem key={v.version} value={v.version}>
                         {v.version}
+                        {v.version_type && v.version_type !== 'release' ? ` (${v.version_type})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>

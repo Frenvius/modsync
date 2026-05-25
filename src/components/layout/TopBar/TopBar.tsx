@@ -20,25 +20,25 @@ import {
 
 import { AccountInfo } from './types';
 
-export function TopBar() {
+export const TopBar = React.memo(function TopBar() {
   const [isMaximized, setIsMaximized] = React.useState(false);
   const [accounts, setAccounts] = React.useState<AccountInfo[]>([]);
   const [loginDialogOpen, setLoginDialogOpen] = React.useState(false);
   const appWindow = getCurrentWindow();
   const { selectedGame } = useGame();
 
-  const loadAccounts = async () => {
+  const loadAccounts = React.useCallback(async () => {
     try {
       const accountList = await invoke<AccountInfo[]>('list_accounts');
       setAccounts(accountList);
     } catch (err) {
       console.error('Failed to load accounts:', err);
     }
-  };
+  }, []);
 
   React.useEffect(() => {
     loadAccounts();
-  }, []);
+  }, [loadAccounts]);
 
   React.useEffect(() => {
     const checkMaximized = async () => {
@@ -55,33 +55,33 @@ export function TopBar() {
     };
   }, []);
 
-  const handleSetDefault = async (uuid: string) => {
+  const handleSetDefault = React.useCallback(async (uuid: string) => {
     try {
       await invoke('set_default_account', { uuid });
       await loadAccounts();
     } catch (err) {
       console.error('Failed to set default account:', err);
     }
-  };
+  }, [loadAccounts]);
 
-  const handleRemoveAccount = async (uuid: string) => {
+  const handleRemoveAccount = React.useCallback(async (uuid: string) => {
     try {
       await invoke('remove_account', { uuid });
       await loadAccounts();
     } catch (err) {
       console.error('Failed to remove account:', err);
     }
-  };
+  }, [loadAccounts]);
 
-  const handleLoginSuccess = async () => {
+  const handleLoginSuccess = React.useCallback(async () => {
     await loadAccounts();
-  };
+  }, [loadAccounts]);
 
-  const defaultAccount = accounts.find((a) => a.is_default);
+  const defaultAccount = React.useMemo(() => accounts.find((a) => a.is_default), [accounts]);
 
-  const getHeadUrl = (uuid: string) => {
+  const getHeadUrl = React.useCallback((uuid: string) => {
     return `https://mc-heads.net/avatar/${uuid}/32`;
-  };
+  }, []);
 
   return (
     <>
@@ -188,4 +188,4 @@ export function TopBar() {
       <LoginDialog isOpen={loginDialogOpen} onSuccess={handleLoginSuccess} onOpenChange={setLoginDialogOpen} />
     </>
   );
-}
+});

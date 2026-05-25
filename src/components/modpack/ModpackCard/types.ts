@@ -25,6 +25,7 @@ export interface ModpackCardProps {
   id: string;
   name: string;
   version: string;
+  loader?: null | string;
   modCount: number;
   gameId: string;
   modSource?: string;

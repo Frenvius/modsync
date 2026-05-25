@@ -309,7 +309,7 @@ pub struct Loader {
     pub supported_project_types: Vec<String>,
 }
 
-pub async fn get_game_versions() -> Result<Vec<GameVersion>, String> {
+pub async fn get_game_versions(include_snapshots: bool) -> Result<Vec<GameVersion>, String> {
     let client = reqwest::Client::new();
 
     let url = format!("{}/tag/game_version", MODRINTH_API_BASE);
@@ -332,7 +332,7 @@ pub async fn get_game_versions() -> Result<Vec<GameVersion>, String> {
 
     Ok(versions
         .into_iter()
-        .filter(|v| v.version_type == "release")
+        .filter(|v| include_snapshots || v.version_type == "release")
         .collect())
 }
 
@@ -395,7 +395,11 @@ pub async fn get_project_versions(
         query_params.push(format!("game_versions=[\"{}\"]", version));
     }
     if let Some(loader_name) = loader {
-        query_params.push(format!("loaders=[\"{}\"]", loader_name));
+        if loader_name == "neoforge" {
+            query_params.push("loaders=[\"neoforge\",\"forge\"]".to_string());
+        } else {
+            query_params.push(format!("loaders=[\"{}\"]", loader_name));
+        }
     }
 
     if !query_params.is_empty() {

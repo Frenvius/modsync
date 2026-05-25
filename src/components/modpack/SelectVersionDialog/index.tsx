@@ -7,6 +7,8 @@ import { Badge } from '~/components/ui/badge';
 import { toast } from '~/usecase/hooks/use-toast';
 import { formatDate } from '~/usecase/util/dateUtils';
 import { ScrollArea } from '~/components/ui/scroll-area';
+import { LOADERS } from '~/components/modpack/CreateModpackDialog/constants';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
 import { ModVersion, SelectVersionDialogProps } from './types';
@@ -14,6 +16,15 @@ import { ModVersion, SelectVersionDialogProps } from './types';
 export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersionSelect, gameVersion }: SelectVersionDialogProps) {
   const [versions, setVersions] = React.useState<ModVersion[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [selectedLoader, setSelectedLoader] = React.useState(loader ?? '');
+
+  const isMinecraft = !mod?.source || mod.source === 'modrinth';
+
+  React.useEffect(() => {
+    if (open) {
+      setSelectedLoader(loader ?? '');
+    }
+  }, [open, loader]);
 
   React.useEffect(() => {
     const loadVersions = async () => {
@@ -25,7 +36,7 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
       try {
         const result = await invoke<ModVersion[]>('get_mod_versions', {
           slug: mod.slug,
-          loader: loader,
+          loader: selectedLoader || loader,
           gameVersion: gameVersion,
           source: mod.source,
           thunderstoreCommunity: mod.thunderstore_community
@@ -44,7 +55,7 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
     };
 
     loadVersions();
-  }, [mod, open, gameVersion, loader]);
+  }, [mod, open, gameVersion, selectedLoader]);
 
   const handleSelect = (version: ModVersion) => {
     onVersionSelect(version);
@@ -67,8 +78,24 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
             </div>
             <span className="truncate">{mod.title}</span>
           </DialogTitle>
-          <DialogDescription>
-            Select a version compatible with {gameVersion} ({loader})
+          <DialogDescription asChild>
+            <div className="flex items-center justify-between gap-2">
+              <span>Select a version compatible with {gameVersion}</span>
+              {isMinecraft && (
+                <Select value={selectedLoader} onValueChange={setSelectedLoader}>
+                  <SelectTrigger className="w-[130px] h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LOADERS.map((l) => (
+                      <SelectItem key={l.value} value={l.value}>
+                        {l.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </DialogDescription>
         </DialogHeader>
 
@@ -98,6 +125,11 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
                           Latest
                         </Badge>
                       )}
+                      {version.loaders.length > 0 && version.loaders.map((l) => (
+                        <Badge key={l} variant="outline" className="text-[10px] px-1.5 py-0">
+                          {l}
+                        </Badge>
+                      ))}
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">

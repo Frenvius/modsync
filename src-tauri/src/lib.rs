@@ -138,7 +138,11 @@ async fn search_mods(
 
     if let Some(ref loader_name) = loader {
         if !loader_name.is_empty() {
-            facet_parts.push(format!(r#"["categories:{}"]"#, loader_name));
+            if loader_name == "neoforge" {
+                facet_parts.push(r#"["categories:neoforge","categories:forge"]"#.to_string());
+            } else {
+                facet_parts.push(format!(r#"["categories:{}"]"#, loader_name));
+            }
         }
     }
 
@@ -369,12 +373,15 @@ async fn get_mod_loaders(game_id: Option<String>) -> Result<Vec<Loader>, String>
 }
 
 #[tauri::command]
-async fn get_game_versions(game_id: Option<String>) -> Result<Vec<GameVersion>, String> {
+async fn get_game_versions(
+    game_id: Option<String>,
+    include_snapshots: Option<bool>,
+) -> Result<Vec<GameVersion>, String> {
     let resolved = game_id.as_deref().unwrap_or("minecraft");
     if resolved != "minecraft" {
         return Ok(vec![]);
     }
-    modrinth::get_game_versions().await
+    modrinth::get_game_versions(include_snapshots.unwrap_or(false)).await
 }
 
 #[tauri::command]

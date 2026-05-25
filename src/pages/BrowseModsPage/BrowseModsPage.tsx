@@ -205,7 +205,34 @@ export default function BrowseModsPage() {
       .finally(() => setDetailLoading(false));
   }, [selectedModSlug, selectedGame?.mod_source, thunderstoreCommunity, selectedVersion, selectedLoader, requiresLoader]);
 
-  const getPageNumbers = () => {
+
+  const handleToggleMod = React.useCallback((modSlug: string) => {
+    setInstalledMods((prev) => (prev.includes(modSlug) ? prev.filter((n) => n !== modSlug) : [...prev, modSlug]));
+  }, []);
+
+  const categoryNames = React.useMemo(() => categories.map((c) => capitalize(c.name)), [categories]);
+
+  const sourceLabel = isThunderstore ? 'Thunderstore' : 'Modrinth';
+
+  const sortOptions = React.useMemo(
+    () =>
+      isThunderstore
+        ? [
+            { value: 'downloads', label: 'Downloads', icon: TrendingUp },
+            { value: 'updated', label: 'Recently Updated', icon: Clock },
+            { value: 'follows', label: 'Rating', icon: Star },
+            { value: 'name', label: 'Alphabetical', icon: ArrowDownAZ }
+          ]
+        : [
+            { value: 'relevance', label: 'Relevance', icon: Sparkles },
+            { value: 'downloads', label: 'Downloads', icon: TrendingUp },
+            { value: 'updated', label: 'Recently Updated', icon: Clock },
+            { value: 'follows', label: 'Follows', icon: Star }
+          ],
+    [isThunderstore]
+  );
+
+  const pageNumbers = React.useMemo(() => {
     const pages: (number | 'ellipsis')[] = [];
     if (totalPages <= 7) {
       for (let i = 1; i <= totalPages; i++) pages.push(i);
@@ -219,29 +246,7 @@ export default function BrowseModsPage() {
       pages.push(totalPages);
     }
     return pages;
-  };
-
-  const handleToggleMod = (modSlug: string) => {
-    setInstalledMods((prev) => (prev.includes(modSlug) ? prev.filter((n) => n !== modSlug) : [...prev, modSlug]));
-  };
-
-  const categoryNames = categories.map((c) => capitalize(c.name));
-
-  const sourceLabel = isThunderstore ? 'Thunderstore' : 'Modrinth';
-
-  const sortOptions = isThunderstore
-    ? [
-        { value: 'downloads', label: 'Downloads', icon: TrendingUp },
-        { value: 'updated', label: 'Recently Updated', icon: Clock },
-        { value: 'follows', label: 'Rating', icon: Star },
-        { value: 'name', label: 'Alphabetical', icon: ArrowDownAZ }
-      ]
-    : [
-        { value: 'relevance', label: 'Relevance', icon: Sparkles },
-        { value: 'downloads', label: 'Downloads', icon: TrendingUp },
-        { value: 'updated', label: 'Recently Updated', icon: Clock },
-        { value: 'follows', label: 'Follows', icon: Star }
-      ];
+  }, [totalPages, currentPage]);
 
   const modListContent = (
     <div className="space-y-6">
@@ -370,7 +375,7 @@ export default function BrowseModsPage() {
               description={mod.description}
               iconUrl={mod.icon_url || undefined}
               onAdd={() => handleToggleMod(mod.slug)}
-              onSelect={() => setSelectedModSlug(mod.slug === selectedModSlug ? null : mod.slug)}
+              onSelect={() => setSelectedModSlug((prev) => (prev === mod.slug ? null : mod.slug))}
               isSelected={selectedModSlug === mod.slug}
               downloads={formatDownloads(mod.downloads)}
               isInstalled={installedMods.includes(mod.slug)}
@@ -390,7 +395,7 @@ export default function BrowseModsPage() {
                 onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
               />
             </PaginationItem>
-            {getPageNumbers().map((page, i) =>
+            {pageNumbers.map((page, i) =>
               page === 'ellipsis' ? (
                 <PaginationItem key={`ellipsis-${i}`}>
                   <PaginationEllipsis />

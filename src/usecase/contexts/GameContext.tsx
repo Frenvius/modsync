@@ -58,12 +58,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [selectedGame?.id]);
 
-  const setSelectedGame = (game: GameInfo) => {
+  const setSelectedGame = React.useCallback((game: GameInfo) => {
     setSelectedGameState(game);
     localStorage.setItem(STORAGE_KEY, game.id);
-  };
+  }, []);
 
-  return <GameContext.Provider value={{ games, selectedGame, setSelectedGame, isLoading }}>{children}</GameContext.Provider>;
+  const value = React.useMemo(
+    () => ({ games, selectedGame, setSelectedGame, isLoading }),
+    [games, selectedGame, setSelectedGame, isLoading]
+  );
+
+  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }
 
 export function useGame() {

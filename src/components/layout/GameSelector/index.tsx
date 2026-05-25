@@ -1,9 +1,11 @@
+import React from 'react';
+
 import { ChevronDown } from 'lucide-react';
 
 import { useGame } from '~/usecase/contexts/GameContext';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu';
 
-export function GameSelector() {
+export const GameSelector = React.memo(function GameSelector() {
   const { games, selectedGame, setSelectedGame } = useGame();
 
   if (!selectedGame || games.length <= 1) return null;
@@ -29,4 +31,4 @@ export function GameSelector() {
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});

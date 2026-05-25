@@ -1,3 +1,4 @@
+import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
 import { Package, Settings } from 'lucide-react';
@@ -7,7 +8,7 @@ import { GameSelector } from '~/components/layout/GameSelector';
 
 import { navItems } from './constants';
 
-export function Sidebar() {
+export const Sidebar = React.memo(function Sidebar() {
   const location = useLocation();
 
   return (
@@ -58,4 +59,4 @@ export function Sidebar() {
       </div>
     </aside>
   );
-}
+});

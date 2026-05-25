@@ -6,8 +6,10 @@ import { ImagePlus, Loader2, X } from 'lucide-react';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
+import { Switch } from '~/components/ui/switch';
 import { toast } from '~/usecase/hooks/use-toast';
 import { useGame } from '~/usecase/contexts/GameContext';
+import { LOADERS } from '~/components/modpack/CreateModpackDialog/constants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
@@ -18,6 +20,7 @@ export function EditModpackDialog({
   onSave,
   modpackId,
   modpackName,
+  modpackLoader,
   onOpenChange,
   modpackVersion,
   modpackImagePath
@@ -25,7 +28,9 @@ export function EditModpackDialog({
   const { selectedGame } = useGame();
   const [name, setName] = React.useState(modpackName);
   const [version, setVersion] = React.useState(modpackVersion);
+  const [loader, setLoader] = React.useState(modpackLoader);
   const [versions, setVersions] = React.useState<GameVersion[]>([]);
+  const [includeSnapshots, setIncludeSnapshots] = React.useState(false);
   const [isLoadingVersions, setIsLoadingVersions] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [imagePreview, setImagePreview] = React.useState<null | string>(null);
@@ -33,14 +38,23 @@ export function EditModpackDialog({
   const [imageRemoved, setImageRemoved] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  const isMinecraft = selectedGame?.id === 'minecraft';
+
+  const displayVersions = React.useMemo(() => {
+    if (!version || versions.some((v) => v.version === version)) return versions;
+    return [{ version, version_type: 'release' }, ...versions];
+  }, [version, versions]);
+
   React.useEffect(() => {
     const loadVersions = async () => {
-      if (versions.length > 0) return;
       if (!selectedGame?.requires_loader) return;
 
       setIsLoadingVersions(true);
       try {
-        const gameVersions = await invoke<GameVersion[]>('get_game_versions', { gameId: selectedGame?.id ?? 'minecraft' });
+        const gameVersions = await invoke<GameVersion[]>('get_game_versions', {
+          gameId: selectedGame?.id ?? 'minecraft',
+          includeSnapshots: isMinecraft && includeSnapshots
+        });
         setVersions(gameVersions);
       } catch (error) {
         console.error('Failed to load game versions:', error);
@@ -52,7 +66,7 @@ export function EditModpackDialog({
     if (open) {
       loadVersions();
     }
-  }, [open, versions.length, selectedGame]);
+  }, [open, selectedGame, includeSnapshots, isMinecraft]);
 
   React.useEffect(() => {
     const loadExistingImage = async () => {
@@ -74,8 +88,11 @@ export function EditModpackDialog({
     if (open) {
       setName(modpackName);
       setVersion(modpackVersion);
+      setLoader(modpackLoader);
       setImageData(null);
       setImageRemoved(false);
+      const looksLikeRelease = /^\d+\.\d+(\.\d+)?$/.test(modpackVersion);
+      setIncludeSnapshots(!looksLikeRelease && modpackVersion.length > 0);
       loadExistingImage();
     }
   }, [open, modpackName, modpackVersion, modpackImagePath]);
@@ -130,7 +147,8 @@ export function EditModpackDialog({
         await invoke('update_modpack', {
           id: modpackId,
           name: name.trim(),
-          gameVersion: version
+          gameVersion: version,
+          loader
         });
 
         if (imageData) {
@@ -213,21 +231,57 @@ export function EditModpackDialog({
           </div>
 
           {selectedGame?.requires_loader && (
-            <div className="space-y-2 !-mt-4">
-              <Label htmlFor="version">Game Version</Label>
-              <Select value={version} disabled={isSaving} onValueChange={setVersion}>
-                <SelectTrigger>
-                  <SelectValue placeholder={isLoadingVersions ? 'Loading...' : 'Select version'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {versions.map((v) => (
-                    <SelectItem key={v.version} value={v.version}>
-                      {v.version}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="version">Game Version</Label>
+                  {isMinecraft && (
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="snapshots" className="text-xs text-muted-foreground font-normal">
+                        Show snapshots
+                      </Label>
+                      <Switch
+                        id="snapshots"
+                        checked={includeSnapshots}
+                        disabled={isSaving || isLoadingVersions}
+                        onCheckedChange={setIncludeSnapshots}
+                      />
+                    </div>
+                  )}
+                </div>
+                <Select value={version} disabled={isSaving} onValueChange={setVersion}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingVersions ? 'Loading...' : 'Select version'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {displayVersions.map((v) => (
+                      <SelectItem key={v.version} value={v.version}>
+                        {v.version}
+                        {v.version_type && v.version_type !== 'release' ? ` (${v.version_type})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {isMinecraft && (
+                <div className="space-y-2">
+                  <Label htmlFor="loader">Mod Loader</Label>
+                  <Select value={loader} disabled={isSaving} onValueChange={setLoader}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select loader" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOADERS.map((l) => (
+                        <SelectItem key={l.value} value={l.value}>
+                          {l.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </>
           )}
         </div>
         <DialogFooter className="mt-4">

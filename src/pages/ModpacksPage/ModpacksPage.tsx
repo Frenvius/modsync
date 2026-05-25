@@ -89,19 +89,17 @@ export default function ModpacksPage() {
     const loadInstallStatuses = async () => {
       if (modpacks.length === 0) return;
 
+      const statuses: InstallStatusMap = {};
       for (const pack of modpacks) {
         try {
-          const status = await invoke<InstallStatus>('get_install_status', {
+          statuses[pack.id] = await invoke<InstallStatus>('get_install_status', {
             modpackId: pack.id
           });
-          setInstallStatuses((prev) => ({
-            ...prev,
-            [pack.id]: status
-          }));
         } catch (err) {
           console.error(`Failed to get install status for ${pack.id}:`, err);
         }
       }
+      setInstallStatuses(statuses);
     };
 
     loadInstallStatuses();
@@ -132,33 +130,38 @@ export default function ModpacksPage() {
     };
   }, []);
 
-  React.useEffect(() => {
-    const installingPacks = Object.entries(installStatuses)
-      .filter(([_, status]) => status?.installing)
-      .map(([id]) => id);
+  const installingPackIdsRef = React.useRef<string[]>([]);
 
-    if (installingPacks.length === 0) return;
+  React.useEffect(() => {
+    installingPackIdsRef.current = Object.entries(installStatuses)
+      .filter(([_, s]) => s?.installing)
+      .map(([id]) => id);
+  }, [installStatuses]);
+
+  const hasInstallingPacks = installingPackIdsRef.current.length > 0 ||
+    Object.values(installStatuses).some((s) => s?.installing);
+
+  React.useEffect(() => {
+    if (!hasInstallingPacks) return;
 
     const interval = setInterval(async () => {
-      for (const packId of installingPacks) {
+      const ids = installingPackIdsRef.current;
+      if (ids.length === 0) return;
+
+      for (const packId of ids) {
         try {
-          const status = await invoke<InstallStatus>('get_install_status', {
-            modpackId: packId
-          });
-          setInstallStatuses((prev) => ({
-            ...prev,
-            [packId]: status
-          }));
+          const status = await invoke<InstallStatus>('get_install_status', { modpackId: packId });
+          setInstallStatuses((prev) => ({ ...prev, [packId]: status }));
         } catch (err) {
           console.error(`Failed to poll install status for ${packId}:`, err);
         }
       }
-    }, 1000);
+    }, 2000);
 
     return () => clearInterval(interval);
-  }, [installStatuses]);
+  }, [hasInstallingPacks]);
 
-  const handleClone = async (id: string) => {
+  const handleClone = React.useCallback(async (id: string) => {
     try {
       await invoke('clone_modpack', { id });
       toast({
@@ -174,9 +177,9 @@ export default function ModpacksPage() {
         description: `Failed to clone modpack: ${error}`
       });
     }
-  };
+  }, [loadModpacks]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = React.useCallback(async (id: string) => {
     try {
       await invoke('delete_modpack', { id });
       toast({
@@ -192,12 +195,20 @@ export default function ModpacksPage() {
         description: `Failed to delete modpack: ${error}`
       });
     }
-  };
+  }, [loadModpacks]);
 
-  const filteredPacks = modpacks.filter((pack) => pack.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredPacks = React.useMemo(
+    () => modpacks.filter((pack) => pack.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    [modpacks, searchQuery]
+  );
 
-  const ownedPacks = filteredPacks.filter((p) => p.is_owner);
-  const sharedPacks = filteredPacks.filter((p) => !p.is_owner);
+  const ownedPacks = React.useMemo(() => filteredPacks.filter((p) => p.is_owner), [filteredPacks]);
+  const sharedPacks = React.useMemo(() => filteredPacks.filter((p) => !p.is_owner), [filteredPacks]);
+
+  const gameInfoMap = React.useMemo(
+    () => new Map(games.map((g) => [g.id, g])),
+    [games]
+  );
 
   const renderModpackGrid = (packs: Modpack[]) => {
     if (packs.length === 0) {
@@ -218,7 +229,7 @@ export default function ModpacksPage() {
         {packs.map((pack) => {
           const syncStatusInfo = syncStatuses[pack.id];
           const installStatus = installStatuses[pack.id];
-          const gameInfo = games.find((g) => g.id === pack.game_id);
+          const gameInfo = gameInfoMap.get(pack.game_id);
           return (
             <ModpackCard
               id={pack.id}
@@ -227,15 +238,16 @@ export default function ModpacksPage() {
               gameId={pack.game_id}
               modSource={gameInfo?.mod_source}
               isOwner={pack.is_owner}
+              loader={pack.loader}
               modCount={pack.mods.length}
               imagePath={pack.image_path}
               shareCode={pack.share_code}
-              onEdit={() => loadModpacks()}
+              onEdit={loadModpacks}
               version={pack.game_version}
               onDelete={() => handleDelete(pack.id)}
               onClone={!pack.is_owner ? () => handleClone(pack.id) : undefined}
               installStatus={installStatus ?? undefined}
-              onShareStatusChange={() => loadModpacks()}
+              onShareStatusChange={loadModpacks}
               syncInfo={
                 !pack.is_owner && syncStatusInfo
                   ? {

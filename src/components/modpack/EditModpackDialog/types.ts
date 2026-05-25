@@ -7,6 +7,7 @@ export interface EditModpackDialogProps {
   open: boolean;
   modpackId?: string;
   modpackName: string;
+  modpackLoader: string;
   onSave?: () => void;
   modpackVersion: string;
   modpackImagePath?: null | string;
