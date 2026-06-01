@@ -13,7 +13,7 @@ import { LOADERS } from '~/components/modpack/CreateModpackDialog/constants';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog';
 
-import { EditModpackDialogProps, GameVersion } from './types';
+import { EditModpackDialogProps, GameVersion, LoaderVersionInfo } from './types';
 
 export function EditModpackDialog({
   open,
@@ -21,6 +21,7 @@ export function EditModpackDialog({
   modpackId,
   modpackName,
   modpackLoader,
+  modpackLoaderVersion,
   onOpenChange,
   modpackVersion,
   modpackImagePath
@@ -29,6 +30,9 @@ export function EditModpackDialog({
   const [name, setName] = React.useState(modpackName);
   const [version, setVersion] = React.useState(modpackVersion);
   const [loader, setLoader] = React.useState(modpackLoader);
+  const [loaderVersion, setLoaderVersion] = React.useState(modpackLoaderVersion ?? '');
+  const [loaderVersions, setLoaderVersions] = React.useState<LoaderVersionInfo[]>([]);
+  const [isLoadingLoaderVersions, setIsLoadingLoaderVersions] = React.useState(false);
   const [versions, setVersions] = React.useState<GameVersion[]>([]);
   const [includeSnapshots, setIncludeSnapshots] = React.useState(false);
   const [isLoadingVersions, setIsLoadingVersions] = React.useState(false);
@@ -44,6 +48,39 @@ export function EditModpackDialog({
     if (!version || versions.some((v) => v.version === version)) return versions;
     return [{ version, version_type: 'release' }, ...versions];
   }, [version, versions]);
+
+  React.useEffect(() => {
+    if (!loader || !isMinecraft) {
+      setLoaderVersions([]);
+      return;
+    }
+
+    const needsGameVersion = loader === 'neoforge' || loader === 'forge';
+    if (needsGameVersion && !version) {
+      setLoaderVersions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchLoaderVersions = async () => {
+      setIsLoadingLoaderVersions(true);
+      try {
+        const result = await invoke<LoaderVersionInfo[]>('get_loader_versions', {
+          loader,
+          gameVersion: version || null
+        });
+        if (!cancelled) setLoaderVersions(result);
+      } catch (err) {
+        console.error('Failed to load loader versions:', err);
+        if (!cancelled) setLoaderVersions([]);
+      } finally {
+        if (!cancelled) setIsLoadingLoaderVersions(false);
+      }
+    };
+
+    fetchLoaderVersions();
+    return () => { cancelled = true; };
+  }, [loader, version, isMinecraft]);
 
   React.useEffect(() => {
     const loadVersions = async () => {
@@ -89,6 +126,7 @@ export function EditModpackDialog({
       setName(modpackName);
       setVersion(modpackVersion);
       setLoader(modpackLoader);
+      setLoaderVersion(modpackLoaderVersion ?? '');
       setImageData(null);
       setImageRemoved(false);
       const looksLikeRelease = /^\d+\.\d+(\.\d+)?$/.test(modpackVersion);
@@ -148,7 +186,8 @@ export function EditModpackDialog({
           id: modpackId,
           name: name.trim(),
           gameVersion: version,
-          loader
+          loader,
+          loaderVersion: loaderVersion || null
         });
 
         if (imageData) {
@@ -275,6 +314,28 @@ export function EditModpackDialog({
                       {LOADERS.map((l) => (
                         <SelectItem key={l.value} value={l.value}>
                           {l.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {loader && isMinecraft && (
+                <div className="space-y-2">
+                  <Label htmlFor="loaderVersion">Loader Version</Label>
+                  <Select
+                    value={loaderVersion}
+                    disabled={isSaving || isLoadingLoaderVersions || loaderVersions.length === 0}
+                    onValueChange={setLoaderVersion}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={isLoadingLoaderVersions ? 'Loading...' : 'Latest (recommended)'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loaderVersions.slice(0, 50).map((v) => (
+                        <SelectItem key={v.version} value={v.version}>
+                          {v.version}{v.stable ? '' : ' (unstable)'}
                         </SelectItem>
                       ))}
                     </SelectContent>

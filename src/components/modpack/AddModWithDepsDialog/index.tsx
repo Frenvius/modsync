@@ -73,7 +73,9 @@ export function AddModWithDepsDialog({
         author: modInfo.author,
         iconUrl: modInfo.icon_url,
         versionId: modInfo.version_id,
-        version: modInfo.version_number
+        version: modInfo.version_number,
+        source: modInfo.source ?? null,
+        filename: modInfo.filename ?? null
       });
 
       for (const dep of dependencies) {
@@ -81,12 +83,14 @@ export function AddModWithDepsDialog({
           await invoke('add_mod_to_modpack', {
             modpackId,
             slug: dep.slug,
-            versionId: null,
+            versionId: dep.version_id ?? null,
             title: dep.title,
-            version: 'latest',
+            version: dep.version_number ?? 'latest',
             author: dep.author,
             iconUrl: dep.icon_url,
-            projectId: dep.project_id
+            projectId: dep.project_id,
+            source: null,
+            filename: null
           });
         }
       }

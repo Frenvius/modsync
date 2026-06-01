@@ -5,7 +5,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
   AlertCircle,
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
+  ArrowUpDown,
   CheckCircle,
   Copy,
   Download,
@@ -98,6 +101,8 @@ export default function ModpackDetailPage() {
   const [isCheckingThunderstoreUpdates, setIsCheckingThunderstoreUpdates] = React.useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = React.useState(false);
   const [modSearch, setModSearch] = React.useState('');
+  const [sortColumn, setSortColumn] = React.useState<'name' | 'version'>('name');
+  const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('asc');
   const [syncProgress, setSyncProgress] = React.useState<SyncProgress | null>(null);
   const [isCloning, setIsCloning] = React.useState(false);
   const [modpackImageUrl, setModpackImageUrl] = React.useState<null | string>(null);
@@ -119,30 +124,14 @@ export default function ModpackDetailPage() {
     if (mods.length === 0) return;
 
     setIsCheckingUpdates(true);
-    const updates: Record<string, string> = {};
-
     try {
-      const checkPromises = mods.map(async (mod) => {
-        try {
-          const versions = await invoke<Array<{ id: string; version_number: string }>>('get_mod_versions', {
-            slug: mod.slug,
-            loader: loader,
-            gameVersion: gameVersion
-          });
-
-          if (versions.length > 0) {
-            const latestVersion = versions[0].version_number;
-            if (mod.version !== latestVersion) {
-              updates[mod.slug] = latestVersion;
-            }
-          }
-        } catch (err) {
-          console.warn(`Failed to check updates for ${mod.slug}:`, err);
-        }
+      const modrinthMods = mods.filter((m) => m.source !== 'curseforge');
+      const result = await invoke<{ updates: Record<string, string> }>('check_modrinth_updates', {
+        mods: modrinthMods.map((m) => ({ slug: m.slug, version: m.version })),
+        gameVersion,
+        loader
       });
-
-      await Promise.all(checkPromises);
-      setModUpdates(updates);
+      setModUpdates(result.updates);
     } catch (err) {
       console.error('Failed to check for mod updates:', err);
     } finally {
@@ -177,7 +166,7 @@ export default function ModpackDetailPage() {
   }, []);
 
   const loadModpack = React.useCallback(
-    async (modpackId: string, { silent = false } = {}) => {
+    async (modpackId: string, { silent = false, skipUpdateCheck = false } = {}) => {
       if (!silent) {
         setIsLoading(true);
         setError(null);
@@ -185,7 +174,7 @@ export default function ModpackDetailPage() {
       try {
         const data = await invoke<Modpack>('get_modpack', { id: modpackId });
         setModpack(data);
-        if (data.mods.length > 0) {
+        if (!skipUpdateCheck && data.mods.length > 0) {
           const game = games.find((g) => g.id === data.game_id);
           if (game?.mod_source === 'thunderstore') {
             checkThunderstoreUpdates(modpackId);
@@ -204,7 +193,7 @@ export default function ModpackDetailPage() {
   );
 
   const refreshModpack = React.useCallback(
-    (modpackId: string) => loadModpack(modpackId, { silent: true }),
+    (modpackId: string) => loadModpack(modpackId, { silent: true, skipUpdateCheck: true }),
     [loadModpack]
   );
 
@@ -455,6 +444,8 @@ export default function ModpackDetailPage() {
           version_id: string;
           version_number: string;
           icon_url: null | string;
+          source?: null | string;
+          filename?: null | string;
         };
       }>('get_mod_with_dependencies', {
         slug: mod.slug,
@@ -470,7 +461,7 @@ export default function ModpackDetailPage() {
       });
 
       await invoke('add_mod_to_modpack', {
-        filename: null,
+        filename: modInfo.mod_info.filename ?? null,
         projectId: null,
         modpackId: modpack.id,
         slug: modInfo.mod_info.slug,
@@ -478,7 +469,8 @@ export default function ModpackDetailPage() {
         author: modInfo.mod_info.author,
         iconUrl: modInfo.mod_info.icon_url,
         versionId: modInfo.mod_info.version_id,
-        version: modInfo.mod_info.version_number
+        version: modInfo.mod_info.version_number,
+        source: modInfo.mod_info.source ?? null
       });
 
       toast({
@@ -700,6 +692,17 @@ export default function ModpackDetailPage() {
     }
   };
 
+  const handleInstall = async () => {
+    if (!modpack || isInstalling) return;
+    try {
+      await invoke('start_install', { modpackId: modpack.id });
+      checkInstallStatus(modpack.id);
+    } catch (err) {
+      console.error('Failed to start install:', err);
+      toast({ title: 'Install failed', variant: 'destructive', description: String(err) });
+    }
+  };
+
   const handleLaunch = async () => {
     if (!modpack) return;
 
@@ -808,7 +811,7 @@ export default function ModpackDetailPage() {
     }
   };
 
-  const isInstalling = installStatus?.installing || (installProgress && installProgress.stage !== 'complete');
+  const isInstalling = installStatus?.installing || (installProgress != null && installProgress.stage !== 'complete');
   const progressPercent = installProgress
     ? installProgress.total > 0
       ? Math.round((installProgress.current / installProgress.total) * 100)
@@ -820,10 +823,19 @@ export default function ModpackDetailPage() {
     [modpack?.mods]
   );
 
+  const handleSort = React.useCallback((column: 'name' | 'version') => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  }, [sortColumn]);
+
   const filteredMods = React.useMemo(() => {
     if (!modpack) return [];
     const search = modSearch.toLowerCase();
-    return [...modpack.mods]
+    const result = [...modpack.mods]
       .reverse()
       .filter(
         (mod) =>
@@ -832,7 +844,16 @@ export default function ModpackDetailPage() {
           mod.author.toLowerCase().includes(search) ||
           mod.slug.toLowerCase().includes(search)
       );
-  }, [modpack?.mods, modSearch]);
+
+    result.sort((a, b) => {
+      const cmp = sortColumn === 'name'
+        ? a.title.localeCompare(b.title)
+        : a.version.localeCompare(b.version);
+      return sortDirection === 'desc' ? -cmp : cmp;
+    });
+
+    return result;
+  }, [modpack?.mods, modSearch, sortColumn, sortDirection]);
 
   if (isLoading) {
     return (
@@ -966,6 +987,12 @@ export default function ModpackDetailPage() {
                       Set Game Path
                     </DropdownMenuItem>
                   )}
+                  {!isThunderstoreGame && installStatus?.installed && !isInstalling && (
+                    <DropdownMenuItem onClick={handleInstall}>
+                      <Download className="w-4 h-4 mr-2" />
+                      Repair Install
+                    </DropdownMenuItem>
+                  )}
                   {modpack.is_owner && (
                     <>
                       <DropdownMenuSeparator />
@@ -977,32 +1004,43 @@ export default function ModpackDetailPage() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button
-                variant="glow"
-                className="gap-2"
-                onClick={handleLaunch}
-                disabled={
-                  isLaunching ||
-                  (!isThunderstoreGame && (isInstalling || !installStatus?.installed))
-                }
-              >
-                {isLaunching ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Launching...
-                  </>
-                ) : isInstalling && !isThunderstoreGame ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Installing...
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4" />
-                    Launch
-                  </>
-                )}
-              </Button>
+              {!isThunderstoreGame && !installStatus?.installed && !isInstalling ? (
+                <Button
+                  variant="glow"
+                  className="gap-2"
+                  onClick={handleInstall}
+                >
+                  <Download className="w-4 h-4" />
+                  Install
+                </Button>
+              ) : (
+                <Button
+                  variant="glow"
+                  className="gap-2"
+                  onClick={handleLaunch}
+                  disabled={
+                    isLaunching ||
+                    (!isThunderstoreGame && isInstalling)
+                  }
+                >
+                  {isLaunching ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Launching...
+                    </>
+                  ) : isInstalling && !isThunderstoreGame ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Installing...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4" />
+                      Launch
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
           {isInstalling && (
@@ -1172,8 +1210,26 @@ export default function ModpackDetailPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="h-9 px-3 w-[300px]">Name</TableHead>
-                      <TableHead className="h-9 px-3">Version</TableHead>
+                      <TableHead className="h-9 px-3 w-[300px]">
+                        <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort('name')}>
+                          Name
+                          {sortColumn === 'name' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-50" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead className="h-9 px-3">
+                        <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => handleSort('version')}>
+                          Version
+                          {sortColumn === 'version' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-50" />
+                          )}
+                        </button>
+                      </TableHead>
                       <TableHead className="h-9 px-3 w-[140px] text-right"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1200,6 +1256,11 @@ export default function ModpackDetailPage() {
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="font-medium text-sm truncate">{mod.title}</p>
+                                  {mod.source === 'curseforge' && (
+                                    <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0 border-orange-500/50 text-orange-500 bg-orange-500/10">
+                                      CF
+                                    </Badge>
+                                  )}
                                   {mod.is_loader && (
                                     <Badge variant="secondary" className="text-xs px-1.5 py-0">
                                       Loader
@@ -1351,6 +1412,7 @@ export default function ModpackDetailPage() {
         modpackId={modpack.id}
         modpackName={modpack.name}
         modpackLoader={modpack.loader ?? ''}
+        modpackLoaderVersion={modpack.loader_version}
         onOpenChange={setEditDialogOpen}
         modpackImagePath={modpack.image_path}
         onSave={() => refreshModpack(modpack.id)}

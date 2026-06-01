@@ -9,6 +9,7 @@ export interface ModpackMod {
   version_id: null | string;
   is_loader?: boolean;
   is_deprecated?: boolean;
+  source?: null | string;
 }
 
 export interface Modpack {
@@ -17,6 +18,7 @@ export interface Modpack {
   game_id: string;
   game_version: string;
   loader: null | string;
+  loader_version: null | string;
   is_owner: boolean;
   mods: ModpackMod[];
   created_at: string;

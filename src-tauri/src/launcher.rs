@@ -328,21 +328,7 @@ fn build_classpath(
 }
 
 fn maven_to_path(maven: &str) -> Option<PathBuf> {
-    let parts: Vec<&str> = maven.split(':').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-
-    let group_path: PathBuf = parts[0].split('.').collect();
-    let artifact = parts[1];
-    let version = parts[2];
-
-    Some(
-        group_path
-            .join(artifact)
-            .join(version)
-            .join(format!("{}-{}.jar", artifact, version)),
-    )
+    crate::loaders::neoforge::maven_to_path(maven).map(PathBuf::from)
 }
 
 fn build_jvm_args_file(
@@ -350,6 +336,7 @@ fn build_jvm_args_file(
     options: &LaunchOptions,
     version_meta: &VersionMeta,
     classpath: &str,
+    loader_profile: Option<&FabricLoaderProfile>,
 ) -> Result<PathBuf, String> {
     let natives_dir = instance_dir.join("natives");
     let mut args = Vec::new();
@@ -396,6 +383,27 @@ fn build_jvm_args_file(
         }
     }
 
+    if let Some(profile) = loader_profile {
+        if let Some(ref lp_args) = profile.arguments {
+            if let Some(ref jvm_args) = lp_args.jvm {
+                for arg in jvm_args {
+                    if arg == "-cp" || arg.contains("${classpath}") {
+                        continue;
+                    }
+                    let resolved = resolve_arg_placeholder(arg, instance_dir, options, version_meta);
+                    if resolved.is_empty() {
+                        continue;
+                    }
+                    if resolved.contains(' ') || resolved.contains('\\') {
+                        args.push(quote_path(&resolved));
+                    } else {
+                        args.push(resolved);
+                    }
+                }
+            }
+        }
+    }
+
     let temp_dir = std::env::temp_dir();
     let arg_file = temp_dir.join(format!("mc_jvm_args_{}.txt", std::process::id()));
     let content = args.join("\n");
@@ -415,6 +423,7 @@ fn build_game_args(
     instance_dir: &Path,
     options: &LaunchOptions,
     version_meta: &VersionMeta,
+    loader_profile: Option<&FabricLoaderProfile>,
 ) -> Vec<String> {
     let mut args = Vec::new();
     let game_dir = options
@@ -451,6 +460,17 @@ fn build_game_args(
         }
     }
 
+    if let Some(profile) = loader_profile {
+        if let Some(ref lp_args) = profile.arguments {
+            if let Some(ref game_args) = lp_args.game {
+                for arg in game_args {
+                    let resolved = resolve_arg_placeholder(arg, instance_dir, options, version_meta);
+                    args.push(resolved);
+                }
+            }
+        }
+    }
+
     args
 }
 
@@ -468,6 +488,9 @@ fn resolve_arg_placeholder(
     let assets_dir = instance_dir.join("assets");
     let natives_dir = instance_dir.join("natives");
 
+    let libraries_dir = instance_dir.join("libraries");
+    let classpath_separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+
     arg.replace("${auth_player_name}", &options.username)
         .replace("${version_name}", &version_meta.id)
         .replace("${game_directory}", &game_dir.to_string_lossy())
@@ -478,6 +501,8 @@ fn resolve_arg_placeholder(
         .replace("${user_type}", "msa")
         .replace("${version_type}", &version_meta.version_type)
         .replace("${natives_directory}", &natives_dir.to_string_lossy())
+        .replace("${library_directory}", &libraries_dir.to_string_lossy())
+        .replace("${classpath_separator}", classpath_separator)
         .replace("${launcher_name}", "ModpackSync")
         .replace("${launcher_version}", "0.1.0")
         .replace("${classpath}", "")
@@ -531,8 +556,8 @@ pub async fn launch_game(
 
     let classpath = build_classpath(&instance_dir, &version_meta, fabric_profile.as_ref());
 
-    let jvm_args_file = build_jvm_args_file(&instance_dir, &options, &version_meta, &classpath)?;
-    let game_args = build_game_args(&instance_dir, &options, &version_meta);
+    let jvm_args_file = build_jvm_args_file(&instance_dir, &options, &version_meta, &classpath, fabric_profile.as_ref())?;
+    let game_args = build_game_args(&instance_dir, &options, &version_meta, fabric_profile.as_ref());
 
     let mut command = Command::new(&java.path);
     command.current_dir(&instance_dir);

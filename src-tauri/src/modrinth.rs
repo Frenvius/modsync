@@ -2,6 +2,37 @@ use serde::{Deserialize, Serialize};
 
 const MODRINTH_API_BASE: &str = "https://api.modrinth.com/v2";
 const USER_AGENT: &str = "ModSync/0.1.0 (https://github.com/Frenvius/modpack-sync)";
+const MAX_RETRIES: u32 = 3;
+
+async fn get_with_retry(url: &str) -> Result<reqwest::Response, String> {
+    let client = reqwest::Client::new();
+    for attempt in 0..MAX_RETRIES {
+        let response = client
+            .get(url)
+            .header("User-Agent", USER_AGENT)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to send request: {}", e))?;
+
+        if response.status().as_u16() == 429 {
+            let wait = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(1 << attempt);
+            eprintln!(
+                "[modrinth] 429 on {} (attempt {}), retrying in {}s",
+                url, attempt + 1, wait
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+            continue;
+        }
+
+        return Ok(response);
+    }
+    Err(format!("Rate limited after {} retries: {}", MAX_RETRIES, url))
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Project {
@@ -155,8 +186,6 @@ pub struct SearchResult {
 }
 
 pub async fn search_mods(params: SearchParams) -> Result<SearchResult, String> {
-    let client = reqwest::Client::new();
-
     let mut url = format!("{}/search", MODRINTH_API_BASE);
     let mut query_params = vec![];
 
@@ -194,12 +223,7 @@ pub async fn search_mods(params: SearchParams) -> Result<SearchResult, String> {
         url = format!("{}?{}", url, query_params.join("&"));
     }
 
-    let response = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+    let response = get_with_retry(&url).await?;
 
     if !response.status().is_success() {
         return Err(format!("API error: {}", response.status()));
@@ -362,15 +386,8 @@ mod urlencoding {
 }
 
 pub async fn get_project(id_or_slug: &str) -> Result<Project, String> {
-    let client = reqwest::Client::new();
     let url = format!("{}/project/{}", MODRINTH_API_BASE, id_or_slug);
-
-    let response = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+    let response = get_with_retry(&url).await?;
 
     if !response.status().is_success() {
         return Err(format!("API error: {}", response.status()));
@@ -380,6 +397,53 @@ pub async fn get_project(id_or_slug: &str) -> Result<Project, String> {
         .json()
         .await
         .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+async fn fetch_versions_with_loaders(
+    id_or_slug: &str,
+    game_version: Option<&str>,
+    loaders: &[String],
+) -> Result<Vec<Version>, String> {
+    let mut query_params = vec![];
+
+    if let Some(version) = game_version {
+        query_params.push(format!("game_versions=[\"{}\"]", version));
+    }
+
+    if !loaders.is_empty() {
+        let parts: Vec<String> = loaders.iter().map(|l| format!("\"{}\"", l)).collect();
+        query_params.push(format!("loaders=[{}]", parts.join(",")));
+    }
+
+    let url = if query_params.is_empty() {
+        format!("{}/project/{}/version", MODRINTH_API_BASE, id_or_slug)
+    } else {
+        format!(
+            "{}/project/{}/version?{}",
+            MODRINTH_API_BASE,
+            id_or_slug,
+            query_params.join("&")
+        )
+    };
+
+    let response = get_with_retry(&url).await?;
+
+    if !response.status().is_success() {
+        return Err(format!("API error: {}", response.status()));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+fn primary_loaders(loader: Option<&str>) -> Vec<String> {
+    match loader {
+        Some("neoforge") => vec!["neoforge".to_string(), "forge".to_string()],
+        Some(l) if !l.is_empty() => vec![l.to_string()],
+        _ => vec![],
+    }
 }
 
 pub async fn get_project_versions(
@@ -387,40 +451,39 @@ pub async fn get_project_versions(
     game_version: Option<&str>,
     loader: Option<&str>,
 ) -> Result<Vec<Version>, String> {
-    let client = reqwest::Client::new();
-    let mut url = format!("{}/project/{}/version", MODRINTH_API_BASE, id_or_slug);
+    let loaders = primary_loaders(loader);
+    fetch_versions_with_loaders(id_or_slug, game_version, &loaders).await
+}
 
-    let mut query_params = vec![];
-    if let Some(version) = game_version {
-        query_params.push(format!("game_versions=[\"{}\"]", version));
+pub async fn get_project_versions_multi(
+    id_or_slug: &str,
+    game_version: Option<&str>,
+    loader: Option<&str>,
+    additional_loaders: Option<&[String]>,
+) -> Result<Vec<Version>, String> {
+    let loaders = primary_loaders(loader);
+    let result = fetch_versions_with_loaders(id_or_slug, game_version, &loaders).await?;
+
+    if !result.is_empty() {
+        return Ok(result);
     }
-    if let Some(loader_name) = loader {
-        if loader_name == "neoforge" {
-            query_params.push("loaders=[\"neoforge\",\"forge\"]".to_string());
-        } else {
-            query_params.push(format!("loaders=[\"{}\"]", loader_name));
+
+    let extra = match additional_loaders {
+        Some(e) if !e.is_empty() => e,
+        _ => return Ok(result),
+    };
+
+    let mut fallback_loaders: Vec<String> = vec![];
+    for l in extra {
+        if !fallback_loaders.contains(l) {
+            fallback_loaders.push(l.clone());
+            if l == "neoforge" && !fallback_loaders.contains(&"forge".to_string()) {
+                fallback_loaders.push("forge".to_string());
+            }
         }
     }
 
-    if !query_params.is_empty() {
-        url = format!("{}?{}", url, query_params.join("&"));
-    }
-
-    let response = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("API error: {}", response.status()));
-    }
-
-    response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))
+    fetch_versions_with_loaders(id_or_slug, game_version, &fallback_loaders).await
 }
 
 pub async fn get_projects_batch(ids: &[String]) -> Result<Vec<Project>, String> {
@@ -428,7 +491,6 @@ pub async fn get_projects_batch(ids: &[String]) -> Result<Vec<Project>, String> 
         return Ok(vec![]);
     }
 
-    let client = reqwest::Client::new();
     let ids_json =
         serde_json::to_string(ids).map_err(|e| format!("Failed to serialize IDs: {}", e))?;
     let url = format!(
@@ -437,12 +499,7 @@ pub async fn get_projects_batch(ids: &[String]) -> Result<Vec<Project>, String> 
         urlencoding::encode(&ids_json)
     );
 
-    let response = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+    let response = get_with_retry(&url).await?;
 
     if !response.status().is_success() {
         return Err(format!("API error: {}", response.status()));
@@ -455,15 +512,8 @@ pub async fn get_projects_batch(ids: &[String]) -> Result<Vec<Project>, String> 
 }
 
 pub async fn get_project_team(project_id: &str) -> Result<Vec<TeamMember>, String> {
-    let client = reqwest::Client::new();
     let url = format!("{}/project/{}/members", MODRINTH_API_BASE, project_id);
-
-    let response = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+    let response = get_with_retry(&url).await?;
 
     if !response.status().is_success() {
         return Err(format!("API error: {}", response.status()));
@@ -475,12 +525,42 @@ pub async fn get_project_team(project_id: &str) -> Result<Vec<TeamMember>, Strin
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
+pub async fn get_project_author(project: &Project) -> String {
+    if let Ok(team) = get_project_team(&project.id).await {
+        if let Some(member) = team
+            .iter()
+            .find(|m| m.role == "Owner")
+            .or_else(|| team.first())
+        {
+            return member.user.username.clone();
+        }
+    }
+
+    let url = format!(
+        "{}/search?query={}&limit=1&facets=[[\"project_type:mod\"]]",
+        MODRINTH_API_BASE,
+        urlencoding::encode(&project.slug)
+    );
+    if let Ok(resp) = get_with_retry(&url).await {
+        if resp.status().is_success() {
+            if let Ok(result) = resp.json::<SearchResponse>().await {
+                if let Some(hit) = result.hits.first() {
+                    if hit.slug == project.slug {
+                        return hit.author.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    "Unknown".to_string()
+}
+
 pub async fn get_versions_batch(ids: &[String]) -> Result<Vec<Version>, String> {
     if ids.is_empty() {
         return Ok(vec![]);
     }
 
-    let client = reqwest::Client::new();
     let ids_json =
         serde_json::to_string(ids).map_err(|e| format!("Failed to serialize IDs: {}", e))?;
     let url = format!(
@@ -489,12 +569,7 @@ pub async fn get_versions_batch(ids: &[String]) -> Result<Vec<Version>, String> 
         urlencoding::encode(&ids_json)
     );
 
-    let response = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+    let response = get_with_retry(&url).await?;
 
     if !response.status().is_success() {
         return Err(format!("API error: {}", response.status()));

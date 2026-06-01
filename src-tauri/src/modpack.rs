@@ -20,6 +20,8 @@ pub struct Modpack {
     #[serde(default)]
     pub loader: Option<String>,
     #[serde(default)]
+    pub loader_version: Option<String>,
+    #[serde(default)]
     pub mods: Vec<ModpackMod>,
     pub is_owner: bool,
     pub share_code: Option<String>,
@@ -44,6 +46,8 @@ pub struct ModpackIdentity {
     pub game_version: String,
     #[serde(default)]
     pub loader: Option<String>,
+    #[serde(default)]
+    pub loader_version: Option<String>,
     pub is_owner: bool,
     pub share_code: Option<String>,
     #[serde(default)]
@@ -67,6 +71,7 @@ impl From<&Modpack> for ModpackIdentity {
             description: m.description.clone(),
             game_version: m.game_version.clone(),
             loader: m.loader.clone(),
+            loader_version: m.loader_version.clone(),
             is_owner: m.is_owner,
             share_code: m.share_code.clone(),
             owner_address: m.owner_address.clone(),
@@ -88,6 +93,7 @@ impl ModpackIdentity {
             description: self.description,
             game_version: self.game_version,
             loader: self.loader,
+            loader_version: self.loader_version,
             mods,
             is_owner: self.is_owner,
             share_code: self.share_code,
@@ -119,6 +125,8 @@ pub struct ModpackMod {
     pub is_loader: bool,
     #[serde(default)]
     pub is_deprecated: bool,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,6 +136,7 @@ pub struct CreateModpackRequest {
     pub game_id: String,
     pub game_version: String,
     pub loader: Option<String>,
+    pub loader_version: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,6 +145,7 @@ pub struct UpdateModpackRequest {
     pub description: Option<String>,
     pub game_version: Option<String>,
     pub loader: Option<String>,
+    pub loader_version: Option<String>,
     pub image_path: Option<String>,
 }
 
@@ -149,6 +159,7 @@ impl Modpack {
             description: request.description,
             game_version: request.game_version,
             loader: request.loader,
+            loader_version: request.loader_version,
             mods: Vec::new(),
             is_owner: true,
             share_code: None,
@@ -184,6 +195,9 @@ impl Modpack {
         }
         if let Some(loader) = updates.loader {
             self.loader = Some(loader);
+        }
+        if updates.loader_version.is_some() {
+            self.loader_version = updates.loader_version;
         }
         if let Some(image_path) = updates.image_path {
             self.image_path = Some(image_path);

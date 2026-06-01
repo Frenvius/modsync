@@ -112,19 +112,7 @@ pub async fn get_loader_profile(
 }
 
 fn maven_to_path(maven: &str) -> Option<String> {
-    let parts: Vec<&str> = maven.split(':').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-
-    let group = parts[0].replace('.', "/");
-    let artifact = parts[1];
-    let version = parts[2];
-
-    Some(format!(
-        "{}/{}/{}/{}-{}.jar",
-        group, artifact, version, artifact, version
-    ))
+    super::neoforge::maven_to_path(maven)
 }
 
 pub async fn install_fabric<F>(
@@ -132,11 +120,16 @@ pub async fn install_fabric<F>(
     minecraft_version: &str,
     libraries_dir: &Path,
     on_progress: F,
+    pinned_version: Option<&str>,
 ) -> Result<(String, FabricLoaderProfile), String>
 where
     F: Fn(DownloadProgress) + Send + Sync + Clone + 'static,
 {
-    let loader_version = get_latest_loader_version().await?;
+    let loader_version = if let Some(v) = pinned_version {
+        v.to_string()
+    } else {
+        get_latest_loader_version().await?
+    };
 
     let profile = get_loader_profile(minecraft_version, &loader_version).await?;
 

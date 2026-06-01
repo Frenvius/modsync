@@ -18,7 +18,7 @@ export function AddToModpackDialog({
   modName,
   onAdded,
   onOpenChange,
-  modAuthor: _modAuthor,
+  modAuthor,
   modIconUrl: _modIconUrl
 }: AddToModpackDialogProps) {
   const { games } = useGame();
@@ -82,9 +82,17 @@ export function AddToModpackDialog({
       });
 
       const existingSlugs = modpack.mods.map((m) => m.slug);
+      const uninstalledRequiredDeps = result.dependencies.filter(
+        (dep) => dep.dependency_type === 'required' && !existingSlugs.includes(dep.slug)
+      );
 
-      if (result.dependencies.length > 0) {
-        setPendingModInfo(result.mod_info);
+      const modInfoWithAuthor = {
+        ...result.mod_info,
+        author: result.mod_info.author === 'Unknown' && modAuthor ? modAuthor : result.mod_info.author
+      };
+
+      if (uninstalledRequiredDeps.length > 0) {
+        setPendingModInfo(modInfoWithAuthor);
         setPendingDependencies(result.dependencies);
         setPendingModpackId(modpack.id);
         setPendingModpackName(modpack.name);
@@ -94,12 +102,14 @@ export function AddToModpackDialog({
         await invoke('add_mod_to_modpack', {
           projectId: null,
           modpackId: selectedModpack,
-          slug: result.mod_info.slug,
-          title: result.mod_info.title,
-          author: result.mod_info.author,
+          slug: modInfoWithAuthor.slug,
+          title: modInfoWithAuthor.title,
+          author: modInfoWithAuthor.author,
           iconUrl: result.mod_info.icon_url,
           versionId: result.mod_info.version_id,
-          version: result.mod_info.version_number
+          version: result.mod_info.version_number,
+          source: result.mod_info.source ?? null,
+          filename: result.mod_info.filename ?? null
         });
 
         toast({

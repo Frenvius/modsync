@@ -28,6 +28,8 @@ export interface ModInfo {
   version_id: string;
   version_number: string;
   icon_url: null | string;
+  source?: null | string;
+  filename?: null | string;
 }
 
 export interface DependencyInfo {
@@ -37,6 +39,8 @@ export interface DependencyInfo {
   project_id: string;
   icon_url: null | string;
   dependency_type: string;
+  version_id: null | string;
+  version_number: null | string;
 }
 
 export interface ModWithDependencies {

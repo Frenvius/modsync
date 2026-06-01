@@ -67,6 +67,7 @@ fn compose_mods_from_disk(
                     filename: None,
                     is_loader: games::is_loader_package(&m.name),
                     is_deprecated: false,
+                    source: Some("thunderstore".to_string()),
                 })
                 .collect()
         }

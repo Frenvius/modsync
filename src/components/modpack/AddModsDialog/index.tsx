@@ -1,10 +1,11 @@
 import React from 'react';
 
 import { invoke } from '@tauri-apps/api/core';
-import { Check, ChevronDown, Loader2, Package, Plus, Search } from 'lucide-react';
+import { Check, ChevronDown, ExternalLink, Loader2, Package, Plus, Search, Shuffle } from 'lucide-react';
 
 import { Input } from '~/components/ui/input';
 import { Badge } from '~/components/ui/badge';
+import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
 import { toast } from '~/usecase/hooks/use-toast';
 import { useGame } from '~/usecase/contexts/GameContext';
@@ -17,7 +18,7 @@ import { MarkdownContent } from '~/components/modpack/ModDetailPanel/MarkdownCon
 import { SelectVersionDialog } from '../SelectVersionDialog';
 import { AddModWithDepsDialog } from '../AddModWithDepsDialog';
 
-import { AddModsDialogProps, DependencyInfo, ModInfo, ModrinthMod, ModVersion, ModWithDependencies, SearchResult } from './types';
+import { AddModsDialogProps, COMPAT_LAYERS, DependencyInfo, ModInfo, ModrinthMod, ModVersion, ModWithDependencies, SearchResult } from './types';
 
 export function AddModsDialog({
   open,
@@ -48,8 +49,18 @@ export function AddModsDialog({
   const [pendingDependencies, setPendingDependencies] = React.useState<DependencyInfo[]>([]);
 
   const [previewSlug, setPreviewSlug] = React.useState<string | null>(null);
+  const [previewSource, setPreviewSource] = React.useState<string | null>(null);
   const [previewDetail, setPreviewDetail] = React.useState<ModDetails | null>(null);
   const [previewLoading, setPreviewLoading] = React.useState(false);
+
+  const [cfUrl, setCfUrl] = React.useState('');
+  const [cfLoading, setCfLoading] = React.useState(false);
+
+  const { additionalLoaders, activeCompat } = React.useMemo(() => {
+    const active = COMPAT_LAYERS.filter((c) => localExistingMods.includes(c.slug));
+    const loaders = [...new Set(active.flatMap((c) => c.loaders))];
+    return { additionalLoaders: loaders.length > 0 ? loaders : null, activeCompat: active };
+  }, [localExistingMods]);
 
   React.useEffect(() => {
     setLocalExistingMods(existingMods);
@@ -67,7 +78,7 @@ export function AddModsDialog({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, open, gameVersion, loader]);
+  }, [search, open, gameVersion, loader, additionalLoaders]);
 
   React.useEffect(() => {
     if (open && !hasSearched) {
@@ -78,10 +89,12 @@ export function AddModsDialog({
   React.useEffect(() => {
     if (!open) {
       setSearch('');
+      setCfUrl('');
       setSearchResults([]);
       setHasSearched(false);
       setLoadingSlug(null);
       setPreviewSlug(null);
+      setPreviewSource(null);
       setPreviewDetail(null);
     }
   }, [open]);
@@ -95,15 +108,16 @@ export function AddModsDialog({
     setPreviewLoading(true);
     invoke<ModDetails>('get_mod_details', {
       slug: previewSlug,
-      source: game?.mod_source ?? 'modrinth',
+      source: previewSource ?? game?.mod_source ?? 'modrinth',
       thunderstoreCommunity: game?.thunderstore_community ?? null,
       gameVersion: gameVersion || null,
-      loader: loader || null
+      loader: loader || null,
+      additionalLoaders: additionalLoaders
     })
       .then((detail) => setPreviewDetail(detail))
       .catch(() => setPreviewDetail(null))
       .finally(() => setPreviewLoading(false));
-  }, [previewSlug, game?.mod_source, game?.thunderstore_community, gameVersion, loader]);
+  }, [previewSlug, previewSource, game?.mod_source, game?.thunderstore_community, gameVersion, loader, additionalLoaders]);
 
   const performSearch = React.useCallback(
     async (query: string) => {
@@ -113,6 +127,7 @@ export function AddModsDialog({
           gameId,
           limit: 20,
           loader: loader,
+          additionalLoaders: additionalLoaders,
           query: query || null,
           gameVersion: gameVersion,
           sort: query ? 'relevance' : 'downloads'
@@ -130,7 +145,7 @@ export function AddModsDialog({
         setIsSearching(false);
       }
     },
-    [gameId, gameVersion, loader]
+    [gameId, gameVersion, loader, additionalLoaders]
   );
 
   const isModInModpack = (slug: string) => {
@@ -148,27 +163,37 @@ export function AddModsDialog({
       const result = await invoke<ModWithDependencies>('get_mod_with_dependencies', {
         slug: mod.slug,
         loader: loader,
+        additionalLoaders: additionalLoaders,
         gameVersion: gameVersion,
-        source: game?.mod_source ?? 'modrinth',
+        source: mod.source ?? game?.mod_source ?? 'modrinth',
         thunderstoreCommunity: game?.thunderstore_community
       });
 
-      const newDependencies = result.dependencies.filter((dep) => !localExistingMods.includes(dep.slug));
+      const uninstalledRequiredDeps = result.dependencies.filter(
+        (dep) => dep.dependency_type === 'required' && !localExistingMods.includes(dep.slug)
+      );
 
-      if (newDependencies.length > 0 || result.dependencies.length > 0) {
-        setPendingModInfo(result.mod_info);
+      const modInfoWithAuthor = {
+        ...result.mod_info,
+        author: result.mod_info.author === 'Unknown' && mod.author ? mod.author : result.mod_info.author
+      };
+
+      if (uninstalledRequiredDeps.length > 0) {
+        setPendingModInfo(modInfoWithAuthor);
         setPendingDependencies(result.dependencies);
         setDepsDialogOpen(true);
       } else {
         await invoke('add_mod_to_modpack', {
           modpackId,
           projectId: null,
-          slug: result.mod_info.slug,
-          title: result.mod_info.title,
-          author: result.mod_info.author,
-          iconUrl: result.mod_info.icon_url,
-          versionId: result.mod_info.version_id,
-          version: result.mod_info.version_number
+          slug: modInfoWithAuthor.slug,
+          title: modInfoWithAuthor.title,
+          author: modInfoWithAuthor.author,
+          iconUrl: modInfoWithAuthor.icon_url,
+          versionId: modInfoWithAuthor.version_id,
+          version: modInfoWithAuthor.version_number,
+          source: modInfoWithAuthor.source ?? null,
+          filename: modInfoWithAuthor.filename ?? null
         });
 
         toast({
@@ -207,9 +232,10 @@ export function AddModsDialog({
 
       const result = await invoke<ModWithDependencies>('get_mod_with_dependencies', {
         loader: loader,
+        additionalLoaders: additionalLoaders,
         slug: selectedMod.slug,
         gameVersion: gameVersion,
-        source: game?.mod_source ?? 'modrinth',
+        source: selectedMod.source ?? game?.mod_source ?? 'modrinth',
         thunderstoreCommunity: game?.thunderstore_community
       });
 
@@ -219,12 +245,16 @@ export function AddModsDialog({
         title: selectedMod.title,
         author: selectedMod.author,
         icon_url: selectedMod.icon_url,
-        version_number: version.version_number
+        version_number: version.version_number,
+        source: result.mod_info.source,
+        filename: result.mod_info.filename
       };
 
-      const newDependencies = result.dependencies.filter((dep) => !localExistingMods.includes(dep.slug));
+      const uninstalledRequiredDeps = result.dependencies.filter(
+        (dep) => dep.dependency_type === 'required' && !localExistingMods.includes(dep.slug)
+      );
 
-      if (!isUpdating && (newDependencies.length > 0 || result.dependencies.length > 0)) {
+      if (!isUpdating && uninstalledRequiredDeps.length > 0) {
         setPendingModInfo(modInfo);
         setPendingDependencies(result.dependencies);
         setDepsDialogOpen(true);
@@ -237,7 +267,9 @@ export function AddModsDialog({
           author: modInfo.author,
           iconUrl: modInfo.icon_url,
           versionId: modInfo.version_id,
-          version: modInfo.version_number
+          version: modInfo.version_number,
+          source: modInfo.source ?? null,
+          filename: modInfo.filename ?? null
         });
 
         toast({
@@ -275,6 +307,31 @@ export function AddModsDialog({
     onModsAdded?.();
   };
 
+  const handleCurseForgeImport = async () => {
+    if (!cfUrl.trim()) return;
+    setCfLoading(true);
+    try {
+      const mod = await invoke<ModrinthMod>('resolve_curseforge_url', { url: cfUrl.trim() });
+      const already = searchResults.some((m) => m.slug === mod.slug);
+      if (!already) {
+        setSearchResults((prev) => [mod, ...prev]);
+      }
+      setCfUrl('');
+      toast({
+        title: 'Mod found',
+        description: `"${mod.title}" loaded from CurseForge.`
+      });
+    } catch (error) {
+      toast({
+        title: 'Import failed',
+        variant: 'destructive',
+        description: `${error}`
+      });
+    } finally {
+      setCfLoading(false);
+    }
+  };
+
   const fmtDownloads = (downloads: number): string => {
     if (downloads >= 1000000) return `${(downloads / 1000000).toFixed(1)}M`;
     if (downloads >= 1000) return `${(downloads / 1000).toFixed(1)}K`;
@@ -291,16 +348,48 @@ export function AddModsDialog({
               Search for mods compatible with {gameVersion}
               {loader ? ` (${loader})` : ''}
             </p>
+            {activeCompat.length > 0 && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <Shuffle className="w-3 h-3 text-primary" />
+                <span className="text-xs text-primary">
+                  Cross-loader: {activeCompat.map((c) => c.label).join(', ')} — also showing{' '}
+                  {additionalLoaders!.join(', ')} mods
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex flex-1 overflow-hidden min-h-0">
           <div style={{ width: 460, minWidth: 460 }} className="flex flex-col">
-            <div className="px-4 py-3 shrink-0">
+            <div className="px-4 py-3 space-y-2 shrink-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input value={search} className="pl-9" placeholder="Search mods..." onChange={(e) => setSearch(e.target.value)} />
               </div>
+              {gameId === 'minecraft' && (
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Import from CurseForge</Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={cfUrl}
+                      className="h-7 text-xs"
+                      placeholder="CurseForge URL or slug (e.g. alexs-delight)"
+                      onChange={(e) => setCfUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCurseForgeImport()}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={cfLoading || !cfUrl.trim()}
+                      onClick={handleCurseForgeImport}
+                      className="h-7 px-2 shrink-0"
+                    >
+                      {cfLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto overflow-x-hidden">
@@ -323,7 +412,11 @@ export function AddModsDialog({
                     return (
                       <div
                         key={mod.slug}
-                        onClick={() => setPreviewSlug(mod.slug === previewSlug ? null : mod.slug)}
+                        onClick={() => {
+                          const isToggle = mod.slug === previewSlug;
+                          setPreviewSlug(isToggle ? null : mod.slug);
+                          setPreviewSource(isToggle ? null : mod.source ?? null);
+                        }}
                         className={`flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer ${
                           isSelected
                             ? 'bg-accent border border-primary/40'
@@ -338,7 +431,14 @@ export function AddModsDialog({
                           )}
                         </div>
                         <div className="flex-1 overflow-hidden">
-                          <h3 className="font-medium text-sm text-foreground truncate">{mod.title}</h3>
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="font-medium text-sm text-foreground truncate">{mod.title}</h3>
+                            {mod.source === 'curseforge' && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0 border-orange-500/50 text-orange-500 bg-orange-500/10">
+                                CF
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground truncate">
                             by {mod.author} • {fmtDownloads(mod.downloads)} downloads
                           </p>
@@ -404,6 +504,7 @@ export function AddModsDialog({
       </DialogContent>
       <SelectVersionDialog
         loader={loader}
+        additionalLoaders={additionalLoaders}
         mod={selectedMod}
         open={versionDialogOpen}
         onOpenChange={setVersionDialogOpen}

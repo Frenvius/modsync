@@ -22,6 +22,7 @@ interface ModrinthMod {
 export interface SelectVersionDialogProps {
   open: boolean;
   loader: null | string;
+  additionalLoaders: null | string[];
   mod: null | ModrinthMod;
   gameVersion: string;
   onOpenChange: (open: boolean) => void;

@@ -3,6 +3,11 @@ export interface GameVersion {
   version_type: string;
 }
 
+export interface LoaderVersionInfo {
+  version: string;
+  stable: boolean;
+}
+
 export interface Modpack {
   id: string;
   name: string;

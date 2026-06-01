@@ -27,6 +27,8 @@ export interface ModInfo {
   version_id: string;
   version_number: string;
   icon_url: null | string;
+  source?: null | string;
+  filename?: null | string;
 }
 
 export interface DependencyInfo {
@@ -36,6 +38,8 @@ export interface DependencyInfo {
   project_id: string;
   icon_url: null | string;
   dependency_type: string;
+  version_id: null | string;
+  version_number: null | string;
 }
 
 export interface ModWithDependencies {
@@ -52,6 +56,19 @@ export interface ModVersion {
   date_published: string;
   game_versions: string[];
 }
+
+export interface CompatLayer {
+  slug: string;
+  label: string;
+  loaders: string[];
+}
+
+export const COMPAT_LAYERS: CompatLayer[] = [
+  { slug: 'connector', label: 'Sinytra Connector', loaders: ['forge'] },
+  { slug: 'forgified-fabric-api', label: 'Forgified Fabric API', loaders: ['fabric'] },
+  { slug: 'quilted-fabric-api', label: 'Quilted Fabric API', loaders: ['fabric'] },
+  { slug: 'qsl', label: 'Quilt Standard Libraries', loaders: ['fabric'] },
+];
 
 export interface AddModsDialogProps {
   open: boolean;

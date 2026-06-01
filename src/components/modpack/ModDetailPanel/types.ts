@@ -5,6 +5,8 @@ export interface DependencyInfo {
   icon_url: string | null;
   project_id: string;
   dependency_type: string;
+  version_id: string | null;
+  version_number: string | null;
 }
 
 export interface ModDetails {

@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 import { ModVersion, SelectVersionDialogProps } from './types';
 
-export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersionSelect, gameVersion }: SelectVersionDialogProps) {
+export function SelectVersionDialog({ mod, open, loader, additionalLoaders, onOpenChange, onVersionSelect, gameVersion }: SelectVersionDialogProps) {
   const [versions, setVersions] = React.useState<ModVersion[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [selectedLoader, setSelectedLoader] = React.useState(loader ?? '');
@@ -37,6 +37,7 @@ export function SelectVersionDialog({ mod, open, loader, onOpenChange, onVersion
         const result = await invoke<ModVersion[]>('get_mod_versions', {
           slug: mod.slug,
           loader: selectedLoader || loader,
+          additionalLoaders: additionalLoaders,
           gameVersion: gameVersion,
           source: mod.source,
           thunderstoreCommunity: mod.thunderstore_community

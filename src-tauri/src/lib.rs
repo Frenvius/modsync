@@ -1,4 +1,5 @@
 mod auth;
+mod curseforge;
 mod downloader;
 mod games;
 pub(crate) mod http;
@@ -47,6 +48,8 @@ pub struct ModInfo {
     pub icon_url: Option<String>,
     pub version_id: String,
     pub version_number: String,
+    pub source: Option<String>,
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -57,6 +60,8 @@ pub struct DependencyInfo {
     pub icon_url: Option<String>,
     pub project_id: String,
     pub dependency_type: String,
+    pub version_id: Option<String>,
+    pub version_number: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -95,6 +100,7 @@ async fn search_mods(
     query: Option<String>,
     game_version: Option<String>,
     loader: Option<String>,
+    additional_loaders: Option<Vec<String>>,
     categories: Option<Vec<String>>,
     excluded_categories: Option<Vec<String>>,
     sort: Option<String>,
@@ -136,13 +142,35 @@ async fn search_mods(
         }
     }
 
-    if let Some(ref loader_name) = loader {
-        if !loader_name.is_empty() {
-            if loader_name == "neoforge" {
-                facet_parts.push(r#"["categories:neoforge","categories:forge"]"#.to_string());
-            } else {
-                facet_parts.push(format!(r#"["categories:{}"]"#, loader_name));
+    {
+        let mut loader_categories: Vec<String> = vec![];
+
+        if let Some(ref loader_name) = loader {
+            if !loader_name.is_empty() {
+                loader_categories.push(loader_name.clone());
+                if loader_name == "neoforge" {
+                    loader_categories.push("forge".to_string());
+                }
             }
+        }
+
+        if let Some(ref extra) = additional_loaders {
+            for l in extra {
+                if !l.is_empty() && !loader_categories.contains(l) {
+                    loader_categories.push(l.clone());
+                    if l == "neoforge" && !loader_categories.contains(&"forge".to_string()) {
+                        loader_categories.push("forge".to_string());
+                    }
+                }
+            }
+        }
+
+        if !loader_categories.is_empty() {
+            let parts: Vec<String> = loader_categories
+                .iter()
+                .map(|l| format!(r#""categories:{}""#, l))
+                .collect();
+            facet_parts.push(format!("[{}]", parts.join(",")));
         }
     }
 
@@ -168,6 +196,7 @@ async fn search_mods(
         _ => "relevance".to_string(),
     });
 
+    let cf_query = query.clone();
     let params = SearchParams {
         query,
         facets,
@@ -175,7 +204,6 @@ async fn search_mods(
         offset,
         limit,
     };
-
     let mut result = modrinth::search_mods(params).await?;
 
     if let Some(ref excluded) = excluded_categories {
@@ -187,6 +215,32 @@ async fn search_mods(
                         .any(|c| c.eq_ignore_ascii_case(exc))
                 })
             });
+        }
+    }
+
+    if resolved_game_id == "minecraft" {
+        match curseforge::search_cf_api(
+            cf_query.as_deref(),
+            game_version.as_deref(),
+            loader.as_deref(),
+            Some(limit.unwrap_or(20)),
+        )
+        .await
+        {
+            Ok(cf_mods) => {
+                for cf_mod in cf_mods {
+                    let already_exists = result.mods.iter().any(|m| {
+                        m.title.eq_ignore_ascii_case(&cf_mod.title) || m.slug == cf_mod.slug
+                    });
+                    if !already_exists {
+                        result.mods.push(cf_mod);
+                        result.total_hits += 1;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[curseforge] CF API search failed: {}", e);
+            }
         }
     }
 
@@ -261,6 +315,62 @@ async fn check_thunderstore_updates(
         Some(&cache_dir),
     )
     .await
+}
+
+#[derive(Debug, Deserialize)]
+struct ModUpdateCheck {
+    slug: String,
+    version: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ModrinthUpdateResult {
+    updates: HashMap<String, String>,
+}
+
+#[tauri::command]
+async fn check_modrinth_updates(
+    mods: Vec<ModUpdateCheck>,
+    game_version: Option<String>,
+    loader: Option<String>,
+) -> Result<ModrinthUpdateResult, String> {
+    const BATCH_SIZE: usize = 3;
+
+    let mut updates = HashMap::new();
+
+    for chunk in mods.chunks(BATCH_SIZE) {
+        let futures: Vec<_> = chunk
+            .iter()
+            .map(|m| {
+                let slug = m.slug.clone();
+                let version = m.version.clone();
+                let gv = game_version.clone();
+                let l = loader.clone();
+                async move {
+                    match modrinth::get_project_versions(&slug, gv.as_deref(), l.as_deref()).await {
+                        Ok(versions) => {
+                            if let Some(latest) = versions.first() {
+                                if latest.version_number != version {
+                                    return Some((slug, latest.version_number.clone()));
+                                }
+                            }
+                            None
+                        }
+                        Err(_) => None,
+                    }
+                }
+            })
+            .collect();
+
+        let results = futures_util::future::join_all(futures).await;
+        for result in results.into_iter().flatten() {
+            updates.insert(result.0, result.1);
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+    }
+
+    Ok(ModrinthUpdateResult { updates })
 }
 
 #[tauri::command]
@@ -363,6 +473,45 @@ async fn update_all_thunderstore_mods(
     .await
 }
 
+#[derive(Debug, Serialize)]
+struct LoaderVersionInfo {
+    version: String,
+    stable: bool,
+}
+
+#[tauri::command]
+async fn get_loader_versions(
+    loader: String,
+    game_version: Option<String>,
+) -> Result<Vec<LoaderVersionInfo>, String> {
+    match loader.as_str() {
+        "fabric" => {
+            let versions = loaders::fabric::get_loader_versions().await?;
+            Ok(versions
+                .into_iter()
+                .map(|v| LoaderVersionInfo {
+                    version: v.version,
+                    stable: v.stable,
+                })
+                .collect())
+        }
+        "neoforge" | "forge" => {
+            let mc = game_version
+                .as_deref()
+                .ok_or("Game version is required for NeoForge/Forge")?;
+            let versions = loaders::neoforge::get_loader_versions(&loader, mc).await?;
+            Ok(versions
+                .into_iter()
+                .map(|v| LoaderVersionInfo {
+                    version: v,
+                    stable: true,
+                })
+                .collect())
+        }
+        _ => Ok(vec![]),
+    }
+}
+
 #[tauri::command]
 async fn get_mod_loaders(game_id: Option<String>) -> Result<Vec<Loader>, String> {
     let resolved = game_id.as_deref().unwrap_or("minecraft");
@@ -389,6 +538,7 @@ async fn get_mod_versions(
     slug: String,
     game_version: Option<String>,
     loader: Option<String>,
+    additional_loaders: Option<Vec<String>>,
     source: Option<String>,
     thunderstore_community: Option<String>,
 ) -> Result<Vec<modrinth::Version>, String> {
@@ -432,10 +582,32 @@ async fn get_mod_versions(
 
             Ok(versions)
         }
+        Some("curseforge") => {
+            let project = curseforge::get_project(&slug).await?;
+            Ok(curseforge::get_project_versions_filtered(
+                &project,
+                game_version.as_deref(),
+                loader.as_deref(),
+                additional_loaders.as_deref(),
+            ))
+        }
         _ => {
-            modrinth::get_project_versions(&slug, game_version.as_deref(), loader.as_deref()).await
+            modrinth::get_project_versions_multi(
+                &slug,
+                game_version.as_deref(),
+                loader.as_deref(),
+                additional_loaders.as_deref(),
+            )
+            .await
         }
     }
+}
+
+#[tauri::command]
+async fn resolve_curseforge_url(
+    url: String,
+) -> Result<modrinth::ModrinthMod, String> {
+    curseforge::resolve_from_url(&url).await
 }
 
 #[tauri::command]
@@ -446,6 +618,7 @@ async fn create_modpack(
     game_id: Option<String>,
     game_version: String,
     loader: Option<String>,
+    loader_version: Option<String>,
 ) -> Result<Modpack, String> {
     let resolved_game_id = game_id.unwrap_or_else(|| "minecraft".to_string());
     let request = CreateModpackRequest {
@@ -454,6 +627,7 @@ async fn create_modpack(
         game_id: resolved_game_id.clone(),
         game_version,
         loader,
+        loader_version,
     };
 
     let modpack = Modpack::new(request);
@@ -531,6 +705,7 @@ async fn update_modpack(
     description: Option<String>,
     game_version: Option<String>,
     loader: Option<String>,
+    loader_version: Option<String>,
     image_path: Option<String>,
 ) -> Result<Modpack, String> {
     let mut modpack = storage::load_modpack(&app_handle, &id)?;
@@ -544,6 +719,7 @@ async fn update_modpack(
         description,
         game_version,
         loader,
+        loader_version,
         image_path,
     };
 
@@ -681,6 +857,7 @@ async fn clone_modpack(
         game_id: source.game_id.clone(),
         game_version: source.game_version,
         loader: source.loader,
+        loader_version: source.loader_version,
         mods: source.mods,
         is_owner: true,
         share_code: None,
@@ -767,6 +944,7 @@ async fn add_mod_to_modpack(
     project_id: Option<String>,
     version_id: Option<String>,
     filename: Option<String>,
+    source: Option<String>,
 ) -> Result<Modpack, String> {
     let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
 
@@ -799,6 +977,7 @@ async fn add_mod_to_modpack(
             filename: filename.clone(),
             is_loader,
             is_deprecated: false,
+            source: source.clone(),
         };
         modpack.add_mod(mod_info);
         storage::save_modpack(&app_handle, &modpack)?;
@@ -1414,6 +1593,7 @@ async fn import_detected_mod(
         filename: Some(filename),
         is_loader: false,
         is_deprecated: false,
+        source: None,
     };
 
     modpack.add_mod(mod_info);
@@ -1426,11 +1606,17 @@ async fn get_modrinth_mod_with_dependencies(
     slug: String,
     game_version: Option<String>,
     loader: Option<String>,
+    additional_loaders: Option<Vec<String>>,
 ) -> Result<ModWithDependencies, String> {
     let project = modrinth::get_project(&slug).await?;
 
-    let versions =
-        modrinth::get_project_versions(&slug, game_version.as_deref(), loader.as_deref()).await?;
+    let versions = modrinth::get_project_versions_multi(
+        &slug,
+        game_version.as_deref(),
+        loader.as_deref(),
+        additional_loaders.as_deref(),
+    )
+    .await?;
 
     if versions.is_empty() {
         return Err(format!(
@@ -1443,14 +1629,7 @@ async fn get_modrinth_mod_with_dependencies(
 
     let latest_version = &versions[0];
 
-    let team = modrinth::get_project_team(&project.id)
-        .await
-        .unwrap_or_default();
-    let author = team
-        .iter()
-        .find(|m| m.role == "Owner")
-        .map(|m| m.user.username.clone())
-        .unwrap_or_else(|| "Unknown".to_string());
+    let author = modrinth::get_project_author(&project).await;
 
     let dep_project_ids: Vec<String> = latest_version
         .dependencies
@@ -1464,30 +1643,100 @@ async fn get_modrinth_mod_with_dependencies(
     if !dep_project_ids.is_empty() {
         let dep_projects = modrinth::get_projects_batch(&dep_project_ids).await?;
 
-        let dep_types: std::collections::HashMap<String, String> = latest_version
+        let dep_meta: std::collections::HashMap<String, (String, Option<String>)> = latest_version
             .dependencies
             .iter()
             .filter_map(|d| {
                 d.project_id
                     .clone()
-                    .map(|id| (id, d.dependency_type.clone()))
+                    .map(|id| (id, (d.dependency_type.clone(), d.version_id.clone())))
             })
             .collect();
 
-        for dep_project in dep_projects {
-            let dep_team = modrinth::get_project_team(&dep_project.id)
-                .await
-                .unwrap_or_default();
-            let dep_author = dep_team
-                .iter()
-                .find(|m| m.role == "Owner")
-                .map(|m| m.user.username.clone())
-                .unwrap_or_else(|| "Unknown".to_string());
+        let dep_version_ids: Vec<String> = dep_meta
+            .values()
+            .filter_map(|(_, vid)| vid.clone())
+            .collect();
 
-            let dep_type = dep_types
+        let pinned_versions: std::collections::HashMap<String, modrinth::Version> =
+            if !dep_version_ids.is_empty() {
+                modrinth::get_versions_batch(&dep_version_ids)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|v| (v.project_id.clone(), v))
+                    .collect()
+            } else {
+                std::collections::HashMap::new()
+            };
+
+        let author_futures: Vec<_> = dep_projects
+            .iter()
+            .map(|p| {
+                let project = p.clone();
+                async move {
+                    let author = modrinth::get_project_author(&project).await;
+                    (project.id, author)
+                }
+            })
+            .collect();
+        let dep_authors: std::collections::HashMap<String, String> =
+            futures_util::future::join_all(author_futures)
+                .await
+                .into_iter()
+                .collect();
+
+        let version_futures: Vec<_> = dep_projects
+            .iter()
+            .filter(|p| !pinned_versions.contains_key(&p.id))
+            .map(|p| {
+                let slug = p.slug.clone();
+                let id = p.id.clone();
+                let gv = game_version.clone();
+                let l = loader.clone();
+                let al = additional_loaders.clone();
+                async move {
+                    let result = modrinth::get_project_versions_multi(
+                        &slug,
+                        gv.as_deref(),
+                        l.as_deref(),
+                        al.as_deref(),
+                    )
+                    .await;
+                    (id, result)
+                }
+            })
+            .collect();
+        let version_results = futures_util::future::join_all(version_futures).await;
+
+        let mut fetched_versions: std::collections::HashMap<String, (String, String)> =
+            std::collections::HashMap::new();
+        for (id, result) in version_results {
+            if let Ok(versions) = result {
+                if let Some(v) = versions.first() {
+                    fetched_versions.insert(id, (v.id.clone(), v.version_number.clone()));
+                }
+            }
+        }
+
+        for dep_project in dep_projects {
+            let dep_author = dep_authors
                 .get(&dep_project.id)
                 .cloned()
-                .unwrap_or_else(|| "required".to_string());
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            let (dep_type, _) = dep_meta
+                .get(&dep_project.id)
+                .cloned()
+                .unwrap_or_else(|| ("required".to_string(), None));
+
+            let (ver_id, ver_num) = if let Some(v) = pinned_versions.get(&dep_project.id) {
+                (Some(v.id.clone()), Some(v.version_number.clone()))
+            } else if let Some((vid, vnum)) = fetched_versions.get(&dep_project.id) {
+                (Some(vid.clone()), Some(vnum.clone()))
+            } else {
+                (None, None)
+            };
 
             dependencies.push(DependencyInfo {
                 slug: dep_project.slug,
@@ -1496,6 +1745,8 @@ async fn get_modrinth_mod_with_dependencies(
                 icon_url: dep_project.icon_url,
                 project_id: dep_project.id,
                 dependency_type: dep_type,
+                version_id: ver_id,
+                version_number: ver_num,
             });
         }
     }
@@ -1508,6 +1759,8 @@ async fn get_modrinth_mod_with_dependencies(
             icon_url: project.icon_url,
             version_id: latest_version.id.clone(),
             version_number: latest_version.version_number.clone(),
+            source: Some("modrinth".to_string()),
+            filename: None,
         },
         dependencies,
     })
@@ -1559,6 +1812,8 @@ async fn get_thunderstore_mod_with_dependencies(
                 icon_url: dep.icon.clone(),
                 project_id: dep.full_name.clone(),
                 dependency_type: "required".to_string(),
+                version_id: None,
+                version_number: Some(dep.version.clone()),
             });
         }
     }
@@ -1571,6 +1826,8 @@ async fn get_thunderstore_mod_with_dependencies(
             icon_url: latest_version.icon.clone(),
             version_id: latest_version.id.clone(),
             version_number: latest_version.version_number.clone(),
+            source: Some("thunderstore".to_string()),
+            filename: None,
         },
         dependencies,
     })
@@ -1581,6 +1838,7 @@ async fn get_mod_with_dependencies(
     slug: String,
     game_version: Option<String>,
     loader: Option<String>,
+    additional_loaders: Option<Vec<String>>,
     source: Option<String>,
     thunderstore_community: Option<String>,
 ) -> Result<ModWithDependencies, String> {
@@ -1588,30 +1846,71 @@ async fn get_mod_with_dependencies(
         "thunderstore" => {
             get_thunderstore_mod_with_dependencies(slug, thunderstore_community).await
         }
-        _ => get_modrinth_mod_with_dependencies(slug, game_version, loader).await,
+        "curseforge" => get_curseforge_mod_with_dependencies(slug, game_version, loader, additional_loaders).await,
+        _ => get_modrinth_mod_with_dependencies(slug, game_version, loader, additional_loaders).await,
     }
+}
+
+async fn get_curseforge_mod_with_dependencies(
+    slug: String,
+    game_version: Option<String>,
+    loader: Option<String>,
+    additional_loaders: Option<Vec<String>>,
+) -> Result<ModWithDependencies, String> {
+    let project = curseforge::get_project(&slug).await?;
+    let versions = curseforge::get_project_versions_filtered(
+        &project,
+        game_version.as_deref(),
+        loader.as_deref(),
+        additional_loaders.as_deref(),
+    );
+
+    let latest = versions.first().ok_or("No compatible versions found")?;
+
+    let cf_filename = latest.files.first().map(|f| f.filename.clone());
+
+    let author = project
+        .members
+        .iter()
+        .find(|m| m.title == "Owner")
+        .map(|m| m.username.clone())
+        .unwrap_or_default();
+
+    Ok(ModWithDependencies {
+        mod_info: ModInfo {
+            slug: slug.to_string(),
+            title: project.title,
+            author,
+            icon_url: Some(project.thumbnail),
+            version_id: latest.id.clone(),
+            version_number: latest.version_number.clone(),
+            source: Some("curseforge".to_string()),
+            filename: cf_filename,
+        },
+        dependencies: vec![],
+    })
 }
 
 async fn get_modrinth_mod_details(
     slug: String,
     game_version: Option<String>,
     loader: Option<String>,
+    additional_loaders: Option<Vec<String>>,
 ) -> Result<ModDetails, String> {
     let (project, versions) = tokio::join!(
         modrinth::get_project(&slug),
-        modrinth::get_project_versions(&slug, game_version.as_deref(), loader.as_deref())
+        modrinth::get_project_versions_multi(
+            &slug,
+            game_version.as_deref(),
+            loader.as_deref(),
+            additional_loaders.as_deref(),
+        )
     );
 
     let project = project?;
     let versions = versions.unwrap_or_default();
 
-    let team = modrinth::get_project_team(&project.id).await.unwrap_or_default();
-    let author = team
-        .iter()
-        .find(|m| m.role == "Owner")
-        .or_else(|| team.first())
-        .map(|m| m.user.username.clone())
-        .unwrap_or_else(|| "Unknown".to_string());
+    let author = modrinth::get_project_author(&project).await;
 
     let latest = versions.first();
 
@@ -1634,6 +1933,8 @@ async fn get_modrinth_mod_details(
                         icon_url: dep_project.icon_url.clone(),
                         project_id: dep_project.id.clone(),
                         dependency_type: "required".to_string(),
+                        version_id: None,
+                        version_number: None,
                     });
                 }
             }
@@ -1721,6 +2022,8 @@ async fn get_thunderstore_mod_details(
                 icon_url: dep.icon.clone(),
                 project_id: dep.full_name.clone(),
                 dependency_type: "required".to_string(),
+                version_id: None,
+                version_number: Some(dep.version.clone()),
             });
         }
     }
@@ -1749,12 +2052,62 @@ async fn get_thunderstore_mod_details(
     })
 }
 
+async fn get_curseforge_mod_details(
+    slug: String,
+    game_version: Option<String>,
+    loader: Option<String>,
+    additional_loaders: Option<Vec<String>>,
+) -> Result<ModDetails, String> {
+    let project = curseforge::get_project(&slug).await?;
+
+    let author = project
+        .members
+        .iter()
+        .find(|m| m.title == "Owner")
+        .map(|m| m.username.clone())
+        .unwrap_or_default();
+
+    let versions = curseforge::get_project_versions_filtered(
+        &project,
+        game_version.as_deref(),
+        loader.as_deref(),
+        additional_loaders.as_deref(),
+    );
+
+    let latest_version = versions.first().map(|v| v.version_number.clone());
+    let file_size = versions.first().and_then(|v| v.files.first().map(|f| f.size as i64));
+
+    Ok(ModDetails {
+        slug: slug.to_string(),
+        title: project.title,
+        author,
+        icon_url: Some(project.thumbnail),
+        description: project.summary,
+        body: Some(project.description),
+        readme: None,
+        changelog: None,
+        website_url: Some(project.urls.curseforge),
+        source_url: None,
+        issues_url: None,
+        downloads: project.downloads.total,
+        follows: 0,
+        categories: project.categories,
+        date_created: project.created_at.clone(),
+        date_updated: project.created_at,
+        latest_version,
+        file_size,
+        dependencies: vec![],
+        source: "curseforge".to_string(),
+    })
+}
+
 #[tauri::command]
 async fn get_mod_details(
     app_handle: tauri::AppHandle,
     slug: String,
     game_version: Option<String>,
     loader: Option<String>,
+    additional_loaders: Option<Vec<String>>,
     source: Option<String>,
     thunderstore_community: Option<String>,
 ) -> Result<ModDetails, String> {
@@ -1762,7 +2115,8 @@ async fn get_mod_details(
         "thunderstore" => {
             get_thunderstore_mod_details(slug, thunderstore_community, app_handle).await
         }
-        _ => get_modrinth_mod_details(slug, game_version, loader).await,
+        "curseforge" => get_curseforge_mod_details(slug, game_version, loader, additional_loaders).await,
+        _ => get_modrinth_mod_details(slug, game_version, loader, additional_loaders).await,
     }
 }
 
@@ -2149,70 +2503,28 @@ async fn do_install_instance_inner(
     let libraries_dir = instance::get_libraries_dir(app_handle, modpack_id)?;
     let mods_dir = instance::get_mods_dir(app_handle, modpack_id)?;
 
-    let mut inst = instance::Instance::new(
-        modpack_id.to_string(),
-        modpack.game_version.clone(),
-        modpack.loader.as_deref().unwrap_or("none").to_string(),
-    );
+    let existing_instance = instance::load_instance(app_handle, modpack_id)?;
+    let is_repair = existing_instance.as_ref().map(|i| i.installed).unwrap_or(false);
 
-    let app_handle_clone = app_handle.clone();
-    let modpack_id_clone = modpack_id.to_string();
-    let emit_progress = move |progress: downloader::DownloadProgress| {
-        update_progress(
-            &app_handle_clone,
-            &modpack_id_clone,
-            InstallProgress {
-                stage: "downloading_minecraft".to_string(),
-                current: progress.downloaded_files,
-                total: progress.total_files,
-                message: format!("Downloading: {}", progress.current_file),
-            },
-        );
+    let mut inst = if let Some(existing) = existing_instance {
+        existing
+    } else {
+        instance::Instance::new(
+            modpack_id.to_string(),
+            modpack.game_version.clone(),
+            modpack.loader.as_deref().unwrap_or("none").to_string(),
+        )
     };
 
-    let version_meta =
-        minecraft::download_minecraft(app_handle, modpack_id, &modpack.game_version, emit_progress)
-            .await?;
-
-    update_progress(
-        app_handle,
-        modpack_id,
-        InstallProgress {
-            stage: "extracting_natives".to_string(),
-            current: 0,
-            total: 1,
-            message: "Extracting native libraries...".to_string(),
-        },
-    );
-
-    launcher::extract_natives(&instance_dir, &version_meta).await?;
-
-    let _fabric_profile = if modpack
-        .loader
-        .as_deref()
-        .map(|l| l.to_lowercase())
-        .as_deref()
-        == Some("fabric")
-    {
-        update_progress(
-            app_handle,
-            modpack_id,
-            InstallProgress {
-                stage: "installing_loader".to_string(),
-                current: 0,
-                total: 1,
-                message: "Installing Fabric loader...".to_string(),
-            },
-        );
-
+    if !is_repair {
         let app_handle_clone = app_handle.clone();
         let modpack_id_clone = modpack_id.to_string();
-        let loader_progress = move |progress: downloader::DownloadProgress| {
+        let emit_progress = move |progress: downloader::DownloadProgress| {
             update_progress(
                 &app_handle_clone,
                 &modpack_id_clone,
                 InstallProgress {
-                    stage: "installing_loader".to_string(),
+                    stage: "downloading_minecraft".to_string(),
                     current: progress.downloaded_files,
                     total: progress.total_files,
                     message: format!("Downloading: {}", progress.current_file),
@@ -2220,33 +2532,166 @@ async fn do_install_instance_inner(
             );
         };
 
-        let (loader_version, profile) = loaders::fabric::install_fabric(
+        let version_meta = minecraft::download_minecraft(
+            app_handle,
+            modpack_id,
+            &modpack.game_version,
+            emit_progress,
+        )
+        .await?;
+
+        update_progress(
+            app_handle,
+            modpack_id,
+            InstallProgress {
+                stage: "extracting_natives".to_string(),
+                current: 0,
+                total: 1,
+                message: "Extracting native libraries...".to_string(),
+            },
+        );
+
+        launcher::extract_natives(&instance_dir, &version_meta).await?;
+
+        if modpack
+            .loader
+            .as_deref()
+            .map(|l| l.to_lowercase())
+            .as_deref()
+            == Some("fabric")
+        {
+            update_progress(
+                app_handle,
+                modpack_id,
+                InstallProgress {
+                    stage: "installing_loader".to_string(),
+                    current: 0,
+                    total: 1,
+                    message: "Installing Fabric loader...".to_string(),
+                },
+            );
+
+            let app_handle_clone = app_handle.clone();
+            let modpack_id_clone = modpack_id.to_string();
+            let loader_progress = move |progress: downloader::DownloadProgress| {
+                update_progress(
+                    &app_handle_clone,
+                    &modpack_id_clone,
+                    InstallProgress {
+                        stage: "installing_loader".to_string(),
+                        current: progress.downloaded_files,
+                        total: progress.total_files,
+                        message: format!("Downloading: {}", progress.current_file),
+                    },
+                );
+            };
+
+            let (loader_version, _profile) = loaders::fabric::install_fabric(
+                &instance_dir,
+                &modpack.game_version,
+                &libraries_dir,
+                loader_progress,
+                modpack.loader_version.as_deref(),
+            )
+            .await?;
+
+            inst.loader_version = Some(loader_version);
+        }
+
+    }
+
+    let loader_lower = modpack
+        .loader
+        .as_deref()
+        .map(|l| l.to_lowercase())
+        .unwrap_or_default();
+
+    let nf_needs_install = if loader_lower == "neoforge" || loader_lower == "forge" {
+        if inst.loader_version.is_none() || inst.loader.to_lowercase() != loader_lower {
+            true
+        } else if let Some(ref pinned) = modpack.loader_version {
+            inst.loader_version.as_deref() != Some(pinned.as_str())
+        } else {
+            let versions_dir = instance_dir.join("versions");
+            let has_loader_dir = versions_dir.exists()
+                && std::fs::read_dir(&versions_dir)
+                    .ok()
+                    .map(|entries| {
+                        entries.flatten().any(|e| {
+                            let name = e.file_name().to_string_lossy().to_lowercase();
+                            (name.contains("forge") || name.contains("neoforge"))
+                                && e.path()
+                                    .join(format!("{}.json", e.file_name().to_string_lossy()))
+                                    .exists()
+                        })
+                    })
+                    .unwrap_or(false);
+            !has_loader_dir
+        }
+    } else {
+        false
+    };
+    if nf_needs_install {
+        let versions_dir = instance_dir.join("versions");
+        if versions_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if name.contains("forge") || name.contains("neoforge") {
+                        let _ = std::fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+        }
+
+        let loader_label = if loader_lower == "forge" { "Forge" } else { "NeoForge" };
+        update_progress(
+            app_handle,
+            modpack_id,
+            InstallProgress {
+                stage: "installing_loader".to_string(),
+                current: 0,
+                total: 1,
+                message: format!("Installing {} loader...", loader_label),
+            },
+        );
+
+        let (loader_version, _profile) = loaders::neoforge::install_neoforge(
             &instance_dir,
             &modpack.game_version,
             &libraries_dir,
-            loader_progress,
+            modpack.loader_version.as_deref(),
+            &loader_lower,
         )
         .await?;
 
         inst.loader_version = Some(loader_version);
-        Some(profile)
-    } else {
-        None
+        inst.loader = loader_lower.clone();
+    }
+
+    let is_curseforge = |m: &&ModpackMod| {
+        m.source.as_deref() == Some("curseforge")
     };
 
-    let mods_with_version_id: Vec<_> = modpack
+    let modrinth_mods_with_version: Vec<_> = modpack
         .mods
         .iter()
-        .filter(|m| m.version_id.is_some())
+        .filter(|m| m.version_id.is_some() && !is_curseforge(m))
         .collect();
 
-    let mods_with_only_project_id: Vec<_> = modpack
+    let modrinth_mods_with_project: Vec<_> = modpack
         .mods
         .iter()
-        .filter(|m| m.version_id.is_none() && m.project_id.is_some())
+        .filter(|m| m.version_id.is_none() && m.project_id.is_some() && !is_curseforge(m))
         .collect();
 
-    let total_mods = mods_with_version_id.len() + mods_with_only_project_id.len();
+    let cf_mods: Vec<_> = modpack
+        .mods
+        .iter()
+        .filter(|m| is_curseforge(m) && m.version_id.is_some())
+        .collect();
+
+    let total_mods = modrinth_mods_with_version.len() + modrinth_mods_with_project.len() + cf_mods.len();
 
     if total_mods > 0 {
         update_progress(
@@ -2262,8 +2707,8 @@ async fn do_install_instance_inner(
 
         let mut mod_tasks: Vec<downloader::DownloadTask> = vec![];
 
-        if !mods_with_version_id.is_empty() {
-            let version_ids: Vec<String> = mods_with_version_id
+        if !modrinth_mods_with_version.is_empty() {
+            let version_ids: Vec<String> = modrinth_mods_with_version
                 .iter()
                 .filter_map(|m| m.version_id.clone())
                 .collect();
@@ -2289,7 +2734,7 @@ async fn do_install_instance_inner(
             }
         }
 
-        for dep_mod in &mods_with_only_project_id {
+        for dep_mod in &modrinth_mods_with_project {
             if let Some(ref project_id) = dep_mod.project_id {
                 match modrinth::get_project_versions(
                     project_id,
@@ -2329,6 +2774,52 @@ async fn do_install_instance_inner(
                             "[WARN] Failed to fetch versions for dependency {}: {}",
                             dep_mod.slug, e
                         );
+                    }
+                }
+            }
+        }
+
+        for cf_mod in &cf_mods {
+            if let Some(ref version_id) = cf_mod.version_id {
+                if let Some(ref fname) = cf_mod.filename {
+                    let file_id: i64 = version_id.parse().unwrap_or(0);
+                    if file_id > 0 {
+                        let url = curseforge::construct_cdn_url(file_id, fname);
+                        mod_tasks.push(downloader::DownloadTask {
+                            url,
+                            path: mods_dir.join(fname),
+                            sha1: None,
+                            size: None,
+                            name: Some(fname.clone()),
+                        });
+                    }
+                } else {
+                    match curseforge::get_project(&cf_mod.slug).await {
+                        Ok(project) => {
+                            let versions = curseforge::get_project_versions_filtered(
+                                &project,
+                                Some(&modpack.game_version),
+                                modpack.loader.as_deref(),
+                                None,
+                            );
+                            if let Some(ver) = versions.first() {
+                                if let Some(file) = ver.files.first() {
+                                    mod_tasks.push(downloader::DownloadTask {
+                                        url: file.url.clone(),
+                                        path: mods_dir.join(&file.filename),
+                                        sha1: None,
+                                        size: Some(file.size),
+                                        name: Some(file.filename.clone()),
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[WARN] Failed to fetch CurseForge project {}: {}",
+                                cf_mod.slug, e
+                            );
+                        }
                     }
                 }
             }
@@ -2611,6 +3102,23 @@ async fn start_install(app_handle: tauri::AppHandle, modpack_id: String) -> Resu
     Ok(())
 }
 
+fn find_loader_profile_in_versions(
+    versions_dir: &std::path::Path,
+) -> Option<loaders::fabric::FabricLoaderProfile> {
+    let entries = std::fs::read_dir(versions_dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.contains("neoforge") || name.contains("forge") {
+            let json_path = entry.path().join(format!("{}.json", name));
+            if json_path.exists() {
+                let content = std::fs::read_to_string(&json_path).ok()?;
+                return serde_json::from_str(&content).ok();
+            }
+        }
+    }
+    None
+}
+
 #[tauri::command]
 async fn launch_instance(app_handle: tauri::AppHandle, modpack_id: String) -> Result<(), String> {
     let account = auth::get_default_account(&app_handle)?
@@ -2624,13 +3132,13 @@ async fn launch_instance(app_handle: tauri::AppHandle, modpack_id: String) -> Re
         return Err("Instance not installed. Please install first.".to_string());
     }
 
-    let fabric_profile = if modpack
+    let loader_lower = modpack
         .loader
         .as_deref()
         .map(|l| l.to_lowercase())
-        .as_deref()
-        == Some("fabric")
-    {
+        .unwrap_or_default();
+
+    let loader_profile = if loader_lower == "fabric" {
         let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
         let loader_version = inst
             .loader_version
@@ -2648,10 +3156,6 @@ async fn launch_instance(app_handle: tauri::AppHandle, modpack_id: String) -> Re
             "[DEBUG] Looking for Fabric profile at: {:?}",
             fabric_json_path
         );
-        eprintln!(
-            "[DEBUG] Fabric profile exists: {}",
-            fabric_json_path.exists()
-        );
 
         if fabric_json_path.exists() {
             let content = std::fs::read_to_string(&fabric_json_path)
@@ -2666,6 +3170,15 @@ async fn launch_instance(app_handle: tauri::AppHandle, modpack_id: String) -> Re
             );
             None
         }
+    } else if loader_lower == "neoforge" || loader_lower == "forge" {
+        let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+        let versions_dir = instance_dir.join("versions");
+
+        let nf_profile = find_loader_profile_in_versions(&versions_dir);
+        if nf_profile.is_none() {
+            eprintln!("[ERROR] NeoForge profile not found! Loader libraries will not be in classpath.");
+        }
+        nf_profile
     } else {
         None
     };
@@ -2682,7 +3195,7 @@ async fn launch_instance(app_handle: tauri::AppHandle, modpack_id: String) -> Re
         game_dir: None,
     };
 
-    launcher::launch_game(&app_handle, &modpack_id, options, fabric_profile).await
+    launcher::launch_game(&app_handle, &modpack_id, options, loader_profile).await
 }
 
 #[tauri::command]
@@ -2927,10 +3440,12 @@ pub fn run() {
             search_mods,
             get_mod_categories,
             get_thunderstore_fetch_progress,
+            check_modrinth_updates,
             check_thunderstore_updates,
             warm_thunderstore_cache,
             update_thunderstore_mod,
             update_all_thunderstore_mods,
+            get_loader_versions,
             get_mod_loaders,
             get_game_versions,
             get_mod_versions,
@@ -2949,6 +3464,7 @@ pub fn run() {
             import_detected_mod,
             get_mod_with_dependencies,
             get_mod_details,
+            resolve_curseforge_url,
             get_public_ip,
             begin_sharing,
             stop_sharing,
