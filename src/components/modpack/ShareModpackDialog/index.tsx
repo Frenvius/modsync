@@ -15,13 +15,17 @@ export function ShareModpackDialog({
   open,
   modpackId,
   modpackName,
+  gameId,
   onOpenChange,
   currentShareCode,
   onShareStatusChange
 }: ShareModpackDialogProps) {
   const [port, setPort] = React.useState('7878');
   const [customAddress, setCustomAddress] = React.useState('');
+  const [vsServerIp, setVsServerIp] = React.useState('');
+  const [vsServerPort, setVsServerPort] = React.useState('');
   const [shareCode, setShareCode] = React.useState<null | string>(currentShareCode || null);
+  const isVintageStory = gameId === 'vintage-story';
 
   React.useEffect(() => {
     invoke<{ last_custom_address?: string | null }>('get_settings')
@@ -77,10 +81,15 @@ export function ShareModpackDialog({
         .then((s) => invoke('save_settings', { settings: { ...s, last_custom_address: trimmedAddress || null } }))
         .catch(() => {});
 
+      const vsAddr = isVintageStory && vsServerIp.trim()
+        ? `${vsServerIp.trim()}-${vsServerPort.trim() || '42420'}`
+        : null;
+
       const code = await invoke<string>('begin_sharing', {
         modpackId,
         port: portNum,
-        customAddress: trimmedAddress || null
+        customAddress: trimmedAddress || null,
+        vsServerAddress: vsAddr
       });
 
       setShareCode(code);
@@ -160,7 +169,7 @@ export function ShareModpackDialog({
             <div className="space-y-2">
               <Label htmlFor="port">Port</Label>
               <Input id="port" value={port} placeholder="7878" onChange={(e) => setPort(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Make sure to forward this port on your router</p>
+              <p className="text-xs text-muted-foreground">Local port for the sync server. No forwarding needed when using the tunnel.</p>
             </div>
 
             <div className="space-y-2">
@@ -173,14 +182,41 @@ export function ShareModpackDialog({
                 placeholder="e.g. 203.0.113.5 or myserver.duckdns.org"
                 onChange={(e) => setCustomAddress(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Leave empty to auto-detect your public IP</p>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to share over the P2P tunnel (no port forwarding). Set an IP/domain to share by direct connection instead.
+              </p>
             </div>
 
+            {isVintageStory && (
+              <div className="space-y-2">
+                <Label>
+                  VS Game Server <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={vsServerIp}
+                    placeholder="server.frenvius.com"
+                    className="flex-1"
+                    onChange={(e) => setVsServerIp(e.target.value)}
+                  />
+                  <Input
+                    value={vsServerPort}
+                    placeholder="42420"
+                    className="w-24"
+                    onChange={(e) => setVsServerPort(e.target.value)}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  If set, mods sync to ModsByServer folder so they load automatically when connecting to this server
+                </p>
+              </div>
+            )}
+
             <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
-              <p className="font-medium text-foreground mb-1">Port Forwarding Required</p>
+              <p className="font-medium text-foreground mb-1">No Port Forwarding</p>
               <p>
-                You need to forward port {port || '7878'} on your router to your computer's local IP for friends to connect. Search "port
-                forwarding [your router brand]" for instructions.
+                Friends connect through an encrypted peer-to-peer tunnel, so you don't need to open port {port || '7878'} on your router.
+                Just keep this app running while they sync or play.
               </p>
             </div>
 

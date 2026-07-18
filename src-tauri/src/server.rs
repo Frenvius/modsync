@@ -20,6 +20,7 @@ use crate::instance;
 use crate::utils;
 use crate::modpack::Modpack;
 use crate::sources::thunderstore;
+use crate::sources::vintagestory;
 use crate::storage;
 
 static SERVER_HANDLE: RwLock<Option<tokio::task::JoinHandle<()>>> = RwLock::const_new(None);
@@ -56,6 +57,7 @@ pub struct SourceMod {
     pub display_name: Option<String>,
     pub author: Option<String>,
     pub icon_url: Option<String>,
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +74,7 @@ pub struct SyncManifest {
     pub community: Option<String>,
     pub source_mods: Vec<SourceMod>,
     pub p2p_files: Vec<P2PFile>,
+    pub vs_server_address: Option<String>,
 }
 
 const EXCLUDED_PATTERNS: &[&str] = &[
@@ -351,14 +354,32 @@ async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoRespo
                     display_name: Some(m.display_name.clone()),
                     author: Some(m.author_name.clone()),
                     icon_url: m.icon.clone(),
+                    filename: None,
+                });
+            }
+        }
+    } else if mod_source == "vintagestory" {
+        if let Ok(mods) = vintagestory::profile::load_mods_json(&instance_dir) {
+            for m in mods {
+                source_mods.push(SourceMod {
+                    identifier: m.modid.clone(),
+                    version: m.version.clone(),
+                    enabled: m.enabled,
+                    version_id: None,
+                    display_name: Some(m.name.clone()),
+                    author: Some(m.author.clone()),
+                    icon_url: m.icon_url.clone(),
+                    filename: Some(m.filename.clone()),
                 });
             }
         }
     }
-    // TODO: Add Modrinth support - read from modpack.mods
 
     let mut p2p_files = Vec::new();
-    let sync_patterns = vec!["BepInEx/config/", "BepInEx/plugins/", "config/", "mods.yml"];
+    let sync_patterns = match mod_source.as_str() {
+        "vintagestory" => vec!["Mods/", "vs_mods.json"],
+        _ => vec!["BepInEx/config/", "BepInEx/plugins/", "config/", "mods.yml"],
+    };
 
     let mut cache = HASH_CACHE.write().await;
 
@@ -428,11 +449,12 @@ async fn get_sync_manifest(State(state): State<Arc<AppState>>) -> impl IntoRespo
     }
 
     let manifest = SyncManifest {
-        game_id: modpack.game_id,
+        game_id: modpack.game_id.clone(),
         mod_source,
         community,
         source_mods,
         p2p_files,
+        vs_server_address: modpack.vs_server_address,
     };
 
     Json(manifest).into_response()

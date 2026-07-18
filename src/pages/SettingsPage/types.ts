@@ -8,4 +8,6 @@ export interface AppSettings {
   memory_min: null | string;
   memory_max: null | string;
   last_custom_address: null | string;
+  relay_url: null | string;
+  mc_port: null | number;
 }

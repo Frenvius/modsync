@@ -77,6 +77,7 @@ export default function BrowseModsPage() {
   const gameId = selectedGame?.id ?? 'minecraft';
   const requiresLoader = selectedGame?.requires_loader ?? true;
   const isThunderstore = selectedGame?.mod_source === 'thunderstore';
+  const isVintageStory = selectedGame?.mod_source === 'vintagestory';
   const thunderstoreCommunity = selectedGame?.thunderstore_community;
 
   React.useEffect(() => {
@@ -114,6 +115,14 @@ export default function BrowseModsPage() {
           if (versions.length > 0) {
             setSelectedVersion(versions[0].version);
           }
+        } else if (isVintageStory) {
+          const [cats, versions] = await Promise.all([
+            invoke<Category[]>('get_mod_categories', { gameId }),
+            invoke<GameVersion[]>('get_game_versions', { gameId })
+          ]);
+          setCategories(cats);
+          setGameVersions(versions.slice(0, 30));
+          setLoaders([]);
         } else {
           const cats = await invoke<Category[]>('get_mod_categories', { gameId });
           setCategories(cats);
@@ -125,17 +134,27 @@ export default function BrowseModsPage() {
       }
     }
     loadFilters();
-  }, [gameId, requiresLoader]);
+  }, [gameId, requiresLoader, isVintageStory]);
 
   React.useEffect(() => {
-    if (!loading || !isThunderstore || !thunderstoreCommunity) return;
+    if (!loading || (!isThunderstore && !isVintageStory)) return;
+    if (isThunderstore && !thunderstoreCommunity) return;
 
     const interval = setInterval(async () => {
       try {
-        const progress = await invoke<FetchProgress | null>('get_thunderstore_fetch_progress', {
-          community: thunderstoreCommunity
-        });
-        setFetchProgress(progress);
+        if (isThunderstore) {
+          const progress = await invoke<FetchProgress | null>('get_thunderstore_fetch_progress', {
+            community: thunderstoreCommunity
+          });
+          setFetchProgress(progress);
+        } else if (isVintageStory) {
+          const progress = await invoke<FetchProgress | null>('get_vintagestory_fetch_progress');
+          if (progress) {
+            setFetchProgress({ chunks_downloaded: progress.is_loading ? 0 : 1, total_chunks: 1, is_loading: progress.is_loading });
+          } else {
+            setFetchProgress(null);
+          }
+        }
       } catch {}
     }, 500);
 
@@ -143,7 +162,7 @@ export default function BrowseModsPage() {
       clearInterval(interval);
       setFetchProgress(null);
     };
-  }, [loading, isThunderstore, thunderstoreCommunity]);
+  }, [loading, isThunderstore, isVintageStory, thunderstoreCommunity]);
 
   const ITEMS_PER_PAGE = 20;
   const totalPages = Math.ceil(totalHits / ITEMS_PER_PAGE);
@@ -212,24 +231,32 @@ export default function BrowseModsPage() {
 
   const categoryNames = React.useMemo(() => categories.map((c) => capitalize(c.name)), [categories]);
 
-  const sourceLabel = isThunderstore ? 'Thunderstore' : 'Modrinth';
+  const sourceLabel = isVintageStory ? 'VS Mod DB' : isThunderstore ? 'Thunderstore' : 'Modrinth';
 
   const sortOptions = React.useMemo(
     () =>
-      isThunderstore
+      isVintageStory
         ? [
             { value: 'downloads', label: 'Downloads', icon: TrendingUp },
-            { value: 'updated', label: 'Recently Updated', icon: Clock },
-            { value: 'follows', label: 'Rating', icon: Star },
-            { value: 'name', label: 'Alphabetical', icon: ArrowDownAZ }
-          ]
-        : [
-            { value: 'relevance', label: 'Relevance', icon: Sparkles },
-            { value: 'downloads', label: 'Downloads', icon: TrendingUp },
-            { value: 'updated', label: 'Recently Updated', icon: Clock },
+            { value: 'trendingPoints', label: 'Trending', icon: Sparkles },
+            { value: 'lastReleased', label: 'Recently Updated', icon: Clock },
+            { value: 'name', label: 'Alphabetical', icon: ArrowDownAZ },
             { value: 'follows', label: 'Follows', icon: Star }
-          ],
-    [isThunderstore]
+          ]
+        : isThunderstore
+          ? [
+              { value: 'downloads', label: 'Downloads', icon: TrendingUp },
+              { value: 'updated', label: 'Recently Updated', icon: Clock },
+              { value: 'follows', label: 'Rating', icon: Star },
+              { value: 'name', label: 'Alphabetical', icon: ArrowDownAZ }
+            ]
+          : [
+              { value: 'relevance', label: 'Relevance', icon: Sparkles },
+              { value: 'downloads', label: 'Downloads', icon: TrendingUp },
+              { value: 'updated', label: 'Recently Updated', icon: Clock },
+              { value: 'follows', label: 'Follows', icon: Star }
+            ],
+    [isThunderstore, isVintageStory]
   );
 
   const pageNumbers = React.useMemo(() => {
@@ -266,35 +293,35 @@ export default function BrowseModsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {requiresLoader && (
-            <>
-              <Select value={selectedVersion} onValueChange={setSelectedVersion}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Version" />
-                </SelectTrigger>
-                <SelectContent>
-                  {gameVersions.map((v) => (
-                    <SelectItem key={v.version} value={v.version}>
-                      {v.version}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {(requiresLoader || isVintageStory) && gameVersions.length > 0 && (
+            <Select value={selectedVersion} onValueChange={setSelectedVersion}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Version" />
+              </SelectTrigger>
+              <SelectContent>
+                {gameVersions.map((v) => (
+                  <SelectItem key={v.version} value={v.version}>
+                    {v.version}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
-              <Select value={selectedLoader} onValueChange={setSelectedLoader}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Loader" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Loaders</SelectItem>
-                  {loaders.map((l) => (
-                    <SelectItem key={l.name} value={l.name}>
-                      {capitalize(l.name)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
+          {requiresLoader && (
+            <Select value={selectedLoader} onValueChange={setSelectedLoader}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Loader" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Loaders</SelectItem>
+                {loaders.map((l) => (
+                  <SelectItem key={l.name} value={l.name}>
+                    {capitalize(l.name)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
 
           <Select value={sortBy} onValueChange={setSortBy}>

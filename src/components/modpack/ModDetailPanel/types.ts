@@ -29,7 +29,7 @@ export interface ModDetails {
   latest_version: string | null;
   file_size: number | null;
   dependencies: DependencyInfo[];
-  source: 'modrinth' | 'thunderstore';
+  source: string;
 }
 
 export interface ModDetailPanelProps {

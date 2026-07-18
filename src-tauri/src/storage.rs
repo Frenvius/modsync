@@ -8,6 +8,7 @@ use crate::instance;
 use crate::modpack::{Modpack, ModpackIdentity, ModpackMod};
 use crate::sources::modrinth::profile as modrinth_profile;
 use crate::sources::thunderstore::profile as thunderstore_profile;
+use crate::sources::vintagestory::profile as vs_profile;
 use crate::AppSettings;
 
 pub fn get_modpacks_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -34,6 +35,7 @@ fn mod_source_for(game_id: &str) -> &'static str {
     match games::get_game(game_id) {
         Some(g) if g.mod_source == "thunderstore" => "thunderstore",
         Some(g) if g.mod_source == "modrinth" => "modrinth",
+        Some(g) if g.mod_source == "vintagestory" => "vintagestory",
         _ => "unknown",
     }
 }
@@ -72,6 +74,29 @@ fn compose_mods_from_disk(
                 .collect()
         }
         "modrinth" => modrinth_profile::load_mods_json(&instance_dir).unwrap_or_default(),
+        "vintagestory" => {
+            if !instance_dir.exists() {
+                return Vec::new();
+            }
+            vs_profile::load_mods_json(&instance_dir)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| ModpackMod {
+                    slug: m.modid.clone(),
+                    title: m.name.clone(),
+                    version: m.version.clone(),
+                    author: m.author.clone(),
+                    icon_url: m.icon_url.clone(),
+                    project_id: None,
+                    version_id: None,
+                    enabled: m.enabled,
+                    filename: Some(m.filename.clone()),
+                    is_loader: false,
+                    is_deprecated: false,
+                    source: Some("vintagestory".to_string()),
+                })
+                .collect()
+        }
         _ => Vec::new(),
     }
 }
@@ -80,12 +105,31 @@ fn persist_mods_for_game(
     app_handle: &tauri::AppHandle,
     modpack: &Modpack,
 ) -> Result<(), String> {
-    if mod_source_for(&modpack.game_id) != "modrinth" {
-        return Ok(());
-    }
-
+    let source = mod_source_for(&modpack.game_id);
     let instance_dir = instance::get_instance_dir(app_handle, &modpack.id)?;
-    modrinth_profile::save_mods_json(&instance_dir, &modpack.mods)
+
+    match source {
+        "modrinth" => modrinth_profile::save_mods_json(&instance_dir, &modpack.mods),
+        "vintagestory" => {
+            let vs_mods: Vec<vs_profile::VsInstalledMod> = modpack
+                .mods
+                .iter()
+                .map(|m| vs_profile::VsInstalledMod {
+                    modid: m.slug.clone(),
+                    modidstr: m.slug.clone(),
+                    name: m.title.clone(),
+                    author: m.author.clone(),
+                    version: m.version.clone(),
+                    filename: m.filename.clone().unwrap_or_default(),
+                    icon_url: m.icon_url.clone(),
+                    enabled: m.enabled,
+                    installed_at: String::new(),
+                })
+                .collect();
+            vs_profile::save_mods_json(&instance_dir, &vs_mods)
+        }
+        _ => Ok(()),
+    }
 }
 
 pub fn save_modpack(app_handle: &tauri::AppHandle, modpack: &Modpack) -> Result<(), String> {

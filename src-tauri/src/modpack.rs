@@ -31,6 +31,8 @@ pub struct Modpack {
     pub owner_modpack_id: Option<String>,
     #[serde(default)]
     pub image_path: Option<String>,
+    #[serde(default)]
+    pub vs_server_address: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -56,6 +58,8 @@ pub struct ModpackIdentity {
     pub owner_modpack_id: Option<String>,
     #[serde(default)]
     pub image_path: Option<String>,
+    #[serde(default)]
+    pub vs_server_address: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     #[serde(default, rename = "mods", skip_serializing)]
@@ -77,6 +81,7 @@ impl From<&Modpack> for ModpackIdentity {
             owner_address: m.owner_address.clone(),
             owner_modpack_id: m.owner_modpack_id.clone(),
             image_path: m.image_path.clone(),
+            vs_server_address: m.vs_server_address.clone(),
             created_at: m.created_at.clone(),
             updated_at: m.updated_at.clone(),
             legacy_mods: None,
@@ -100,6 +105,7 @@ impl ModpackIdentity {
             owner_address: self.owner_address,
             owner_modpack_id: self.owner_modpack_id,
             image_path: self.image_path,
+            vs_server_address: self.vs_server_address,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -166,6 +172,7 @@ impl Modpack {
             owner_address: None,
             owner_modpack_id: None,
             image_path: None,
+            vs_server_address: None,
             created_at: now.clone(),
             updated_at: now,
         }

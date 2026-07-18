@@ -16,6 +16,7 @@ mod steam;
 mod storage;
 mod sync;
 mod thunderstore_launcher;
+mod tunnel;
 pub(crate) mod utils;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -130,6 +131,23 @@ async fn search_mods(
                     )
                     .await;
                 }
+            } else if game.mod_source == "vintagestory" {
+                let page = offset.map(|o| {
+                    let size = limit.unwrap_or(20);
+                    (o / size) + 1
+                });
+                let cache_dir = instance::get_api_cache_dir(&app_handle)?;
+                return sources::vintagestory::search_mods(
+                    query.as_deref(),
+                    categories.as_deref(),
+                    excluded_categories.as_deref(),
+                    game_version.as_deref(),
+                    sort.as_deref(),
+                    page,
+                    limit,
+                    &cache_dir,
+                )
+                .await;
             }
         }
     }
@@ -271,6 +289,18 @@ async fn get_mod_categories(
                         })
                         .collect());
                 }
+            } else if game.mod_source == "vintagestory" {
+                let cache_dir = instance::get_api_cache_dir(&app_handle)?;
+                let cat_names = sources::vintagestory::get_categories(&cache_dir).await?;
+                return Ok(cat_names
+                    .into_iter()
+                    .map(|name| Category {
+                        name: name.clone(),
+                        project_type: "mod".to_string(),
+                        header: "categories".to_string(),
+                        icon: name,
+                    })
+                    .collect());
             }
         }
         return Ok(vec![]);
@@ -473,6 +503,232 @@ async fn update_all_thunderstore_mods(
     .await
 }
 
+#[tauri::command]
+async fn warm_vintagestory_cache(
+    app_handle: tauri::AppHandle,
+) -> Result<bool, String> {
+    let cache_dir = instance::get_api_cache_dir(&app_handle)?;
+    sources::vintagestory::api::load_cache_from_disk(&cache_dir)
+}
+
+#[tauri::command]
+async fn get_vintagestory_fetch_progress() -> Result<Option<sources::vintagestory::FetchProgress>, String> {
+    Ok(sources::vintagestory::get_fetch_progress())
+}
+
+#[tauri::command]
+async fn check_vintagestory_updates(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+) -> Result<sources::vintagestory::UpdateCheckResult, String> {
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+
+    let game = games::get_game(&modpack.game_id)
+        .ok_or_else(|| format!("Unknown game: {}", modpack.game_id))?;
+
+    if game.mod_source != "vintagestory" {
+        return Err("This command is only for Vintage Story games".to_string());
+    }
+
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+    sources::vintagestory::check_for_updates(&instance_dir).await
+}
+
+#[tauri::command]
+async fn update_vintagestory_mod(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+    modid: String,
+) -> Result<sources::vintagestory::UpdateResult, String> {
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+    let downloads_dir = instance::get_downloads_cache_dir(&app_handle)?;
+    sources::vintagestory::update_mod(&downloads_dir, &instance_dir, &modid, &modpack.game_version).await
+}
+
+#[tauri::command]
+async fn update_all_vintagestory_mods(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+) -> Result<sources::vintagestory::BatchUpdateResult, String> {
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+    let downloads_dir = instance::get_downloads_cache_dir(&app_handle)?;
+    sources::vintagestory::update_all_mods(&downloads_dir, &instance_dir, &modpack.game_version).await
+}
+
+#[tauri::command]
+async fn detect_vs_data_path() -> Result<Option<String>, String> {
+    Ok(sources::vintagestory::clientsettings::detect_data_dir()
+        .map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+async fn detect_vs_game_version(data_path: String) -> Result<Option<String>, String> {
+    let data_dir = std::path::PathBuf::from(&data_path);
+    Ok(sources::vintagestory::clientsettings::detect_game_version(&data_dir))
+}
+
+#[tauri::command]
+async fn scan_vs_mods(
+    data_path: String,
+) -> Result<Vec<sources::vintagestory::clientsettings::ScannedMod>, String> {
+    let data_dir = std::path::PathBuf::from(&data_path);
+    if !data_dir.exists() {
+        return Err(format!("Path does not exist: {}", data_path));
+    }
+    sources::vintagestory::clientsettings::scan_mods_in_dir(&data_dir)
+}
+
+#[tauri::command]
+async fn import_vs_installation(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+    data_path: String,
+) -> Result<Modpack, String> {
+    let data_dir = std::path::PathBuf::from(&data_path);
+    if !data_dir.exists() {
+        return Err(format!("Path does not exist: {}", data_path));
+    }
+
+    let mut scanned = sources::vintagestory::clientsettings::scan_mods_in_dir(&data_dir)?;
+
+    let cache_dir = instance::get_api_cache_dir(&app_handle)?;
+    if let Ok(db_mods) = sources::vintagestory::api::fetch_all_mods(&cache_dir).await {
+        let db_lookup: std::collections::HashMap<String, &sources::vintagestory::VsModPackage> =
+            db_mods.iter().flat_map(|m| {
+                let mut entries = vec![];
+                for idstr in &m.modidstrs {
+                    entries.push((idstr.to_lowercase(), m));
+                }
+                if let Some(alias) = &m.urlalias {
+                    entries.push((alias.to_lowercase(), m));
+                }
+                entries
+            }).collect();
+
+        for scanned_mod in &mut scanned {
+            if let Some(db_mod) = db_lookup.get(&scanned_mod.modid.to_lowercase()) {
+                scanned_mod.db_slug = db_mod.urlalias.clone();
+                scanned_mod.db_icon_url = db_mod.logo.as_ref().map(|l| {
+                    if l.starts_with("http") { l.clone() } else { format!("https://mods.vintagestory.at{}", l) }
+                });
+            }
+        }
+    }
+
+    let mut modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+
+    let existing_slugs: std::collections::HashSet<String> =
+        modpack.mods.iter().map(|m| m.slug.clone()).collect();
+
+    modpack.mods.clear();
+
+    for scanned_mod in &scanned {
+        if scanned_mod.modid == "game" || scanned_mod.modid == "survival" || scanned_mod.modid == "creative" {
+            continue;
+        }
+
+        modpack.mods.push(ModpackMod {
+            slug: scanned_mod.modid.clone(),
+            title: scanned_mod.name.clone(),
+            version: scanned_mod.version.clone(),
+            author: scanned_mod.author.clone(),
+            icon_url: scanned_mod.db_icon_url.clone(),
+            project_id: scanned_mod.db_slug.clone(),
+            version_id: None,
+            enabled: scanned_mod.enabled,
+            filename: Some(scanned_mod.filename.clone()),
+            is_loader: false,
+            is_deprecated: false,
+            source: Some("vintagestory".to_string()),
+        });
+    }
+
+    modpack.updated_at = chrono::Utc::now().to_rfc3339();
+    storage::save_modpack(&app_handle, &modpack)?;
+
+    let mut inst = instance::load_instance(&app_handle, &modpack_id)?
+        .unwrap_or_else(|| {
+            instance::Instance::new_vintagestory(
+                modpack_id.to_string(),
+                modpack.game_id.clone(),
+                modpack.game_version.clone(),
+            )
+        });
+    inst.installed = true;
+    instance::save_instance(&app_handle, &inst)?;
+
+    Ok(modpack)
+}
+
+#[tauri::command]
+async fn check_vs_mod_statuses(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+) -> Result<Vec<sources::vintagestory::clientsettings::ModStatus>, String> {
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+
+    sources::vintagestory::clientsettings::check_mod_statuses(
+        &instance_dir,
+        &modpack.game_version,
+    )
+}
+
+#[tauri::command]
+async fn debug_vs_mod_parse(modid: String) -> Result<String, String> {
+    let url = format!("https://mods.vintagestory.at/api/mod/{}", modid);
+    let response = crate::http::HTTP_CLIENT
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("fetch error: {}", e))?;
+    let text = response.text().await.map_err(|e| format!("read error: {}", e))?;
+
+    let raw: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("json parse error: {}", e))?;
+
+    let mut mod_obj = match raw.get("mod") {
+        Some(v) => v.clone(),
+        None => return Ok(format!("no 'mod' field. keys: {:?}", raw.as_object().map(|o| o.keys().collect::<Vec<_>>()))),
+    };
+
+    sources::vintagestory::api::sanitize_nulls(&mut mod_obj);
+
+    let sanitized_str = serde_json::to_string(&mod_obj).unwrap_or_default();
+    let still_has_null = sanitized_str.contains(":null");
+
+    match serde_json::from_value::<sources::vintagestory::api::VsModDetailInner>(mod_obj) {
+        Ok(d) => Ok(format!("OK: name={}, releases={}", d.name, d.releases.len())),
+        Err(e) => Ok(format!("PARSE ERROR: {} | still_has_null={} | sample={}", e, still_has_null, &sanitized_str[..sanitized_str.len().min(500)])),
+    }
+}
+
+#[tauri::command]
+async fn toggle_vs_mod(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+    modid: String,
+) -> Result<Modpack, String> {
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+
+    let is_disabled = sources::vintagestory::clientsettings::is_mod_disabled(&instance_dir, &modid)?;
+    let new_enabled = is_disabled;
+
+    sources::vintagestory::toggle_mod_enabled(&instance_dir, &modid, new_enabled)?;
+
+    let mut modpack = modpack;
+    if let Some(m) = modpack.mods.iter_mut().find(|m| m.slug == modid) {
+        m.enabled = new_enabled;
+    }
+    modpack.updated_at = chrono::Utc::now().to_rfc3339();
+    storage::save_modpack(&app_handle, &modpack)?;
+
+    Ok(modpack)
+}
+
 #[derive(Debug, Serialize)]
 struct LoaderVersionInfo {
     version: String,
@@ -523,10 +779,24 @@ async fn get_mod_loaders(game_id: Option<String>) -> Result<Vec<Loader>, String>
 
 #[tauri::command]
 async fn get_game_versions(
+    app_handle: tauri::AppHandle,
     game_id: Option<String>,
     include_snapshots: Option<bool>,
 ) -> Result<Vec<GameVersion>, String> {
     let resolved = game_id.as_deref().unwrap_or("minecraft");
+    if resolved == "vintage-story" {
+        let cache_dir = instance::get_api_cache_dir(&app_handle)?;
+        let versions = sources::vintagestory::get_game_versions(&cache_dir).await?;
+        return Ok(versions
+            .into_iter()
+            .map(|v| GameVersion {
+                version: v.clone(),
+                version_type: "release".to_string(),
+                date: String::new(),
+                major: false,
+            })
+            .collect());
+    }
     if resolved != "minecraft" {
         return Ok(vec![]);
     }
@@ -582,6 +852,39 @@ async fn get_mod_versions(
 
             Ok(versions)
         }
+        Some("vintagestory") => {
+            let releases = sources::vintagestory::get_mod_versions(&slug).await?;
+            Ok(releases
+                .into_iter()
+                .map(|r| {
+                    let download_url = if r.mainfile.starts_with("http") {
+                        r.mainfile.clone()
+                    } else {
+                        format!("https://mods.vintagestory.at{}", r.mainfile)
+                    };
+                    modrinth::Version {
+                        id: r.releaseid.to_string(),
+                        project_id: slug.clone(),
+                        name: format!("v{}", r.modversion),
+                        version_number: r.modversion,
+                        game_versions: r.tags,
+                        loaders: vec![],
+                        dependencies: vec![],
+                        date_published: r.created,
+                        files: vec![modrinth::VersionFile {
+                            url: download_url,
+                            filename: r.filename,
+                            hashes: modrinth::FileHashes {
+                                sha1: String::new(),
+                                sha512: String::new(),
+                            },
+                            size: 0,
+                            primary: true,
+                        }],
+                    }
+                })
+                .collect())
+        }
         Some("curseforge") => {
             let project = curseforge::get_project(&slug).await?;
             Ok(curseforge::get_project_versions_filtered(
@@ -619,6 +922,7 @@ async fn create_modpack(
     game_version: String,
     loader: Option<String>,
     loader_version: Option<String>,
+    data_path: Option<String>,
 ) -> Result<Modpack, String> {
     let resolved_game_id = game_id.unwrap_or_else(|| "minecraft".to_string());
     let request = CreateModpackRequest {
@@ -633,17 +937,32 @@ async fn create_modpack(
     let modpack = Modpack::new(request);
 
     let game = games::get_game(&resolved_game_id);
-    let is_thunderstore = game
-        .as_ref()
-        .map(|g| g.mod_source == "thunderstore")
-        .unwrap_or(false);
+    let mod_source = game.as_ref().map(|g| g.mod_source.as_str()).unwrap_or("");
 
-    let profile_type = if is_thunderstore { Some("thunderstore") } else { None };
-    instance::create_instance_dirs_for_game(&app_handle, &modpack.id, &name, profile_type)?;
+    if mod_source == "vintagestory" {
+        if let Some(ref dp) = data_path {
+            instance::set_instance_path(&app_handle, &modpack.id, dp)?;
+        } else {
+            let profile_type = Some("vintagestory");
+            instance::create_instance_dirs_for_game(&app_handle, &modpack.id, &name, profile_type)?;
+        }
 
-    if is_thunderstore {
         let instance_dir = instance::get_instance_dir(&app_handle, &modpack.id)?;
-        sources::thunderstore::profile::save_mods_yml(&instance_dir, &vec![])?;
+        let mods_dir = instance_dir.join("Mods");
+        std::fs::create_dir_all(&mods_dir)
+            .map_err(|e| format!("Failed to create Mods dir: {}", e))?;
+        sources::vintagestory::profile::save_mods_json(&instance_dir, &vec![])?;
+    } else {
+        let profile_type = match mod_source {
+            "thunderstore" => Some("thunderstore"),
+            _ => None,
+        };
+        instance::create_instance_dirs_for_game(&app_handle, &modpack.id, &name, profile_type)?;
+
+        if mod_source == "thunderstore" {
+            let instance_dir = instance::get_instance_dir(&app_handle, &modpack.id)?;
+            sources::thunderstore::profile::save_mods_yml(&instance_dir, &vec![])?;
+        }
     }
 
     storage::save_modpack(&app_handle, &modpack)?;
@@ -836,7 +1155,15 @@ async fn get_image_data(
 
 #[tauri::command]
 async fn delete_modpack(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
-    instance::delete_instance(&app_handle, &id)?;
+    let modpack = storage::load_modpack(&app_handle, &id)?;
+    let game = games::get_game(&modpack.game_id);
+    let is_vs = game.as_ref().map(|g| g.mod_source == "vintagestory").unwrap_or(false);
+
+    if is_vs {
+        instance::unlink_instance(&app_handle, &id)?;
+    } else {
+        instance::delete_instance(&app_handle, &id)?;
+    }
 
     storage::delete_modpack_file(&app_handle, &id)
 }
@@ -864,20 +1191,22 @@ async fn clone_modpack(
         owner_address: None,
         owner_modpack_id: None,
         image_path: None,
+        vs_server_address: None,
         created_at: now.clone(),
         updated_at: now,
     };
 
     let game = games::get_game(&cloned.game_id);
-    let is_thunderstore = game
-        .as_ref()
-        .map(|g| g.mod_source == "thunderstore")
-        .unwrap_or(false);
+    let clone_mod_source = game.as_ref().map(|g| g.mod_source.as_str()).unwrap_or("");
 
-    let profile_type = if is_thunderstore { Some("thunderstore") } else { None };
+    let profile_type = match clone_mod_source {
+        "thunderstore" => Some("thunderstore"),
+        "vintagestory" => Some("vintagestory"),
+        _ => None,
+    };
     instance::create_instance_dirs_for_game(&app_handle, &new_id, &cloned.name, profile_type)?;
 
-    if is_thunderstore {
+    if clone_mod_source == "thunderstore" {
         let src_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
         let dst_dir = instance::get_instance_dir(&app_handle, &new_id)?;
         let src_yml = src_dir.join("mods.yml");
@@ -885,6 +1214,15 @@ async fn clone_modpack(
             let _ = std::fs::copy(&src_yml, dst_dir.join("mods.yml"));
         } else {
             sources::thunderstore::profile::save_mods_yml(&dst_dir, &vec![])?;
+        }
+    } else if clone_mod_source == "vintagestory" {
+        let src_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+        let dst_dir = instance::get_instance_dir(&app_handle, &new_id)?;
+        let src_json = src_dir.join("vs_mods.json");
+        if src_json.exists() {
+            let _ = std::fs::copy(&src_json, dst_dir.join("vs_mods.json"));
+        } else {
+            sources::vintagestory::profile::save_mods_json(&dst_dir, &vec![])?;
         }
     }
 
@@ -953,10 +1291,9 @@ async fn add_mod_to_modpack(
     let mod_slug = slug.clone();
 
     let game = games::get_game(&modpack.game_id);
-    let is_thunderstore = game
-        .as_ref()
-        .map(|g| g.mod_source == "thunderstore")
-        .unwrap_or(false);
+    let mod_source = game.as_ref().map(|g| g.mod_source.as_str()).unwrap_or("");
+    let is_thunderstore = mod_source == "thunderstore";
+    let is_vintagestory = mod_source == "vintagestory";
 
     let modpack_name = modpack.name.clone();
     let modpack_game_id = modpack.game_id.clone();
@@ -983,7 +1320,65 @@ async fn add_mod_to_modpack(
         storage::save_modpack(&app_handle, &modpack)?;
     }
 
-    if is_thunderstore {
+    if is_vintagestory {
+        instance::create_instance_dirs_for_game(
+            &app_handle,
+            &modpack_id,
+            &modpack_name,
+            Some("vintagestory"),
+        )?;
+        let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+        let downloads_dir = instance::get_downloads_cache_dir(&app_handle)?;
+
+        let detail = sources::vintagestory::api::fetch_mod_detail(&mod_slug).await?;
+        if let Some(release) = detail.releases.first() {
+            let download_url = if release.mainfile.starts_with("http") {
+                release.mainfile.clone()
+            } else {
+                format!("https://mods.vintagestory.at{}", release.mainfile)
+            };
+
+            let modidstr = release
+                .modidstr
+                .clone()
+                .or_else(|| detail.modidstrs.first().cloned())
+                .unwrap_or_default();
+
+            let icon = detail.logo.as_ref().or(detail.logofilename.as_ref()).map(|l| {
+                if l.starts_with("http") { l.clone() } else { format!("https://mods.vintagestory.at{}", l) }
+            });
+
+            sources::vintagestory::install_mod(
+                &downloads_dir,
+                &instance_dir,
+                &mod_slug,
+                &modidstr,
+                &detail.name,
+                &detail.author,
+                &release.modversion,
+                &download_url,
+                &release.filename,
+                icon.as_deref(),
+            )
+            .await?;
+
+            let mut modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+            if let Some(m) = modpack.mods.iter_mut().find(|m| m.slug == mod_slug) {
+                m.filename = Some(release.filename.clone());
+            }
+            storage::save_modpack(&app_handle, &modpack)?;
+        }
+
+        let mut inst = instance::load_instance(&app_handle, &modpack_id)?.unwrap_or_else(|| {
+            instance::Instance::new_vintagestory(
+                modpack_id.clone(),
+                modpack_game_id.clone(),
+                modpack_game_version.clone(),
+            )
+        });
+        inst.installed = true;
+        instance::save_instance(&app_handle, &inst)?;
+    } else if is_thunderstore {
         let community = game
             .as_ref()
             .and_then(|g| g.thunderstore_community.as_deref())
@@ -1123,12 +1518,9 @@ async fn remove_mod_from_modpack(
     let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
 
     let game = games::get_game(&modpack.game_id);
-    let is_thunderstore = game
-        .as_ref()
-        .map(|g| g.mod_source == "thunderstore")
-        .unwrap_or(false);
+    let mod_source = game.as_ref().map(|g| g.mod_source.as_str()).unwrap_or("");
 
-    if is_thunderstore {
+    if mod_source == "thunderstore" {
         let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
         let loader_config = game.as_ref().and_then(|g| g.loader.as_ref());
         let loader_name = loader_config.map(|lc| lc.loader_type.name());
@@ -1138,6 +1530,13 @@ async fn remove_mod_from_modpack(
             &modpack.game_id,
             loader_name,
         )?;
+    } else if mod_source == "vintagestory" {
+        let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+        sources::vintagestory::remove_mod(&instance_dir, &slug)?;
+
+        let mut modpack = modpack;
+        modpack.remove_mod(&slug);
+        storage::save_modpack(&app_handle, &modpack)?;
     } else {
         let mut modpack = modpack;
         let mod_filename = modpack
@@ -1256,12 +1655,9 @@ async fn toggle_mod_enabled(
     }
 
     let game = games::get_game(&modpack.game_id);
-    let is_thunderstore = game
-        .as_ref()
-        .map(|g| g.mod_source == "thunderstore")
-        .unwrap_or(false);
+    let mod_source = game.as_ref().map(|g| g.mod_source.as_str()).unwrap_or("");
 
-    if is_thunderstore {
+    if mod_source == "thunderstore" {
         let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
         let mods = sources::thunderstore::profile::load_mods_yml(&instance_dir)?;
 
@@ -1283,6 +1679,21 @@ async fn toggle_mod_enabled(
             &modpack.game_id,
             loader_name,
         )?;
+    } else if mod_source == "vintagestory" {
+        let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+        let mods = sources::vintagestory::profile::load_mods_json(&instance_dir)?;
+        let mod_entry = sources::vintagestory::profile::find_mod(&mods, &slug)
+            .ok_or_else(|| format!("Mod '{}' not found in modpack", slug))?;
+
+        let new_enabled = !mod_entry.enabled;
+        sources::vintagestory::toggle_mod_enabled(&instance_dir, &slug, new_enabled)?;
+
+        let mut modpack = modpack;
+        if let Some(m) = modpack.mods.iter_mut().find(|m| m.slug == slug) {
+            m.enabled = new_enabled;
+        }
+        modpack.updated_at = chrono::Utc::now().to_rfc3339();
+        storage::save_modpack(&app_handle, &modpack)?;
     } else {
         let mut modpack = modpack;
         let mod_entry = modpack
@@ -1846,9 +2257,58 @@ async fn get_mod_with_dependencies(
         "thunderstore" => {
             get_thunderstore_mod_with_dependencies(slug, thunderstore_community).await
         }
+        "vintagestory" => get_vintagestory_mod_with_dependencies(slug).await,
         "curseforge" => get_curseforge_mod_with_dependencies(slug, game_version, loader, additional_loaders).await,
         _ => get_modrinth_mod_with_dependencies(slug, game_version, loader, additional_loaders).await,
     }
+}
+
+async fn get_vintagestory_mod_with_dependencies(
+    slug: String,
+) -> Result<ModWithDependencies, String> {
+    let detail = sources::vintagestory::api::fetch_mod_detail(&slug).await?;
+
+    let latest = detail
+        .releases
+        .first()
+        .ok_or_else(|| format!("No releases found for {}", slug))?;
+
+    let download_url = if latest.mainfile.starts_with("http") {
+        latest.mainfile.clone()
+    } else {
+        format!("https://mods.vintagestory.at{}", latest.mainfile)
+    };
+
+    let icon_url = detail.logo.as_ref().or(detail.logofilename.as_ref()).map(|l| {
+        if l.starts_with("http") {
+            l.clone()
+        } else {
+            format!("https://mods.vintagestory.at{}", l)
+        }
+    });
+
+    let modidstr = latest
+        .modidstr
+        .clone()
+        .or_else(|| detail.modidstrs.first().cloned())
+        .unwrap_or_default();
+
+    Ok(ModWithDependencies {
+        mod_info: ModInfo {
+            slug: detail
+                .urlalias
+                .clone()
+                .unwrap_or_else(|| detail.modid.to_string()),
+            title: detail.name.clone(),
+            author: detail.author.clone(),
+            icon_url,
+            version_id: latest.releaseid.to_string(),
+            version_number: latest.modversion.clone(),
+            source: Some("vintagestory".to_string()),
+            filename: Some(format!("{}:{}", modidstr, download_url)),
+        },
+        dependencies: vec![],
+    })
 }
 
 async fn get_curseforge_mod_with_dependencies(
@@ -2115,9 +2575,59 @@ async fn get_mod_details(
         "thunderstore" => {
             get_thunderstore_mod_details(slug, thunderstore_community, app_handle).await
         }
+        "vintagestory" => get_vintagestory_mod_details(slug).await,
         "curseforge" => get_curseforge_mod_details(slug, game_version, loader, additional_loaders).await,
         _ => get_modrinth_mod_details(slug, game_version, loader, additional_loaders).await,
     }
+}
+
+async fn get_vintagestory_mod_details(slug: String) -> Result<ModDetails, String> {
+    let detail = sources::vintagestory::api::fetch_mod_detail(&slug).await?;
+    let latest = detail.releases.first();
+
+    let icon_url = detail.logo.as_ref().or(detail.logofilename.as_ref()).map(|l| {
+        if l.starts_with("http") {
+            l.clone()
+        } else {
+            format!("https://mods.vintagestory.at{}", l)
+        }
+    });
+
+    let website_url = detail
+        .homepageurl
+        .clone()
+        .or_else(|| {
+            detail
+                .urlalias
+                .as_ref()
+                .map(|a| format!("https://mods.vintagestory.at/show/mod/{}", a))
+        });
+
+    Ok(ModDetails {
+        slug: detail
+            .urlalias
+            .clone()
+            .unwrap_or_else(|| detail.modid.to_string()),
+        title: detail.name.clone(),
+        author: detail.author.clone(),
+        icon_url,
+        description: detail.summary.clone().unwrap_or_default(),
+        body: detail.text.clone(),
+        readme: None,
+        changelog: latest.and_then(|r| r.changelog.clone()),
+        website_url,
+        source_url: detail.sourcecodeurl.clone(),
+        issues_url: detail.issuetrackerurl.clone(),
+        downloads: detail.downloads,
+        follows: detail.follows,
+        categories: detail.tags.clone(),
+        date_created: detail.created.clone().unwrap_or_default(),
+        date_updated: detail.lastreleased.clone().unwrap_or_default(),
+        latest_version: latest.map(|r| r.modversion.clone()),
+        file_size: None,
+        dependencies: vec![],
+        source: "vintagestory".to_string(),
+    })
 }
 
 #[tauri::command]
@@ -2136,22 +2646,27 @@ async fn begin_sharing(
     modpack_id: String,
     port: u16,
     custom_address: Option<String>,
+    vs_server_address: Option<String>,
 ) -> Result<String, String> {
     let mut modpack = storage::load_modpack(&app_handle, &modpack_id)?;
     if !modpack.is_owner {
         return Err("You can only share modpacks you own".to_string());
     }
 
-    let address = match custom_address {
-        Some(addr) if !addr.trim().is_empty() => addr.trim().to_string(),
-        _ => get_public_ip().await?,
-    };
     server::start_server(app_handle.clone(), modpack_id.clone(), port).await?;
 
-    let share_data = format!("{}:{}:{}", address, port, modpack_id);
+    let settings = storage::load_settings(&app_handle).unwrap_or_default();
+    let mc_port = settings.mc_port.unwrap_or(25565);
+    tunnel::start_owner(app_handle.clone(), port, mc_port).await?;
+
+    let share_data = match custom_address {
+        Some(addr) if !addr.trim().is_empty() => format!("{}:{}:{}", addr.trim(), port, modpack_id),
+        _ => format!("{}:{}", tunnel::node_id(&app_handle)?, modpack_id),
+    };
     let share_code = BASE64.encode(share_data.as_bytes());
 
     modpack.share_code = Some(share_code.clone());
+    modpack.vs_server_address = vs_server_address.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string());
     storage::save_modpack(&app_handle, &modpack)?;
 
     Ok(share_code)
@@ -2160,6 +2675,7 @@ async fn begin_sharing(
 #[tauri::command]
 async fn stop_sharing(app_handle: tauri::AppHandle, modpack_id: String) -> Result<(), String> {
     let _ = server::stop_server().await;
+    tunnel::stop_owner().await;
 
     let mut modpack = storage::load_modpack(&app_handle, &modpack_id)?;
     modpack.share_code = None;
@@ -2181,13 +2697,21 @@ async fn join_modpack(app_handle: tauri::AppHandle, share_code: String) -> Resul
     let decoded = String::from_utf8(decoded_bytes).map_err(|_| "Invalid share code encoding")?;
 
     let parts: Vec<String> = decoded.split(':').map(|s| s.to_string()).collect();
-    if parts.len() != 3 {
-        return Err("Invalid share code format".to_string());
+    let (owner_address, owner_modpack_id) = match parts.as_slice() {
+        [ip, port, id] => (format!("{}:{}", ip, port), id.clone()),
+        [node, id] => (node.clone(), id.clone()),
+        _ => return Err("Invalid share code format".to_string()),
+    };
+
+    let existing = storage::load_all_modpacks(&app_handle)?;
+    for existing_pack in existing {
+        if existing_pack.owner_modpack_id.as_deref() == Some(&owner_modpack_id) {
+            return Err("You've already joined this modpack. Use sync to update it.".to_string());
+        }
     }
 
-    let owner_address = format!("{}:{}", parts[0], parts[1]);
-
-    let url = format!("http://{}/modpack", owner_address);
+    let host = tunnel::resolve_http_host(&app_handle, &owner_address).await?;
+    let url = format!("http://{}/modpack", host);
     let client = reqwest::Client::new();
 
     let response = client
@@ -2211,15 +2735,6 @@ async fn join_modpack(app_handle: tauri::AppHandle, share_code: String) -> Resul
         .await
         .map_err(|e| format!("Failed to parse modpack data: {}", e))?;
 
-    let existing = storage::load_all_modpacks(&app_handle)?;
-    for existing_pack in existing {
-        if existing_pack.owner_address.as_deref() == Some(&owner_address)
-            && existing_pack.name == remote_modpack.name
-        {
-            return Err("You've already joined this modpack. Use sync to update it.".to_string());
-        }
-    }
-
     let local_modpack = Modpack::from_joined(remote_modpack, owner_address.clone());
     storage::save_modpack(&app_handle, &local_modpack)?;
 
@@ -2240,8 +2755,9 @@ async fn sync_modpack(app_handle: tauri::AppHandle, modpack_id: String) -> Resul
         .ok_or("This modpack doesn't have an owner address. It may not be a joined modpack.")?
         .clone();
 
-    let modpack_url = format!("http://{}/modpack", owner_address);
-    let manifest_url = format!("http://{}/sync-manifest", owner_address);
+    let host = tunnel::resolve_http_host(&app_handle, &owner_address).await?;
+    let modpack_url = format!("http://{}/modpack", host);
+    let manifest_url = format!("http://{}/sync-manifest", host);
 
     let client = reqwest::Client::builder()
         .user_agent("ModSync/0.1.0")
@@ -2281,7 +2797,7 @@ async fn sync_modpack(app_handle: tauri::AppHandle, modpack_id: String) -> Resul
         app_handle.clone(),
         modpack.id.clone(),
         modpack.name.clone(),
-        owner_address.clone(),
+        host.clone(),
         sync_manifest,
     )
     .await;
@@ -2300,6 +2816,33 @@ async fn sync_modpack(app_handle: tauri::AppHandle, modpack_id: String) -> Resul
     storage::save_modpack(&app_handle, &modpack)?;
 
     Ok(modpack)
+}
+
+#[tauri::command]
+async fn connect_to_server(
+    app_handle: tauri::AppHandle,
+    modpack_id: String,
+) -> Result<u16, String> {
+    let modpack = storage::load_modpack(&app_handle, &modpack_id)?;
+    let owner_address = modpack
+        .owner_address
+        .as_ref()
+        .ok_or("This modpack has no owner to connect to.")?;
+
+    if owner_address.contains(':') {
+        return Err(
+            "This modpack uses a direct connection. Connect Minecraft to the owner's IP directly."
+                .to_string(),
+        );
+    }
+
+    tunnel::start_mc_forward(&app_handle, owner_address).await
+}
+
+#[tauri::command]
+async fn disconnect_from_server() -> Result<(), String> {
+    tunnel::stop_mc_forward().await;
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -2328,7 +2871,8 @@ async fn check_sync_status(
 
     let owner_address = modpack.owner_address.as_ref().ok_or("No owner address")?;
 
-    let url = format!("http://{}/modpack", owner_address);
+    let host = tunnel::resolve_http_host(&app_handle, owner_address).await?;
+    let url = format!("http://{}/modpack", host);
     let client = reqwest::Client::new();
 
     let response = match client
@@ -3226,6 +3770,10 @@ pub struct AppSettings {
     #[serde(default)]
     pub game_paths: HashMap<String, String>,
     pub last_custom_address: Option<String>,
+    #[serde(default)]
+    pub relay_url: Option<String>,
+    #[serde(default)]
+    pub mc_port: Option<u16>,
 }
 
 #[derive(Debug, Serialize)]
@@ -3346,6 +3894,212 @@ async fn set_game_path(
     storage::save_settings(&app_handle, &settings)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct VsGameSettings {
+    game_path: Option<String>,
+    min_brightness: f64,
+    decimal_fix_applied: bool,
+    language: String,
+}
+
+#[tauri::command]
+async fn get_vs_game_settings(app_handle: tauri::AppHandle, modpack_id: String) -> Result<VsGameSettings, String> {
+    let settings = storage::load_settings(&app_handle).unwrap_or_default();
+    let game_path = settings.game_paths.get("vintage-story").cloned();
+
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+    let cs_path = instance_dir.join("clientsettings.json");
+
+    let (min_brightness, language) = if cs_path.exists() {
+        let content = std::fs::read_to_string(&cs_path).unwrap_or_default();
+        let json: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
+        let brightness = json.pointer("/floatSettings/minbrightness")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let lang = json.pointer("/stringSettings/language")
+            .and_then(|v| v.as_str())
+            .unwrap_or("en")
+            .to_string();
+        (brightness, lang)
+    } else {
+        (0.0, "en".to_string())
+    };
+
+    let decimal_fix_applied = {
+        #[cfg(target_os = "windows")]
+        {
+            let output = std::process::Command::new("reg")
+                .args(["query", r"HKCU\Control Panel\International", "/v", "sDecimal"])
+                .output()
+                .ok();
+            output
+                .map(|o| String::from_utf8_lossy(&o.stdout).contains('.'))
+                .unwrap_or(false)
+        }
+        #[cfg(not(target_os = "windows"))]
+        { false }
+    };
+
+    Ok(VsGameSettings {
+        game_path,
+        min_brightness,
+        decimal_fix_applied,
+        language,
+    })
+}
+
+#[tauri::command]
+async fn set_vs_min_brightness(app_handle: tauri::AppHandle, modpack_id: String, value: f64) -> Result<(), String> {
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+    let cs_path = instance_dir.join("clientsettings.json");
+
+    let mut json: serde_json::Value = if cs_path.exists() {
+        let content = std::fs::read_to_string(&cs_path)
+            .map_err(|e| format!("Failed to read clientsettings.json: {}", e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse clientsettings.json: {}", e))?
+    } else {
+        serde_json::json!({})
+    };
+
+    let obj = json.as_object_mut().ok_or("clientsettings.json is not an object")?;
+    let float_settings = obj
+        .entry("floatSettings")
+        .or_insert_with(|| serde_json::json!({}));
+    let fs_obj = float_settings.as_object_mut().ok_or("floatSettings is not an object")?;
+    fs_obj.insert("minbrightness".to_string(), serde_json::json!(value));
+
+    let output = serde_json::to_string_pretty(&json)
+        .map_err(|e| format!("Failed to serialize: {}", e))?;
+    std::fs::write(&cs_path, output)
+        .map_err(|e| format!("Failed to write clientsettings.json: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_vs_language(app_handle: tauri::AppHandle, modpack_id: String, language: String) -> Result<(), String> {
+    let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
+    let cs_path = instance_dir.join("clientsettings.json");
+
+    let mut json: serde_json::Value = if cs_path.exists() {
+        let content = std::fs::read_to_string(&cs_path)
+            .map_err(|e| format!("Failed to read clientsettings.json: {}", e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse clientsettings.json: {}", e))?
+    } else {
+        serde_json::json!({})
+    };
+
+    let obj = json.as_object_mut().ok_or("clientsettings.json is not an object")?;
+    let string_settings = obj
+        .entry("stringSettings")
+        .or_insert_with(|| serde_json::json!({}));
+    let ss_obj = string_settings.as_object_mut().ok_or("stringSettings is not an object")?;
+    ss_obj.insert("language".to_string(), serde_json::json!(language));
+
+    let output = serde_json::to_string_pretty(&json)
+        .map_err(|e| format!("Failed to serialize: {}", e))?;
+    std::fs::write(&cs_path, output)
+        .map_err(|e| format!("Failed to write clientsettings.json: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn apply_vs_decimal_fix(apply: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let (decimal, thousand) = if apply { (".", ",") } else { (",", ".") };
+
+        for (name, val) in &[
+            ("sDecimal", decimal),
+            ("sThousand", thousand),
+            ("sMonDecimalSep", decimal),
+            ("sMonThousandSep", thousand),
+        ] {
+            std::process::Command::new("reg")
+                .args(["add", r"HKCU\Control Panel\International", "/v", name, "/t", "REG_SZ", "/d", val, "/f"])
+                .output()
+                .map_err(|e| format!("Failed to set {}: {}", name, e))?;
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = apply;
+        Err("Decimal fix is only available on Windows".to_string())
+    }
+}
+
+fn find_vintagestory_exe(exe_name: &str) -> Option<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        candidates.push(std::path::PathBuf::from(&appdata).join("Vintagestory").join(exe_name));
+    }
+    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+        candidates.push(std::path::PathBuf::from(&localappdata).join("Vintagestory").join(exe_name));
+    }
+    if let Ok(pf) = std::env::var("PROGRAMFILES") {
+        candidates.push(std::path::PathBuf::from(&pf).join("Vintagestory").join(exe_name));
+    }
+    if let Ok(pf86) = std::env::var("PROGRAMFILES(X86)") {
+        candidates.push(std::path::PathBuf::from(&pf86).join("Vintagestory").join(exe_name));
+    }
+
+    candidates.into_iter().find(|p| p.exists())
+}
+
+async fn launch_vintagestory_instance(
+    app_handle: &tauri::AppHandle,
+    modpack: &Modpack,
+    game: &games::GameInfo,
+) -> Result<(), String> {
+    let data_dir = sources::vintagestory::clientsettings::detect_data_dir()
+        .unwrap_or_else(|| instance::get_instance_dir(app_handle, &modpack.id).unwrap_or_default());
+
+    let settings = storage::load_settings(app_handle).unwrap_or_default();
+    let custom_path = settings.game_paths.get(&modpack.game_id).cloned();
+
+    let exe_name = game.exe_name.as_deref().unwrap_or("Vintagestory.exe");
+
+    let exe_path = if let Some(custom) = custom_path {
+        std::path::PathBuf::from(&custom).join(exe_name)
+    } else if let Some(found) = find_vintagestory_exe(exe_name) {
+        found
+    } else if let Some(app_id) = game.steam_app_id {
+        match steam::detect_steam_install() {
+            Ok(steam_info) => {
+                match steam::find_game_path(&steam_info, app_id) {
+                    Ok(game_dir) => game_dir.join(exe_name),
+                    Err(_) => return Err("Vintage Story not found. Use 'Set Game Path' in the menu to set the install location.".to_string()),
+                }
+            }
+            Err(_) => return Err("Vintage Story not found. Use 'Set Game Path' in the menu to set the install location.".to_string()),
+        }
+    } else {
+        return Err("Vintage Story not found. Use 'Set Game Path' in the menu to set the install location.".to_string());
+    };
+
+    if !exe_path.exists() {
+        return Err(format!("Game executable not found: {}", exe_path.display()));
+    }
+
+    let game_dir = exe_path.parent().unwrap_or(&exe_path).to_path_buf();
+
+    std::process::Command::new(&exe_path)
+        .arg("--dataPath")
+        .arg(&data_dir)
+        .current_dir(&game_dir)
+        .spawn()
+        .map_err(|e| format!("Failed to launch Vintage Story: {}", e))?;
+
+    instance::update_last_played(app_handle, &modpack.id)?;
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn launch_thunderstore_instance(
     app_handle: tauri::AppHandle,
@@ -3359,6 +4113,10 @@ async fn launch_thunderstore_instance(
 
     let game = games::get_game(&modpack.game_id)
         .ok_or_else(|| format!("Unknown game: {}", modpack.game_id))?;
+
+    if game.mod_source == "vintagestory" {
+        return launch_vintagestory_instance(&app_handle, &modpack, &game).await;
+    }
 
     if game.mod_source != "thunderstore" {
         return Err("This command is only for Thunderstore games".to_string());
@@ -3410,8 +4168,15 @@ async fn launch_thunderstore_instance(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init());
+
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+    }
+
+    builder
         .setup(|app| {
             let _ = instance::migrate_cache_layout(&app.handle());
 
@@ -3472,6 +4237,8 @@ pub fn run() {
             join_modpack,
             sync_modpack,
             check_sync_status,
+            connect_to_server,
+            disconnect_from_server,
             get_install_status,
             install_instance,
             start_install,
@@ -3494,7 +4261,23 @@ pub fn run() {
             detect_game_path,
             get_game_path,
             set_game_path,
-            launch_thunderstore_instance
+            launch_thunderstore_instance,
+            warm_vintagestory_cache,
+            get_vintagestory_fetch_progress,
+            check_vintagestory_updates,
+            update_vintagestory_mod,
+            update_all_vintagestory_mods,
+            detect_vs_data_path,
+            detect_vs_game_version,
+            scan_vs_mods,
+            import_vs_installation,
+            toggle_vs_mod,
+            check_vs_mod_statuses,
+            debug_vs_mod_parse,
+            get_vs_game_settings,
+            set_vs_min_brightness,
+            set_vs_language,
+            apply_vs_decimal_fix
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

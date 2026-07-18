@@ -55,6 +55,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (selectedGame?.mod_source === 'thunderstore') {
       invoke('warm_thunderstore_cache', { gameId: selectedGame.id }).catch(() => {});
+    } else if (selectedGame?.mod_source === 'vintagestory') {
+      invoke('warm_vintagestory_cache').catch(() => {});
     }
   }, [selectedGame?.id]);
 

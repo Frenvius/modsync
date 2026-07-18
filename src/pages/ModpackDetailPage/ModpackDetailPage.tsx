@@ -5,11 +5,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
   ArrowUpDown,
   CheckCircle,
+  CheckCircle2,
   Copy,
   Download,
   FolderOpen,
@@ -20,6 +22,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Server,
   Settings,
   Share2,
   Trash2,
@@ -42,9 +45,12 @@ import { AddModsDialog } from '~/components/modpack/AddModsDialog';
 import { AppLayout } from '~/components/layout/AppLayout/AppLayout';
 import { ModDetailPanel } from '~/components/modpack/ModDetailPanel';
 import { GamePathDialog } from '~/components/modpack/GamePathDialog';
+import { VsGameSettingsDialog } from '~/components/modpack/VsGameSettingsDialog';
 import { ModDetails } from '~/components/modpack/ModDetailPanel/types';
 import { EditModpackDialog } from '~/components/modpack/EditModpackDialog';
 import { ShareModpackDialog } from '~/components/modpack/ShareModpackDialog';
+import { ConfirmUpdateAllDialog } from '~/components/modpack/ConfirmUpdateAllDialog';
+import { UpdateItem } from '~/components/modpack/ConfirmUpdateAllDialog/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table';
 import {
   DropdownMenu,
@@ -79,6 +85,7 @@ export default function ModpackDetailPage() {
   const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
   const [editDialogOpen, setEditDialogOpen] = React.useState(false);
   const [gamePathDialogOpen, setGamePathDialogOpen] = React.useState(false);
+  const [vsSettingsOpen, setVsSettingsOpen] = React.useState(false);
   const [modpack, setModpack] = React.useState<null | Modpack>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<null | string>(null);
@@ -89,6 +96,8 @@ export default function ModpackDetailPage() {
   const [isCheckingSync, setIsCheckingSync] = React.useState(false);
   const [installStatus, setInstallStatus] = React.useState<null | InstallStatus>(null);
   const [isLaunching, setIsLaunching] = React.useState(false);
+  const [mcPort, setMcPort] = React.useState<null | number>(null);
+  const [isConnecting, setIsConnecting] = React.useState(false);
   const [installProgress, setInstallProgress] = React.useState<null | InstallProgress>(null);
   const [modUpdates, setModUpdates] = React.useState<Record<string, string>>({});
   const [_isCheckingUpdates, setIsCheckingUpdates] = React.useState(false);
@@ -100,6 +109,8 @@ export default function ModpackDetailPage() {
   const [thunderstoreUpdates, setThunderstoreUpdates] = React.useState<ModUpdateInfo[]>([]);
   const [isCheckingThunderstoreUpdates, setIsCheckingThunderstoreUpdates] = React.useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = React.useState(false);
+  const [confirmUpdateOpen, setConfirmUpdateOpen] = React.useState(false);
+  const [pendingUpdateItems, setPendingUpdateItems] = React.useState<UpdateItem[]>([]);
   const [modSearch, setModSearch] = React.useState('');
   const [sortColumn, setSortColumn] = React.useState<'name' | 'version'>('name');
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('asc');
@@ -107,6 +118,8 @@ export default function ModpackDetailPage() {
   const [isCloning, setIsCloning] = React.useState(false);
   const [modpackImageUrl, setModpackImageUrl] = React.useState<null | string>(null);
   const autoSyncTriggeredRef = React.useRef(false);
+
+  const [vsModStatuses, setVsModStatuses] = React.useState<Record<string, { side: string; status_level: string; issues: string[]; game_version_compatible: boolean }>>({});
 
   const [selectedModSlug, setSelectedModSlug] = React.useState<string | null>(null);
   const [modDetail, setModDetail] = React.useState<ModDetails | null>(null);
@@ -119,6 +132,7 @@ export default function ModpackDetailPage() {
   );
 
   const isThunderstoreGame = currentGame?.mod_source === 'thunderstore';
+  const isVintageStoryGame = currentGame?.mod_source === 'vintagestory';
 
   const checkModUpdates = React.useCallback(async (mods: ModpackMod[], gameVersion: string, loader: string) => {
     if (mods.length === 0) return;
@@ -165,6 +179,38 @@ export default function ModpackDetailPage() {
     }
   }, []);
 
+  const checkVintageStoryUpdates = React.useCallback(async (modpackId: string) => {
+    const cached = _updateCache[modpackId];
+    if (cached && Date.now() - cached.checkedAt < UPDATE_CACHE_TTL) {
+      setThunderstoreUpdates(cached.updates);
+      return;
+    }
+
+    setIsCheckingThunderstoreUpdates(true);
+    try {
+      const result = await invoke<{ available_updates: { modid: string; display_name: string; current_version: string; latest_version: string; download_url: string; filename: string }[]; mods_checked: number }>('check_vintagestory_updates', {
+        modpackId
+      });
+      const updates: ModUpdateInfo[] = result.available_updates.map((u, i) => ({
+        full_name: u.modid,
+        display_name: u.display_name,
+        current_version: u.current_version,
+        latest_version: u.latest_version,
+        download_url: u.download_url,
+        dependencies: [],
+        icon_url: null,
+        enabled: true,
+        position: i,
+      }));
+      setThunderstoreUpdates(updates);
+      _updateCache[modpackId] = { updates, checkedAt: Date.now() };
+    } catch (err) {
+      console.error('Failed to check Vintage Story updates:', err);
+    } finally {
+      setIsCheckingThunderstoreUpdates(false);
+    }
+  }, []);
+
   const loadModpack = React.useCallback(
     async (modpackId: string, { silent = false, skipUpdateCheck = false } = {}) => {
       if (!silent) {
@@ -178,6 +224,15 @@ export default function ModpackDetailPage() {
           const game = games.find((g) => g.id === data.game_id);
           if (game?.mod_source === 'thunderstore') {
             checkThunderstoreUpdates(modpackId);
+          } else if (game?.mod_source === 'vintagestory') {
+            checkVintageStoryUpdates(modpackId);
+            invoke<{ modid: string; side: string; status_level: string; issues: string[]; game_version_compatible: boolean }[]>('check_vs_mod_statuses', { modpackId })
+              .then((statuses) => {
+                const map: Record<string, typeof statuses[0]> = {};
+                for (const s of statuses) map[s.modid] = s;
+                setVsModStatuses(map);
+              })
+              .catch(() => {});
           } else {
             checkModUpdates(data.mods, data.game_version, data.loader ?? '');
           }
@@ -504,10 +559,15 @@ export default function ModpackDetailPage() {
 
     setUpdatingMod(updateInfo.full_name);
     try {
-      const result = await invoke<{ success: boolean; error: null | string; to_version: string }>('update_thunderstore_mod', {
-        modpackId: modpack.id,
-        fullName: updateInfo.full_name
-      });
+      const result = isVintageStoryGame
+        ? await invoke<{ success: boolean; error: null | string; to_version: string }>('update_vintagestory_mod', {
+            modpackId: modpack.id,
+            modid: updateInfo.full_name
+          })
+        : await invoke<{ success: boolean; error: null | string; to_version: string }>('update_thunderstore_mod', {
+            modpackId: modpack.id,
+            fullName: updateInfo.full_name
+          });
 
       if (result.success) {
         toast({
@@ -516,15 +576,11 @@ export default function ModpackDetailPage() {
         });
 
         setThunderstoreUpdates((prev) => prev.filter((u) => u.full_name !== updateInfo.full_name));
-
-        setModpack((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            mods: prev.mods.map((m) => (m.slug === updateInfo.full_name ? { ...m, version: result.to_version } : m))
-          };
-        });
         if (id) delete _updateCache[id];
+
+        if (id) {
+          loadModpack(id, { silent: true });
+        }
       } else {
         throw new Error(result.error || 'Update failed');
       }
@@ -540,15 +596,135 @@ export default function ModpackDetailPage() {
     }
   };
 
+  const openConfirmUpdateAll = () => {
+    if (!modpack) return;
+
+    const items: UpdateItem[] = [];
+
+    for (const u of thunderstoreUpdates) {
+      items.push({
+        slug: u.full_name,
+        name: u.display_name,
+        currentVersion: u.current_version,
+        newVersion: u.latest_version,
+        iconUrl: u.icon_url
+      });
+    }
+
+    for (const [slug, newVersion] of Object.entries(modUpdates)) {
+      const mod = modpack.mods.find((m) => m.slug === slug);
+      if (mod) {
+        items.push({
+          slug,
+          name: mod.title,
+          currentVersion: mod.version,
+          newVersion,
+          iconUrl: mod.icon_url
+        });
+      }
+    }
+
+    if (items.length === 0) return;
+    setPendingUpdateItems(items);
+    setConfirmUpdateOpen(true);
+  };
+
+  const handleConfirmedUpdateAll = async () => {
+    if (!modpack) return;
+
+    if (thunderstoreUpdates.length > 0) {
+      await handleUpdateAllThunderstoreMods();
+    }
+
+    if (Object.keys(modUpdates).length > 0) {
+      await handleUpdateAllModrinthMods();
+    }
+  };
+
+  const handleUpdateAllModrinthMods = async () => {
+    if (!modpack) return;
+
+    const modsToUpdate = modpack.mods.filter((m) => modUpdates[m.slug]);
+    if (modsToUpdate.length === 0) return;
+
+    setIsUpdatingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const mod of modsToUpdate) {
+      try {
+        setUpdatingMod(mod.slug);
+        const modInfo = await invoke<{
+          dependencies: unknown[];
+          mod_info: {
+            slug: string;
+            title: string;
+            author: string;
+            version_id: string;
+            version_number: string;
+            icon_url: null | string;
+            source?: null | string;
+            filename?: null | string;
+          };
+        }>('get_mod_with_dependencies', {
+          slug: mod.slug,
+          loader: modpack.loader,
+          gameVersion: modpack.game_version,
+          source: currentGame?.mod_source ?? 'modrinth',
+          thunderstoreCommunity: currentGame?.thunderstore_community
+        });
+
+        await invoke('remove_mod_from_modpack', { slug: mod.slug, modpackId: modpack.id });
+        await invoke('add_mod_to_modpack', {
+          filename: modInfo.mod_info.filename ?? null,
+          projectId: null,
+          modpackId: modpack.id,
+          slug: modInfo.mod_info.slug,
+          title: modInfo.mod_info.title,
+          author: modInfo.mod_info.author,
+          iconUrl: modInfo.mod_info.icon_url,
+          versionId: modInfo.mod_info.version_id,
+          version: modInfo.mod_info.version_number,
+          source: modInfo.mod_info.source ?? null
+        });
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to update ${mod.title}:`, err);
+        failCount++;
+      } finally {
+        setUpdatingMod(null);
+      }
+    }
+
+    if (successCount > 0) {
+      toast({
+        title: 'Mods updated',
+        description: `Successfully updated ${successCount} mod${successCount > 1 ? 's' : ''}.${failCount > 0 ? ` ${failCount} failed.` : ''}`
+      });
+      setModUpdates({});
+      if (id) {
+        delete _updateCache[id];
+        refreshModpack(id);
+      }
+    } else if (failCount > 0) {
+      toast({
+        title: 'Update failed',
+        variant: 'destructive',
+        description: `Failed to update ${failCount} mod${failCount > 1 ? 's' : ''}.`
+      });
+    }
+
+    setIsUpdatingAll(false);
+  };
+
   const handleUpdateAllThunderstoreMods = async () => {
     if (!modpack || thunderstoreUpdates.length === 0) return;
 
     setIsUpdatingAll(true);
     try {
-      const result = await invoke<BatchUpdateResult>('update_all_thunderstore_mods', {
-        modpackId: modpack.id,
-        skipLoaders: true
-      });
+      const result = isVintageStoryGame
+        ? await invoke<BatchUpdateResult>('update_all_vintagestory_mods', { modpackId: modpack.id })
+        : await invoke<BatchUpdateResult>('update_all_thunderstore_mods', { modpackId: modpack.id, skipLoaders: true });
 
       if (result.success_count > 0) {
         toast({
@@ -706,13 +882,16 @@ export default function ModpackDetailPage() {
   const handleLaunch = async () => {
     if (!modpack) return;
 
-    if (!isThunderstoreGame && !installStatus?.installed) return;
+    if (!isThunderstoreGame && !isVintageStoryGame && !installStatus?.installed) return;
 
     setIsLaunching(true);
     try {
       if (isThunderstoreGame) {
         await invoke('launch_thunderstore_instance', { modpackId: modpack.id });
         toast({ title: 'Game launched', description: `${currentGame?.display_name ?? 'Game'} is starting...` });
+      } else if (isVintageStoryGame) {
+        await invoke('launch_thunderstore_instance', { modpackId: modpack.id });
+        toast({ title: 'Game launched', description: 'Vintage Story is starting...' });
       } else {
         await invoke('launch_instance', { modpackId: modpack.id });
         toast({ title: 'Game launched', description: 'Minecraft is starting...' });
@@ -722,6 +901,25 @@ export default function ModpackDetailPage() {
       toast({ title: 'Launch failed', variant: 'destructive', description: String(err) });
     } finally {
       setIsLaunching(false);
+    }
+  };
+
+  const handleScanVsInstallation = async () => {
+    if (!modpack) return;
+
+    try {
+      const dataPath = await invoke<string | null>('detect_vs_data_path');
+      if (!dataPath) {
+        toast({ title: 'Error', variant: 'destructive', description: 'Could not detect Vintage Story data directory.' });
+        return;
+      }
+
+      await invoke('import_vs_installation', { modpackId: modpack.id, dataPath });
+      toast({ title: 'Installation scanned', description: 'Mods synced from your Vintage Story installation.' });
+      loadModpack(modpack.id);
+    } catch (err) {
+      console.error('Failed to scan VS installation:', err);
+      toast({ title: 'Scan failed', variant: 'destructive', description: String(err) });
     }
   };
 
@@ -737,6 +935,30 @@ export default function ModpackDetailPage() {
         variant: 'destructive',
         description: `Failed to open folder: ${err}`
       });
+    }
+  };
+
+  const handleConnectServer = async () => {
+    if (!modpack) return;
+
+    if (mcPort !== null) {
+      await invoke('disconnect_from_server').catch(() => {});
+      setMcPort(null);
+      return;
+    }
+
+    setIsConnecting(true);
+    try {
+      const port = await invoke<number>('connect_to_server', { modpackId: modpack.id });
+      setMcPort(port);
+      toast({
+        title: 'Tunnel ready',
+        description: `Connect Minecraft to 127.0.0.1:${port}`
+      });
+    } catch (err) {
+      toast({ title: 'Failed to connect', variant: 'destructive', description: String(err) });
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -961,6 +1183,18 @@ export default function ModpackDetailPage() {
                   Sync
                 </Button>
               )}
+              {!modpack.is_owner && !isThunderstoreGame && !isVintageStoryGame && (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={handleConnectServer}
+                  disabled={isConnecting}
+                  title="Open a tunnel to the owner's Minecraft server"
+                >
+                  {isConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Server className="w-4 h-4" />}
+                  {mcPort !== null ? 'Disconnect' : 'Connect to server'}
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="icon" variant="outline" title="More options">
@@ -981,13 +1215,25 @@ export default function ModpackDetailPage() {
                     <FolderOpen className="w-4 h-4 mr-2" />
                     Open Instance Folder
                   </DropdownMenuItem>
-                  {isThunderstoreGame && (
+                  {(isThunderstoreGame || isVintageStoryGame) && (
                     <DropdownMenuItem onClick={() => setGamePathDialogOpen(true)}>
                       <FolderOpen className="w-4 h-4 mr-2" />
                       Set Game Path
                     </DropdownMenuItem>
                   )}
-                  {!isThunderstoreGame && installStatus?.installed && !isInstalling && (
+                  {isVintageStoryGame && modpack.is_owner && (
+                    <DropdownMenuItem onClick={handleScanVsInstallation}>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Scan Installation
+                    </DropdownMenuItem>
+                  )}
+                  {isVintageStoryGame && (
+                    <DropdownMenuItem onClick={() => setVsSettingsOpen(true)}>
+                      <Settings className="w-4 h-4 mr-2" />
+                      Game Settings
+                    </DropdownMenuItem>
+                  )}
+                  {!(isThunderstoreGame || isVintageStoryGame) && installStatus?.installed && !isInstalling && (
                     <DropdownMenuItem onClick={handleInstall}>
                       <Download className="w-4 h-4 mr-2" />
                       Repair Install
@@ -1004,7 +1250,7 @@ export default function ModpackDetailPage() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-              {!isThunderstoreGame && !installStatus?.installed && !isInstalling ? (
+              {!(isThunderstoreGame || isVintageStoryGame) && !installStatus?.installed && !isInstalling ? (
                 <Button
                   variant="glow"
                   className="gap-2"
@@ -1020,7 +1266,7 @@ export default function ModpackDetailPage() {
                   onClick={handleLaunch}
                   disabled={
                     isLaunching ||
-                    (!isThunderstoreGame && isInstalling)
+                    (!(isThunderstoreGame || isVintageStoryGame) && isInstalling)
                   }
                 >
                   {isLaunching ? (
@@ -1028,7 +1274,7 @@ export default function ModpackDetailPage() {
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Launching...
                     </>
-                  ) : isInstalling && !isThunderstoreGame ? (
+                  ) : isInstalling && !(isThunderstoreGame || isVintageStoryGame) ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Installing...
@@ -1043,6 +1289,28 @@ export default function ModpackDetailPage() {
               )}
             </div>
           </div>
+          {mcPort !== null && (
+            <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg flex items-center gap-3">
+              <Server className="w-5 h-5 text-primary" />
+              <div className="flex-1">
+                <p className="font-medium text-foreground">Server tunnel active</p>
+                <p className="text-sm text-muted-foreground">
+                  In Minecraft, add a server with address{' '}
+                  <span className="font-mono text-foreground">127.0.0.1:{mcPort}</span>
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(`127.0.0.1:${mcPort}`);
+                  toast({ title: 'Copied', description: `127.0.0.1:${mcPort}` });
+                }}
+              >
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
           {isInstalling && (
             <div className="p-4 bg-card border border-border rounded-lg space-y-3">
               <div className="flex items-center gap-3">
@@ -1145,9 +1413,9 @@ export default function ModpackDetailPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <h2 className="text-xl font-semibold text-foreground">Mods ({modpack.mods.length})</h2>
-                {modpack.is_owner && thunderstoreUpdates.length > 0 && (
+                {modpack.is_owner && (thunderstoreUpdates.length + Object.keys(modUpdates).length) > 0 && (
                   <Badge variant="outline" className="gap-1 border-primary/50 text-primary bg-primary/10">
-                    {thunderstoreUpdates.length} update{thunderstoreUpdates.length > 1 ? 's' : ''} available
+                    {thunderstoreUpdates.length + Object.keys(modUpdates).length} update{(thunderstoreUpdates.length + Object.keys(modUpdates).length) > 1 ? 's' : ''} available
                   </Badge>
                 )}
                 {isCheckingThunderstoreUpdates && (
@@ -1168,8 +1436,8 @@ export default function ModpackDetailPage() {
                     className="pl-8 h-9 w-48"
                   />
                 </div>
-                {thunderstoreUpdates.length > 0 && modpack.is_owner && (
-                  <Button size="sm" variant="outline" className="gap-2" onClick={handleUpdateAllThunderstoreMods} disabled={isUpdatingAll}>
+                {(thunderstoreUpdates.length + Object.keys(modUpdates).length) > 0 && modpack.is_owner && (
+                  <Button size="sm" variant="outline" className="gap-2" onClick={openConfirmUpdateAll} disabled={isUpdatingAll}>
                     {isUpdatingAll ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -1178,7 +1446,7 @@ export default function ModpackDetailPage() {
                     ) : (
                       <>
                         <Download className="w-4 h-4" />
-                        Update All ({thunderstoreUpdates.length})
+                        Update All ({thunderstoreUpdates.length + Object.keys(modUpdates).length})
                       </>
                     )}
                   </Button>
@@ -1230,6 +1498,12 @@ export default function ModpackDetailPage() {
                           )}
                         </button>
                       </TableHead>
+                      {isVintageStoryGame && (
+                        <TableHead className="h-9 px-3 w-[180px]">Status</TableHead>
+                      )}
+                      {isVintageStoryGame && (
+                        <TableHead className="h-9 px-3 w-[80px]">Side</TableHead>
+                      )}
                       <TableHead className="h-9 px-3 w-[140px] text-right"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1292,6 +1566,38 @@ export default function ModpackDetailPage() {
                               {mod.filename && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{mod.filename}</p>}
                             </div>
                           </TableCell>
+                          {isVintageStoryGame && (() => {
+                            const status = vsModStatuses[mod.slug];
+                            if (!status) return <TableCell><span className="text-xs text-muted-foreground">...</span></TableCell>;
+                            const hasErrors = status.issues.length > 0;
+                            const hasWarning = !status.game_version_compatible;
+                            const isUnknown = status.status_level === 'unknown';
+                            return (
+                              <TableCell>
+                                <div className="flex items-center gap-1.5" title={hasErrors ? status.issues.join('\n') : hasWarning ? 'Not marked as compatible with your game version' : isUnknown ? 'No version info declared by this mod' : ''}>
+                                  {hasErrors ? (
+                                    <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+                                  ) : hasWarning ? (
+                                    <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0" />
+                                  ) : isUnknown ? (
+                                    <AlertTriangle className="w-4 h-4 text-muted-foreground shrink-0" />
+                                  ) : (
+                                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                                  )}
+                                  <span className={cn('text-xs truncate', hasErrors ? 'text-destructive' : hasWarning ? 'text-yellow-500' : 'text-muted-foreground')}>
+                                    {hasErrors ? status.issues[0] : hasWarning ? 'Version mismatch' : isUnknown ? 'No version info' : 'OK'}
+                                  </span>
+                                </div>
+                              </TableCell>
+                            );
+                          })()}
+                          {isVintageStoryGame && (
+                            <TableCell>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
+                                {vsModStatuses[mod.slug]?.side ?? '...'}
+                              </Badge>
+                            </TableCell>
+                          )}
                           <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
                               {modpack.is_owner && modUpdates[mod.slug] && (
@@ -1401,6 +1707,7 @@ export default function ModpackDetailPage() {
           open={shareDialogOpen}
           modpackId={modpack.id}
           modpackName={modpack.name}
+          gameId={modpack.game_id}
           onOpenChange={setShareDialogOpen}
           currentShareCode={modpack.share_code}
           onShareStatusChange={() => refreshModpack(modpack.id)}
@@ -1419,7 +1726,7 @@ export default function ModpackDetailPage() {
         modpackVersion={modpack.game_version}
       />
 
-      {isThunderstoreGame && (
+      {(isThunderstoreGame || isVintageStoryGame) && (
         <GamePathDialog
           open={gamePathDialogOpen}
           gameId={modpack.game_id}
@@ -1427,6 +1734,21 @@ export default function ModpackDetailPage() {
           onOpenChange={setGamePathDialogOpen}
         />
       )}
+
+      {isVintageStoryGame && (
+        <VsGameSettingsDialog
+          open={vsSettingsOpen}
+          modpackId={modpack.id}
+          onOpenChange={setVsSettingsOpen}
+        />
+      )}
+
+      <ConfirmUpdateAllDialog
+        open={confirmUpdateOpen}
+        updates={pendingUpdateItems}
+        onConfirm={handleConfirmedUpdateAll}
+        onOpenChange={setConfirmUpdateOpen}
+      />
     </AppLayout>
   );
 }

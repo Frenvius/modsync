@@ -31,7 +31,33 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
   const [isCreating, setIsCreating] = React.useState(false);
   const [imagePreview, setImagePreview] = React.useState<null | string>(null);
   const [imageData, setImageData] = React.useState<null | string>(null);
+  const [vsDataPath, setVsDataPath] = React.useState('');
+  const [vsDetecting, setVsDetecting] = React.useState(false);
+  const [vsModCount, setVsModCount] = React.useState<number | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const isVintageStory = selectedGame?.mod_source === 'vintagestory';
+
+  React.useEffect(() => {
+    if (!open || !isVintageStory) return;
+    setVsDetecting(true);
+    invoke<string | null>('detect_vs_data_path')
+      .then(async (path) => {
+        if (path) {
+          setVsDataPath(path);
+          const [mods, detectedVersion] = await Promise.all([
+            invoke<{ modid: string }[]>('scan_vs_mods', { dataPath: path }),
+            invoke<string | null>('detect_vs_game_version', { dataPath: path })
+          ]);
+          setVsModCount(mods.length);
+          if (detectedVersion) {
+            setGameVersion(detectedVersion);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setVsDetecting(false));
+  }, [open, isVintageStory]);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,8 +137,10 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
     return () => { cancelled = true; };
   }, [loader, gameVersion, isMinecraft]);
 
+  const hasGameVersions = selectedGame?.requires_loader || selectedGame?.mod_source === 'vintagestory';
+
   const loadVersions = async () => {
-    if (!selectedGame?.requires_loader) {
+    if (!hasGameVersions) {
       setIsLoading(false);
       return;
     }
@@ -146,8 +174,9 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
     }
 
     const requiresLoader = selectedGame?.requires_loader ?? true;
+    const needsGameVersion = requiresLoader || selectedGame?.mod_source === 'vintagestory';
 
-    if (requiresLoader && !gameVersion) {
+    if (needsGameVersion && !gameVersion) {
       toast({
         variant: 'destructive',
         title: 'Validation error',
@@ -165,16 +194,42 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
       return;
     }
 
+    if (isVintageStory && !vsDataPath) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation error',
+        description: 'Vintage Story data path not detected. Please check your installation.'
+      });
+      return;
+    }
+
     setIsCreating(true);
     try {
       const modpack = await invoke<Modpack>('create_modpack', {
         gameId: selectedGame?.id ?? 'minecraft',
-        gameVersion: requiresLoader ? gameVersion : selectedGame?.default_version ?? 'latest',
+        gameVersion: needsGameVersion ? gameVersion : selectedGame?.default_version ?? 'latest',
         loader: requiresLoader ? loader : null,
         loaderVersion: (requiresLoader && loaderVersion) ? loaderVersion : null,
         name: name.trim(),
-        description: description.trim() || null
+        description: description.trim() || null,
+        dataPath: isVintageStory ? vsDataPath : null
       });
+
+      if (isVintageStory && vsDataPath) {
+        try {
+          await invoke('import_vs_installation', {
+            modpackId: modpack.id,
+            dataPath: vsDataPath
+          });
+        } catch (err) {
+          console.error('Failed to import VS mods:', err);
+          toast({
+            variant: 'destructive',
+            title: 'Import failed',
+            description: String(err)
+          });
+        }
+      }
 
       if (imageData) {
         try {
@@ -194,6 +249,8 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
       setLoaderVersion('');
       setImagePreview(null);
       setImageData(null);
+      setVsDataPath('');
+      setVsModCount(null);
 
       onOpenChange(false);
       onCreated?.(modpack.id);
@@ -227,7 +284,7 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md overflow-hidden">
         <DialogHeader>
           <DialogTitle>Create New Modpack</DialogTitle>
           <DialogDescription>Set up a new modpack to start adding mods.</DialogDescription>
@@ -292,43 +349,74 @@ export function CreateModpackDialog({ open, onCreated, onOpenChange }: CreateMod
             />
           </div>
 
-          {selectedGame?.requires_loader && (
-            <>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="version">Game Version *</Label>
-                  {isMinecraft && (
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="snapshots" className="text-xs text-muted-foreground font-normal">
-                        Show snapshots
-                      </Label>
-                      <Switch
-                        id="snapshots"
-                        checked={includeSnapshots}
-                        disabled={isCreating || isLoading}
-                        onCheckedChange={(checked) => {
-                          setIncludeSnapshots(checked);
-                          setGameVersion('');
-                        }}
-                      />
-                    </div>
+          {isVintageStory && (
+            <div className="space-y-2">
+              <Label>Installation Path</Label>
+              {vsDetecting ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Detecting Vintage Story installation...
+                </div>
+              ) : vsDataPath ? (
+                <div className="space-y-1">
+                  <Input
+                    readOnly
+                    value={vsDataPath}
+                    className="font-mono text-sm text-muted-foreground bg-secondary cursor-default"
+                  />
+                  {vsModCount !== null && vsModCount > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {vsModCount} mod{vsModCount > 1 ? 's' : ''} detected — will be imported automatically
+                    </p>
                   )}
                 </div>
-                <Select disabled={isCreating} value={gameVersion} onValueChange={setGameVersion}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={isLoading ? 'Loading...' : 'Select version'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {versions.map((v) => (
-                      <SelectItem key={v.version} value={v.version}>
-                        {v.version}
-                        {v.version_type && v.version_type !== 'release' ? ` (${v.version_type})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              ) : (
+                <p className="text-sm text-destructive">
+                  Vintage Story data directory not found. Make sure the game is installed.
+                </p>
+              )}
+            </div>
+          )}
 
+          {hasGameVersions && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="version">Game Version *</Label>
+                {isMinecraft && (
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="snapshots" className="text-xs text-muted-foreground font-normal">
+                      Show snapshots
+                    </Label>
+                    <Switch
+                      id="snapshots"
+                      checked={includeSnapshots}
+                      disabled={isCreating || isLoading}
+                      onCheckedChange={(checked) => {
+                        setIncludeSnapshots(checked);
+                        setGameVersion('');
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              <Select disabled={isCreating} value={gameVersion} onValueChange={setGameVersion}>
+                <SelectTrigger>
+                  <SelectValue placeholder={isLoading ? 'Loading...' : 'Select version'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {versions.map((v) => (
+                    <SelectItem key={v.version} value={v.version}>
+                      {v.version}
+                      {v.version_type && v.version_type !== 'release' ? ` (${v.version_type})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {selectedGame?.requires_loader && (
+            <>
               <div className="space-y-2">
                 <Label htmlFor="loader">Mod Loader *</Label>
                 <Select value={loader} disabled={isCreating} onValueChange={setLoader}>

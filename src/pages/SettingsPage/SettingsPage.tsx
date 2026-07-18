@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { invoke } from '@tauri-apps/api/core';
-import { Check, Coffee, Download, ExternalLink, HardDrive, Loader2, Monitor, RefreshCw, Share2, Wifi, WifiOff } from 'lucide-react';
+import { Check, Coffee, Download, HardDrive, Loader2, Monitor, RefreshCw, Share2, Wifi, WifiOff } from 'lucide-react';
 
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
@@ -23,7 +23,9 @@ export default function SettingsPage() {
     java_path: null,
     memory_max: '4G',
     memory_min: '512M',
-    last_custom_address: null
+    last_custom_address: null,
+    relay_url: null,
+    mc_port: null
   });
   const [saving, setSaving] = React.useState(false);
   const [hasChanges, setHasChanges] = React.useState(false);
@@ -52,7 +54,9 @@ export default function SettingsPage() {
         java_path: loaded.java_path,
         memory_max: loaded.memory_max || '4G',
         memory_min: loaded.memory_min || '512M',
-        last_custom_address: loaded.last_custom_address ?? null
+        last_custom_address: loaded.last_custom_address ?? null,
+        relay_url: loaded.relay_url ?? null,
+        mc_port: loaded.mc_port ?? null
       });
     } catch (err) {
       console.error('Failed to load settings:', err);
@@ -390,38 +394,36 @@ export default function SettingsPage() {
                 <div className="space-y-4">
                   <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
                     <p>
-                      Share modpacks directly with friends using peer-to-peer connections. You must be online for friends to sync, and port
-                      forwarding is required.
+                      Share modpacks directly with friends over an encrypted peer-to-peer tunnel. No port forwarding needed. You must be
+                      online for friends to sync or connect.
                     </p>
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label>Default Share Port</Label>
-                      <p className="text-sm text-muted-foreground">Port used when sharing modpacks</p>
+                      <Label>Minecraft Server Port</Label>
+                      <p className="text-sm text-muted-foreground">Local port your Minecraft server listens on when hosting</p>
                     </div>
-                    <Input min={1} max={65535} type="number" defaultValue="7878" className="w-24 text-center" />
+                    <Input
+                      min={1}
+                      max={65535}
+                      type="number"
+                      placeholder="25565"
+                      className="w-24 text-center"
+                      value={settings.mc_port ?? ''}
+                      onChange={(e) => updateSetting('mc_port', e.target.value ? parseInt(e.target.value) : null)}
+                    />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>Find Your Public IP</Label>
-                      <p className="text-sm text-muted-foreground">Required for friends to connect to you</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => window.open('https://whatismyipaddress.com/', '_blank')}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      whatismyipaddress.com
-                    </Button>
-                  </div>
-                  <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm">
-                    <p className="font-medium text-warning mb-1">Port Forwarding Required</p>
-                    <p className="text-muted-foreground">
-                      To share modpacks, you need to forward the share port on your router to your computer's local IP. Search "port
-                      forwarding [your router brand]" for instructions.
+                  <div className="space-y-2">
+                    <Label>Relay Server URL</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Leave empty to use the free public relays. Set a custom relay URL to route through your own.
                     </p>
+                    <Input
+                      placeholder="https://relay.example.org"
+                      value={settings.relay_url ?? ''}
+                      onChange={(e) => updateSetting('relay_url', e.target.value || null)}
+                    />
+                    <p className="text-xs text-muted-foreground">Changing the relay takes effect after restarting the app.</p>
                   </div>
                 </div>
               </div>

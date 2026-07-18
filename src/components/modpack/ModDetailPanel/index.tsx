@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { AlertCircle, Loader2, X } from 'lucide-react';
+import { AlertCircle, ExternalLink, Loader2, X } from 'lucide-react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
 import { Badge } from '~/components/ui/badge';
@@ -15,6 +15,25 @@ import { AddToModpackDialog } from '../AddToModpackDialog';
 import { ModDetailPanelProps } from './types';
 import { MarkdownContent } from './MarkdownContent';
 import { ModDetailHeader } from './ModDetailHeader';
+
+function getModPageUrl(mod: { source: string; slug: string; website_url: string | null }): string | null {
+  switch (mod.source) {
+    case 'modrinth':
+      return `https://modrinth.com/mod/${mod.slug}`;
+    case 'thunderstore':
+      return mod.website_url || null;
+    case 'curseforge':
+      return `https://www.curseforge.com/minecraft/mc-mods/${mod.slug}`;
+    case 'vintagestory': {
+      const isNumeric = /^\d+$/.test(mod.slug);
+      return isNumeric
+        ? `https://mods.vintagestory.at/show/mod/${mod.slug}`
+        : `https://mods.vintagestory.at/${mod.slug}`;
+    }
+    default:
+      return mod.website_url || null;
+  }
+}
 
 export function ModDetailPanel({ mod, loading, error, onClose, mode }: ModDetailPanelProps) {
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
@@ -59,9 +78,19 @@ export function ModDetailPanel({ mod, loading, error, onClose, mode }: ModDetail
       <div className="h-full flex flex-col bg-card border-l border-border">
         <div className="flex items-center justify-between p-2 px-4 flex-shrink-0 border-b border-border">
           <h3 className="text-sm font-medium text-foreground">Mod Details</h3>
-          <Button size="icon" variant="ghost" onClick={onClose} className="h-7 w-7">
-            <X className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {(() => {
+              const url = getModPageUrl(mod);
+              return url ? (
+                <Button size="icon" variant="ghost" onClick={() => openUrl(url)} className="h-7 w-7" title="Open mod page">
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+              ) : null;
+            })()}
+            <Button size="icon" variant="ghost" onClick={onClose} className="h-7 w-7">
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
         <ModDetailHeader mod={mod} mode={mode} onAddClick={mode === 'browse' ? () => setAddDialogOpen(true) : undefined} />
@@ -121,7 +150,7 @@ export function ModDetailPanel({ mod, loading, error, onClose, mode }: ModDetail
             <TabsContent value="info" className="h-full m-0 data-[state=active]:flex data-[state=active]:flex-col">
               <ScrollArea className="h-full">
                 <div className="p-4 space-y-4">
-                  <InfoRow label="Source" value={mod.source === 'thunderstore' ? 'Thunderstore' : 'Modrinth'} />
+                  <InfoRow label="Source" value={mod.source === 'thunderstore' ? 'Thunderstore' : mod.source === 'vintagestory' ? 'VS Mod DB' : mod.source === 'curseforge' ? 'CurseForge' : 'Modrinth'} />
                   {mod.latest_version && <InfoRow label="Latest Version" value={mod.latest_version} />}
                   <InfoRow label="Downloads" value={mod.downloads.toLocaleString()} />
                   <InfoRow label="Follows" value={mod.follows.toLocaleString()} />

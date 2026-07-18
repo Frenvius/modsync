@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Check, ChevronDown, ExternalLink, Loader2, Package, Plus, Search, Shuffle } from 'lucide-react';
 
 import { Input } from '~/components/ui/input';
@@ -12,6 +13,7 @@ import { useGame } from '~/usecase/contexts/GameContext';
 import { formatDate } from '~/usecase/util/dateUtils';
 import { formatDownloads } from '~/usecase/util/stringUtils';
 import { Dialog, DialogContent } from '~/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select';
 import { ModDetails } from '~/components/modpack/ModDetailPanel/types';
 import { MarkdownContent } from '~/components/modpack/ModDetailPanel/MarkdownContent';
 
@@ -33,6 +35,7 @@ export function AddModsDialog({
 }: AddModsDialogProps) {
   const { games } = useGame();
   const game = games.find((g) => g.id === gameId);
+  const isVintageStory = game?.mod_source === 'vintagestory';
 
   const [search, setSearch] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<ModrinthMod[]>([]);
@@ -56,6 +59,16 @@ export function AddModsDialog({
   const [cfUrl, setCfUrl] = React.useState('');
   const [cfLoading, setCfLoading] = React.useState(false);
 
+  const [vsVersionFilter, setVsVersionFilter] = React.useState('');
+  const [vsGameVersions, setVsGameVersions] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    if (!open || !isVintageStory) return;
+    invoke<{ version: string }[]>('get_game_versions', { gameId })
+      .then((versions) => setVsGameVersions(versions.map((v) => v.version).slice(0, 30)))
+      .catch(() => {});
+  }, [open, isVintageStory, gameId]);
+
   const { additionalLoaders, activeCompat } = React.useMemo(() => {
     const active = COMPAT_LAYERS.filter((c) => localExistingMods.includes(c.slug));
     const loaders = [...new Set(active.flatMap((c) => c.loaders))];
@@ -78,7 +91,7 @@ export function AddModsDialog({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, open, gameVersion, loader, additionalLoaders]);
+  }, [search, open, gameVersion, loader, additionalLoaders, vsVersionFilter]);
 
   React.useEffect(() => {
     if (open && !hasSearched) {
@@ -90,6 +103,7 @@ export function AddModsDialog({
     if (!open) {
       setSearch('');
       setCfUrl('');
+      setVsVersionFilter('');
       setSearchResults([]);
       setHasSearched(false);
       setLoadingSlug(null);
@@ -126,11 +140,11 @@ export function AddModsDialog({
         const result = await invoke<SearchResult>('search_mods', {
           gameId,
           limit: 20,
-          loader: loader,
-          additionalLoaders: additionalLoaders,
+          loader: isVintageStory ? null : loader,
+          additionalLoaders: isVintageStory ? null : additionalLoaders,
           query: query || null,
-          gameVersion: gameVersion,
-          sort: query ? 'relevance' : 'downloads'
+          gameVersion: isVintageStory ? (vsVersionFilter || null) : gameVersion,
+          sort: query && !isVintageStory ? 'relevance' : 'downloads'
         });
         setSearchResults(result.mods);
         setHasSearched(true);
@@ -145,7 +159,7 @@ export function AddModsDialog({
         setIsSearching(false);
       }
     },
-    [gameId, gameVersion, loader, additionalLoaders]
+    [gameId, gameVersion, loader, additionalLoaders, isVintageStory, vsVersionFilter]
   );
 
   const isModInModpack = (slug: string) => {
@@ -363,9 +377,24 @@ export function AddModsDialog({
         <div className="flex flex-1 overflow-hidden min-h-0">
           <div style={{ width: 460, minWidth: 460 }} className="flex flex-col">
             <div className="px-4 py-3 space-y-2 shrink-0">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input value={search} className="pl-9" placeholder="Search mods..." onChange={(e) => setSearch(e.target.value)} />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input value={search} className="pl-9" placeholder="Search mods..." onChange={(e) => setSearch(e.target.value)} />
+                </div>
+                {isVintageStory && (
+                  <Select value={vsVersionFilter} onValueChange={(v) => setVsVersionFilter(v === 'all' ? '' : v)}>
+                    <SelectTrigger className="w-[130px] shrink-0">
+                      <SelectValue placeholder="All versions" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All versions</SelectItem>
+                      {vsGameVersions.map((v) => (
+                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               {gameId === 'minecraft' && (
                 <div className="space-y-1">
@@ -525,8 +554,28 @@ export function AddModsDialog({
   );
 }
 
+function getModPageUrl(mod: { source: string; slug: string; website_url: string | null }): string | null {
+  switch (mod.source) {
+    case 'modrinth':
+      return `https://modrinth.com/mod/${mod.slug}`;
+    case 'thunderstore':
+      return mod.website_url || null;
+    case 'curseforge':
+      return `https://www.curseforge.com/minecraft/mc-mods/${mod.slug}`;
+    case 'vintagestory': {
+      const isNumeric = /^\d+$/.test(mod.slug);
+      return isNumeric
+        ? `https://mods.vintagestory.at/show/mod/${mod.slug}`
+        : `https://mods.vintagestory.at/${mod.slug}`;
+    }
+    default:
+      return mod.website_url || null;
+  }
+}
+
 const ModPreview = React.memo(function ModPreview({ detail }: { detail: ModDetails }) {
   const readmeContent = detail.readme ?? detail.body;
+  const modPageUrl = getModPageUrl(detail);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -540,7 +589,20 @@ const ModPreview = React.memo(function ModPreview({ detail }: { detail: ModDetai
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm text-foreground truncate">{detail.title}</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="font-semibold text-sm text-foreground truncate">{detail.title}</h3>
+              {modPageUrl && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => openUrl(modPageUrl)}
+                  className="h-5 w-5 shrink-0"
+                  title="Open mod page"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </Button>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">by {detail.author}</p>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               {detail.latest_version && (

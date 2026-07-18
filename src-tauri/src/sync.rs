@@ -13,6 +13,7 @@ use crate::http::HTTP_CLIENT;
 use crate::instance;
 use crate::server::{SourceMod, SyncManifest};
 use crate::sources::thunderstore;
+use crate::sources::vintagestory;
 use crate::utils;
 
 #[derive(Debug, Serialize, Clone)]
@@ -34,6 +35,7 @@ pub struct HybridSyncError {
 async fn download_file(
     owner_address: &str,
     file_path: &str,
+    local_path: &str,
     instance_dir: &Path,
 ) -> Result<u64, String> {
     let url = format!("http://{}/files/{}", owner_address, file_path);
@@ -59,7 +61,7 @@ async fn download_file(
         .map_err(|e| format!("Failed to read {}: {}", file_path, e))?;
 
     let size = bytes.len() as u64;
-    let target_path = instance_dir.join(file_path);
+    let target_path = instance_dir.join(local_path);
 
     if let Some(parent) = target_path.parent() {
         std::fs::create_dir_all(parent)
@@ -408,6 +410,7 @@ async fn resolve_and_cache_dependencies(
             display_name: Some(d.name.clone()),
             author: Some(d.owner.clone()),
             icon_url: d.icon.clone(),
+            filename: None,
         })
         .collect();
 
@@ -476,6 +479,21 @@ pub async fn hybrid_sync_from_owner_with_manifest(
     owner_address: String,
     manifest: SyncManifest,
 ) -> Result<HybridSyncResult, String> {
+    if manifest.mod_source == "vintagestory" {
+        if let Some(vs_data) = vintagestory::clientsettings::detect_data_dir() {
+            let target = if let Some(ref addr) = manifest.vs_server_address {
+                vs_data.join("ModsByServer").join(addr)
+            } else {
+                vs_data
+            };
+            let _ = instance::set_instance_path(
+                &app_handle,
+                &modpack_id,
+                &target.to_string_lossy(),
+            );
+        }
+    }
+
     let _ = instance::get_or_create_folder_name(&app_handle, &modpack_id, &modpack_name);
 
     let instance_dir = instance::get_instance_dir(&app_handle, &modpack_id)?;
@@ -618,12 +636,27 @@ pub async fn hybrid_sync_from_owner_with_manifest(
     }
 
     if !manifest.p2p_files.is_empty() {
+        let vs_server_mode = manifest.mod_source == "vintagestory" && manifest.vs_server_address.is_some();
+
+        let remap_path = |remote: &str| -> String {
+            if vs_server_mode {
+                remote.strip_prefix("Mods/").unwrap_or(remote).to_string()
+            } else {
+                remote.to_string()
+            }
+        };
+
         let inst_dir_for_hash = instance_dir.clone();
         let files_to_download: Vec<_> = manifest
             .p2p_files
             .par_iter()
             .filter(|f| {
-                let local_path = inst_dir_for_hash.join(&f.path);
+                let local = if vs_server_mode {
+                    f.path.strip_prefix("Mods/").unwrap_or(&f.path).to_string()
+                } else {
+                    f.path.clone()
+                };
+                let local_path = inst_dir_for_hash.join(&local);
                 if !local_path.exists() {
                     return true;
                 }
@@ -646,16 +679,18 @@ pub async fn hybrid_sync_from_owner_with_manifest(
             }),
         );
 
-        let paths_to_download: Vec<String> =
-            files_to_download.iter().map(|f| f.path.clone()).collect();
+        let paths_to_download: Vec<(String, String)> = files_to_download
+            .iter()
+            .map(|f| (f.path.clone(), remap_path(&f.path)))
+            .collect();
 
         let download_results: Vec<_> = stream::iter(paths_to_download)
-            .map(|file_path| {
+            .map(|(remote_path, local_path)| {
                 let owner_addr = owner_address.clone();
                 let inst_dir = instance_dir.clone();
                 async move {
-                    let res = download_file(&owner_addr, &file_path, &inst_dir).await;
-                    (file_path, res)
+                    let res = download_file(&owner_addr, &remote_path, &local_path, &inst_dir).await;
+                    (local_path, res)
                 }
             })
             .buffer_unordered(8)
@@ -685,28 +720,64 @@ pub async fn hybrid_sync_from_owner_with_manifest(
             }
         }
 
-        let sync_patterns = ["BepInEx/config/", "BepInEx/plugins/", "config/"];
-        let owner_paths: HashSet<&str> = manifest.p2p_files.iter().map(|f| f.path.as_str()).collect();
+        if manifest.mod_source == "vintagestory" {
+            let old_mods = vintagestory::profile::load_mods_json(&instance_dir).unwrap_or_default();
+            let owner_modids: HashSet<&str> = manifest.source_mods.iter().map(|m| m.identifier.as_str()).collect();
+            let mods_dir = if manifest.vs_server_address.is_some() {
+                instance_dir.clone()
+            } else {
+                instance_dir.join("Mods")
+            };
 
-        let stale_files: Vec<_> = WalkDir::new(&instance_dir)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter_map(|e| {
-                let path = e.path().to_path_buf();
-                let relative = path.strip_prefix(&instance_dir).ok()?.to_string_lossy().replace('\\', "/");
-                if sync_patterns.iter().any(|p| relative.starts_with(p)) && !owner_paths.contains(relative.as_str()) {
-                    Some(path)
-                } else {
-                    None
+            for old_mod in &old_mods {
+                if !owner_modids.contains(old_mod.modid.as_str()) {
+                    let _ = std::fs::remove_file(mods_dir.join(&old_mod.filename));
+                    let _ = std::fs::remove_file(mods_dir.join(format!("{}.disabled", &old_mod.filename)));
                 }
+            }
+        } else {
+            let cleanup_patterns: &[&str] = &["BepInEx/config/", "BepInEx/plugins/", "config/"];
+            let owner_paths: HashSet<&str> = manifest.p2p_files.iter().map(|f| f.path.as_str()).collect();
+
+            let stale_files: Vec<_> = WalkDir::new(&instance_dir)
+                .follow_links(false)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+                .filter_map(|e| {
+                    let path = e.path().to_path_buf();
+                    let relative = path.strip_prefix(&instance_dir).ok()?.to_string_lossy().replace('\\', "/");
+                    if cleanup_patterns.iter().any(|p| relative.starts_with(p)) && !owner_paths.contains(relative.as_str()) {
+                        Some(path)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            stale_files.par_iter().for_each(|path| {
+                let _ = std::fs::remove_file(path);
+            });
+        }
+    }
+
+    if manifest.mod_source == "vintagestory" && !manifest.source_mods.is_empty() {
+        let vs_mods: Vec<vintagestory::profile::VsInstalledMod> = manifest
+            .source_mods
+            .iter()
+            .map(|sm| vintagestory::profile::VsInstalledMod {
+                modid: sm.identifier.clone(),
+                modidstr: sm.identifier.clone(),
+                name: sm.display_name.clone().unwrap_or_default(),
+                author: sm.author.clone().unwrap_or_default(),
+                version: sm.version.clone(),
+                filename: sm.filename.clone().unwrap_or_default(),
+                icon_url: sm.icon_url.clone(),
+                enabled: sm.enabled,
+                installed_at: chrono::Utc::now().to_rfc3339(),
             })
             .collect();
-
-        stale_files.par_iter().for_each(|path| {
-            let _ = std::fs::remove_file(path);
-        });
+        let _ = vintagestory::profile::save_mods_json(&instance_dir, &vs_mods);
     }
 
     let _ = app_handle.emit("sync:completed", &result);

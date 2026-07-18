@@ -113,6 +113,17 @@ pub fn list_games() -> Vec<GameInfo> {
             steam_app_id: Some(892970),
             exe_name: Some("valheim.exe".to_string()),
         },
+        GameInfo {
+            id: "vintage-story".to_string(),
+            display_name: "Vintage Story".to_string(),
+            requires_loader: false,
+            mod_source: "vintagestory".to_string(),
+            thunderstore_community: None,
+            default_version: Some("latest".to_string()),
+            loader: None,
+            steam_app_id: Some(1150480),
+            exe_name: Some("Vintagestory.exe".to_string()),
+        },
     ]
 }
 

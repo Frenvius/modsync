@@ -56,6 +56,24 @@ impl Instance {
             java_path: None,
         }
     }
+
+    pub fn new_vintagestory(
+        modpack_id: String,
+        game_id: String,
+        game_version: String,
+    ) -> Self {
+        Self {
+            modpack_id,
+            game_id,
+            profile_type: "vintagestory".to_string(),
+            game_version,
+            loader: "none".to_string(),
+            loader_version: None,
+            installed: false,
+            last_played: None,
+            java_path: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -159,10 +177,27 @@ pub fn get_instance_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<Path
     let instances_dir = get_instances_dir(app_handle)?;
 
     if let Some(folder_name) = get_folder_name(app_handle, modpack_id)? {
+        let path = PathBuf::from(&folder_name);
+        if path.is_absolute() {
+            return Ok(path);
+        }
         return Ok(instances_dir.join(folder_name));
     }
 
     Ok(instances_dir.join(modpack_id))
+}
+
+pub fn set_instance_path(
+    app_handle: &AppHandle,
+    modpack_id: &str,
+    absolute_path: &str,
+) -> Result<(), String> {
+    let mut mapping = load_mapping(app_handle)?;
+    mapping
+        .mappings
+        .insert(modpack_id.to_string(), absolute_path.to_string());
+    save_mapping(app_handle, &mapping)?;
+    Ok(())
 }
 
 pub fn get_mods_dir(app_handle: &AppHandle, modpack_id: &str) -> Result<PathBuf, String> {
@@ -210,6 +245,9 @@ pub fn create_instance_dirs_for_game(
     let dirs: Vec<PathBuf> = match profile_type {
         Some("thunderstore") | Some("bepinex") => {
             vec![instance_dir.clone(), instance_dir.join("_state")]
+        }
+        Some("vintagestory") => {
+            vec![instance_dir.clone(), instance_dir.join("Mods")]
         }
         _ => vec![
             instance_dir.clone(),
@@ -273,6 +311,22 @@ pub fn delete_instance(app_handle: &AppHandle, modpack_id: &str) -> Result<(), S
         std::fs::remove_dir_all(&instance_dir)
             .map_err(|e| format!("Failed to delete instance directory: {}", e))?;
     }
+
+    let mut mapping = load_mapping(app_handle)?;
+    mapping.mappings.remove(modpack_id);
+    save_mapping(app_handle, &mapping)?;
+
+    Ok(())
+}
+
+pub fn unlink_instance(app_handle: &AppHandle, modpack_id: &str) -> Result<(), String> {
+    let instance_dir = get_instance_dir(app_handle, modpack_id)?;
+
+    let vs_mods_path = instance_dir.join("vs_mods.json");
+    let _ = std::fs::remove_file(vs_mods_path);
+
+    let instance_json = instance_dir.join("instance.json");
+    let _ = std::fs::remove_file(instance_json);
 
     let mut mapping = load_mapping(app_handle)?;
     mapping.mappings.remove(modpack_id);

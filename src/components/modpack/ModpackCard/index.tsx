@@ -326,6 +326,7 @@ export const ModpackCard = React.memo(function ModpackCard({
         <ShareModpackDialog
           modpackId={id}
           modpackName={name}
+          gameId={gameId}
           open={shareDialogOpen}
           currentShareCode={shareCode}
           onOpenChange={setShareDialogOpen}
