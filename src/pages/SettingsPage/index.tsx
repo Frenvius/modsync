@@ -1,0 +1,222 @@
+import type { AppSettings } from '~/domain/interfaces/settings.interface';
+
+import React from 'react';
+import { toast } from 'sonner';
+import { useSearchParams } from 'react-router-dom';
+import { Check, FolderOpen } from 'lucide-react';
+
+import { cn } from '~/lib/utils';
+import { Badge } from '~/components/ui/badge';
+import { Button } from '~/components/ui/button';
+import { Switch } from '~/components/ui/switch';
+import { useAppStore } from '~/usecase/store/appStore';
+import GameIcon from '~/components/commons/GameIcon';
+import PageHeader from '~/components/commons/PageHeader';
+import { projectService } from '~/usecase/service/project';
+import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '~/components/ui/card';
+import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
+
+const SECTIONS = ['General', 'Appearance', 'Games', 'Advanced'] as const;
+type Section = (typeof SECTIONS)[number];
+
+const SettingsPage = () => {
+  const [params, setParams] = useSearchParams();
+  const raw = params.get('section') ?? 'general';
+  const section = SECTIONS.find((s) => s.toLowerCase() === raw) ?? 'General';
+  const settings = useAppStore((s) => s.settings);
+  const updateSettings = useAppStore((s) => s.updateSettings);
+  const patch = (p: Partial<AppSettings>) => updateSettings(p);
+
+  return (
+    <div className="flex flex-col gap-5 p-6">
+      <PageHeader title="Settings" />
+      <div className="grid grid-cols-[180px_minmax(0,1fr)] gap-8">
+        <nav className="flex flex-col gap-0.5">
+          {SECTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setParams(s === 'General' ? {} : { section: s.toLowerCase() })}
+              className={cn(
+                'rounded-md px-2.5 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                s === section && 'bg-accent text-foreground'
+              )}
+            >
+              {s}
+            </button>
+          ))}
+        </nav>
+        <div className="flex max-w-2xl flex-col gap-4">
+          <SectionBody section={section} settings={settings} patch={patch} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface SectionBodyProps {
+  section: Section;
+  settings: AppSettings;
+  patch: (p: Partial<AppSettings>) => void;
+}
+
+const SectionBody = ({ section, settings, patch }: SectionBodyProps) => {
+  if (section === 'General') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>General</CardTitle>
+          <CardDescription>Startup and window behaviour.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <Row label="Language">
+            <Select value={settings.language} onValueChange={(language) => patch({ language })}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="en-US">English (US)</SelectItem>
+                  <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
+                  <SelectItem value="es-ES">Español</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Row>
+          <ToggleRow label="Launch on system startup" checked={settings.launchOnStartup} onChange={(launchOnStartup) => patch({ launchOnStartup })} />
+          <ToggleRow label="Close to tray" description="Keep downloads running in the background." checked={settings.closeToTray} onChange={(closeToTray) => patch({ closeToTray })} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (section === 'Appearance') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Theme and accent.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <Row label="Theme">
+            <Select value={settings.theme} onValueChange={(theme) => patch({ theme: theme as AppSettings['theme'] })}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="dark">Dark</SelectItem>
+                  <SelectItem value="system">System</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Row>
+          <Row label="Accent hue">
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={360}
+                value={settings.accentHue}
+                className="w-44 accent-primary"
+                onChange={(e) => patch({ accentHue: Number(e.target.value) })}
+              />
+              <span className="size-6 rounded-full border" style={{ background: `oklch(0.8 0.17 ${settings.accentHue})` }} />
+            </div>
+          </Row>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (section === 'Games') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Games</CardTitle>
+          <CardDescription>Where each game is installed. Detected automatically when possible.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {settings.gamePaths.map((gp) => {
+            const game = projectService.getGame(gp.gameId);
+            return (
+              <div key={gp.gameId} className="flex items-center gap-3">
+                <GameIcon size="md" gameId={gp.gameId} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-sm font-medium">{game.name}</span>
+                  <span className="truncate font-mono text-xs text-muted-foreground">{gp.path || 'Not configured'}</span>
+                </span>
+                {gp.detected ? (
+                  <Badge className="gap-1 bg-primary/10 text-primary">
+                    <Check />
+                    Detected
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    Missing
+                  </Badge>
+                )}
+                <Button size="sm" variant="outline" onClick={() => toast.info(`Folder picker for ${game.name}`)}>
+                  <FolderOpen data-icon="inline-start" />
+                  Browse
+                </Button>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Advanced</CardTitle>
+        <CardDescription>Diagnostics and experimental behaviour.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <Row label="Reset provider caches" description="Forces a full re-index on next search.">
+          <Button size="sm" variant="outline" onClick={() => toast.success('Caches reset')}>
+            Reset
+          </Button>
+        </Row>
+        <Row label="Export diagnostics" description="Zip with logs and instance manifests.">
+          <Button size="sm" variant="outline" onClick={() => toast.success('Diagnostics exported')}>
+            Export
+          </Button>
+        </Row>
+      </CardContent>
+    </Card>
+  );
+};
+
+interface RowProps {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+}
+
+const Row = ({ label, description, children }: RowProps) => (
+  <div className="flex items-center gap-4">
+    <span className="flex flex-1 flex-col">
+      <span className="text-sm font-medium">{label}</span>
+      {description && <span className="text-xs text-muted-foreground">{description}</span>}
+    </span>
+    {children}
+  </div>
+);
+
+interface ToggleRowProps {
+  label: string;
+  checked: boolean;
+  description?: string;
+  onChange: (checked: boolean) => void;
+}
+
+const ToggleRow = ({ label, checked, description, onChange }: ToggleRowProps) => (
+  <Row label={label} description={description}>
+    <Switch checked={checked} onCheckedChange={onChange} />
+  </Row>
+);
+
+export default SettingsPage;
