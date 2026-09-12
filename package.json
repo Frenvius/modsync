@@ -4,14 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "tauri dev",
+    "build": "tauri build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:vite": "vite --port 1420",
+    "build:vite": "tsc -b && vite build"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/api": "^2.11.1",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.2.5",
@@ -28,6 +31,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

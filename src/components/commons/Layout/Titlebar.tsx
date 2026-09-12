@@ -1,3 +1,6 @@
+import React from 'react';
+import { isTauri } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useNavigate } from 'react-router-dom';
 import { Boxes, ChevronDown, LogOut, Minus, Settings, Square, User, X } from 'lucide-react';
 
@@ -20,12 +23,38 @@ import {
 const Titlebar = () => {
   const navigate = useNavigate();
   const selectedGameId = useAppStore((s) => s.selectedGameId);
+  const desktop = isTauri();
+
+  const closeWindow = () => void getCurrentWindow().close();
+  const minimizeWindow = () => void getCurrentWindow().minimize();
+  const maximizeWindow = () => void getCurrentWindow().toggleMaximize();
+  const startDragging = (event: React.MouseEvent<HTMLElement>) => {
+    if (!desktop || event.button !== 0 || !(event.target instanceof HTMLElement) || event.target.closest('button, [role="menuitem"], input')) return;
+
+    if (event.detail === 2) {
+      void getCurrentWindow().toggleMaximize();
+      return;
+    }
+
+    let onMove: () => void;
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', cleanup);
+    };
+    onMove = () => {
+      cleanup();
+      void getCurrentWindow().startDragging();
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', cleanup);
+  };
   const setSelectedGame = useAppStore((s) => s.setSelectedGame);
   const selectedGame = GAMES.find((game) => game.id === selectedGameId)!;
 
   return (
-    <header data-tauri-drag-region className="flex h-8 shrink-0 select-none items-center border-b border-border/50 bg-toolbar text-foreground">
-      <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2 px-2">
+    <header onMouseDown={startDragging} className="flex h-8 shrink-0 select-none items-center border-b border-border/50 bg-toolbar text-foreground">
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
         <span className="flex size-5 items-center justify-center rounded bg-primary text-primary-foreground">
           <Boxes aria-hidden="true" className="size-3.5" strokeWidth={2} />
         </span>
@@ -94,13 +123,13 @@ const Titlebar = () => {
       )}
 
       <div role="group" className="flex h-full" aria-label="Window controls">
-        <button disabled type="button" aria-label="Minimize" className="flex w-9 items-center justify-center text-muted-foreground">
+        <button disabled={!desktop} type="button" aria-label="Minimize" onClick={minimizeWindow} className="flex w-9 items-center justify-center text-muted-foreground">
           <Minus aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
         </button>
-        <button disabled type="button" aria-label="Maximize" className="flex w-9 items-center justify-center text-muted-foreground">
+        <button disabled={!desktop} type="button" aria-label="Maximize" onClick={maximizeWindow} className="flex w-9 items-center justify-center text-muted-foreground">
           <Square aria-hidden="true" className="size-3" strokeWidth={1.5} />
         </button>
-        <button disabled type="button" aria-label="Close" className="flex w-9 items-center justify-center text-muted-foreground">
+        <button disabled={!desktop} type="button" aria-label="Close" onClick={closeWindow} className="flex w-9 items-center justify-center text-muted-foreground">
           <X aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
         </button>
       </div>
