@@ -28,9 +28,9 @@ const SettingsPage = () => {
   const patch = (p: Partial<AppSettings>) => updateSettings(p);
 
   return (
-    <div className="flex flex-col gap-5 p-6">
+    <div className="flex flex-col gap-4 p-4">
       <PageHeader title="Settings" />
-      <div className="grid grid-cols-[180px_minmax(0,1fr)] gap-8">
+      <div className="grid grid-cols-[168px_minmax(0,1fr)] gap-4">
         <nav className="flex flex-col gap-0.5">
           {SECTIONS.map((s) => (
             <button

@@ -88,7 +88,7 @@ const CreateInstanceDialog = () => {
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b px-6 py-4">
+        <DialogHeader className="border-b px-4 py-3">
           <DialogTitle>Create instance</DialogTitle>
           <DialogDescription>Choose a game, version and loader. Mods come after.</DialogDescription>
           <ol className="mt-2 flex items-center gap-1 text-[11px] font-medium">
@@ -108,7 +108,7 @@ const CreateInstanceDialog = () => {
           </ol>
         </DialogHeader>
 
-        <div className="min-h-[320px] flex-1 overflow-y-auto px-6 py-5">
+        <div className="min-h-[320px] flex-1 overflow-y-auto p-4">
           {step === 0 && <GameStep selected={draft.gameId} onSelect={pickGame} />}
           {step === 1 && game && <VersionStep game={game} value={draft.gameVersion} onChange={(gameVersion) => patch({ gameVersion })} />}
           {step === 2 && game && <LoaderStep game={game} value={draft.loader} onChange={(loader) => patch({ loader })} />}
@@ -116,7 +116,7 @@ const CreateInstanceDialog = () => {
           {step === 4 && game && <Summary draft={draft} gameName={game.name} />}
         </div>
 
-        <div className="flex items-center justify-between border-t px-6 py-3">
+        <div className="flex items-center justify-between border-t px-4 py-3">
           <Button variant="ghost" disabled={step === 0} onClick={back}>
             <ArrowLeft data-icon="inline-start" />
             Back

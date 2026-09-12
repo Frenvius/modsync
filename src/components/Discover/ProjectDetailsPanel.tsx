@@ -61,12 +61,12 @@ const ProjectDetailsPanel = ({ project, installed, onClose, onInstall }: Project
     <>
       <div
         aria-hidden="true"
-        className={`pointer-events-none fixed top-12 right-0 bottom-0 left-0 z-20 bg-black/10 transition-opacity duration-200 motion-reduce:duration-0 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        className={`pointer-events-none fixed top-8 right-0 bottom-0 left-0 z-20 bg-black/10 transition-opacity duration-200 motion-reduce:duration-0 ${visible ? 'opacity-100' : 'opacity-0'}`}
       />
       <aside
         ref={panelRef}
         aria-label={`${project.name} details`}
-        className={`fixed top-12 right-0 bottom-0 z-30 flex max-w-full flex-col border-l bg-background shadow-[-8px_0_24px_-16px_oklch(0_0_0/70%)] transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-0 ${visible ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-[38px] right-1.5 bottom-1.5 z-30 flex max-w-full flex-col overflow-hidden rounded-lg border bg-card shadow-[-8px_0_24px_-16px_oklch(0_0_0/70%)] transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-0 ${visible ? 'translate-x-0' : 'translate-x-full'}`}
         style={{ width }}
         onClick={(event) => event.stopPropagation()}
       >
@@ -94,7 +94,7 @@ const ProjectDetailsPanel = ({ project, installed, onClose, onInstall }: Project
             document.body.style.userSelect = '';
           }}
         />
-    <div className="flex items-start gap-3 border-b p-4">
+    <div className="flex items-start gap-3 border-b border-border/50 bg-secondary/80 p-3">
       <ProjectIcon size="lg" name={project.name} color={project.iconColor} />
       <div className="min-w-0 flex-1">
         <h2 className="truncate text-lg font-semibold tracking-tight">{project.name}</h2>
@@ -105,7 +105,7 @@ const ProjectDetailsPanel = ({ project, installed, onClose, onInstall }: Project
       </Button>
     </div>
 
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
       <div className="flex flex-wrap gap-1.5">
         <ProviderBadge providerId={project.provider.id} />
         <Badge variant="secondary" className="capitalize">{project.type}</Badge>
@@ -151,7 +151,7 @@ const ProjectDetailsPanel = ({ project, installed, onClose, onInstall }: Project
       </div>
     </div>
 
-    <div className="flex gap-2 border-t p-4">
+    <div className="flex gap-2 border-t border-border/50 p-3">
       <Button variant="outline" asChild>
         <a href={project.provider.url} target="_blank" rel="noreferrer">
           <ExternalLink data-icon="inline-start" />

@@ -39,7 +39,7 @@ const InstancePage = () => {
 
   if (!instance) {
     return (
-      <div className="p-6">
+      <div className="p-4">
         <EmptyState icon={Package} title="Instance not found">
           <Button variant="outline" onClick={() => navigate('/library')}>
             Back to Library
@@ -55,7 +55,7 @@ const InstancePage = () => {
   return (
     <div className="flex flex-col">
       <header
-        className="flex items-center gap-5 border-b px-6 py-5"
+        className="flex items-center gap-4 border-b border-border/50 bg-secondary/30 px-4 py-3"
         style={{ background: `linear-gradient(110deg, color-mix(in oklch, ${instance.iconColor} 16%, var(--background)) 0%, var(--background) 55%)` }}
       >
         <InstanceIcon size="xl" icon={instance.icon} color={instance.iconColor} />
@@ -90,7 +90,7 @@ const InstancePage = () => {
       </header>
 
       <Tabs value={tab} onValueChange={(v) => setParams(v === 'overview' ? {} : { tab: v })} className="gap-0">
-        <TabsList variant="line" className="h-10 w-full justify-start rounded-none border-b px-6">
+        <TabsList variant="line" className="h-9 w-full justify-start rounded-none border-b border-border/50 px-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           {contentTypes.map((t) => (
             <TabsTrigger key={t} value={t}>
@@ -102,7 +102,7 @@ const InstancePage = () => {
           <TabsTrigger value="logs">Logs</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
-        <div className="p-6">
+        <div className="p-4">
           <TabsContent value="overview">
             <OverviewTab instance={instance} />
           </TabsContent>

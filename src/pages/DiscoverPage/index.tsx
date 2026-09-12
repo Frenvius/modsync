@@ -74,7 +74,7 @@ const DiscoverPage = () => {
   const toggleCategory = (c: string) => setFilters((f) => ({ ...f, category: f.category === c ? undefined : c }));
 
   return (
-    <div className="flex flex-col gap-5 p-6">
+    <div className="flex flex-col gap-4 p-4">
       <PageHeader title="Discover" description={targetInstance ? `Installing into ${targetInstance.name}` : 'One catalog across every provider.'} />
 
       <div className="flex flex-wrap items-center gap-2">

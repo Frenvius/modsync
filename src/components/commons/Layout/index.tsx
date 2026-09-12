@@ -18,9 +18,9 @@ const Layout = () => {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
       <Titlebar />
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-1.5 overflow-hidden p-1.5">
         <Sidebar />
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">{ready ? <Outlet /> : null}</main>
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-y-auto rounded-lg bg-panel">{ready ? <Outlet /> : null}</main>
       </div>
       <CreateInstanceDialog />
       <Toaster position="bottom-right" />

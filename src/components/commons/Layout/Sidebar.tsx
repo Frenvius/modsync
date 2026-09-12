@@ -26,15 +26,15 @@ const Sidebar = () => {
   const activeDownloads = useAppStore((s) => s.downloads.filter((d) => d.status === DownloadStatus.Active).length);
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="px-3 pt-3 pb-2">
-        <Button className="w-full justify-start" onClick={() => openCreate(true)}>
+    <aside className="flex w-56 shrink-0 flex-col overflow-hidden rounded-lg bg-sidebar text-sidebar-foreground">
+      <div className="border-b border-sidebar-border bg-secondary/80 p-1">
+        <Button size="sm" variant="ghost" className="w-full justify-start text-primary hover:bg-primary/15 hover:text-primary" onClick={() => openCreate(true)}>
           <Plus data-icon="inline-start" />
           Create instance
         </Button>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-3 py-1">
+      <nav className="flex flex-1 flex-col gap-0.5 p-2">
         {NAV.map((item) => (
           <NavLink
             key={item.to}
@@ -42,13 +42,13 @@ const Sidebar = () => {
             end={item.to === '/'}
             className={({ isActive }) =>
               cn(
-                'group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-sidebar-foreground transition-colors',
-                'hover:bg-sidebar-accent hover:text-foreground',
-                isActive && 'bg-sidebar-accent text-primary'
+                'group flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium text-sidebar-foreground transition-colors',
+                'hover:bg-item-hover hover:text-foreground',
+                isActive && 'bg-primary/15 text-primary ring-1 ring-primary/30'
               )
             }
           >
-            <item.icon className="size-5 shrink-0 opacity-80 transition-colors group-hover:opacity-100" />
+            <item.icon className="size-4 shrink-0 opacity-80 transition-colors group-hover:opacity-100" />
             <span className="flex-1">{item.label}</span>
             {item.to === '/downloads' && activeDownloads > 0 && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
@@ -58,7 +58,6 @@ const Sidebar = () => {
           </NavLink>
         ))}
       </nav>
-
     </aside>
   );
 };

@@ -41,7 +41,7 @@ const LibraryPage = () => {
     });
 
   return (
-    <div className="flex flex-col gap-5 p-6">
+    <div className="flex flex-col gap-4 p-4">
       <PageHeader title="Library" description={`${instances.length} instances across ${new Set(instances.map((i) => i.gameId)).size} games.`}>
         <Button onClick={() => openCreate(true)}>
           <Plus data-icon="inline-start" />

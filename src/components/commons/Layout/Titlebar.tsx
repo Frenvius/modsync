@@ -24,19 +24,19 @@ const Titlebar = () => {
   const selectedGame = GAMES.find((game) => game.id === selectedGameId)!;
 
   return (
-    <header data-tauri-drag-region className="flex h-12 shrink-0 select-none items-center border-b border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2 px-4">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Boxes aria-hidden="true" className="size-5" strokeWidth={2} />
+    <header data-tauri-drag-region className="flex h-8 shrink-0 select-none items-center border-b border-border/50 bg-toolbar text-foreground">
+      <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2 px-2">
+        <span className="flex size-5 items-center justify-center rounded bg-primary text-primary-foreground">
+          <Boxes aria-hidden="true" className="size-3.5" strokeWidth={2} />
         </span>
-        <span className="truncate text-lg font-bold tracking-tight">Forge Hub</span>
+        <span className="truncate text-xs font-semibold">Forge Hub</span>
       </div>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex h-8 min-w-44 items-center gap-2 rounded-lg px-3 text-sm transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="flex h-6 min-w-36 items-center gap-2 rounded px-2 text-xs transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             aria-label="Select game"
           >
             <GameIcon size="sm" gameId={selectedGame.id} />
@@ -59,10 +59,10 @@ const Titlebar = () => {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="mr-2 flex size-8 items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              className="mr-1 flex size-6 items-center justify-center rounded transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               aria-label="Minecraft account"
             >
-              <Avatar className="size-7">
+              <Avatar className="size-5">
                 <AvatarFallback style={{ background: USER.avatarColor }} className="text-[11px] font-semibold text-primary-foreground">
                   {USER.name.slice(0, 2).toUpperCase()}
                 </AvatarFallback>
@@ -94,14 +94,14 @@ const Titlebar = () => {
       )}
 
       <div role="group" className="flex h-full" aria-label="Window controls">
-        <button disabled type="button" aria-label="Minimize" className="flex w-12 items-center justify-center text-muted-foreground">
-          <Minus aria-hidden="true" className="size-4" strokeWidth={1.5} />
+        <button disabled type="button" aria-label="Minimize" className="flex w-9 items-center justify-center text-muted-foreground">
+          <Minus aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
         </button>
-        <button disabled type="button" aria-label="Maximize" className="flex w-12 items-center justify-center text-muted-foreground">
+        <button disabled type="button" aria-label="Maximize" className="flex w-9 items-center justify-center text-muted-foreground">
           <Square aria-hidden="true" className="size-3" strokeWidth={1.5} />
         </button>
-        <button disabled type="button" aria-label="Close" className="flex w-12 items-center justify-center text-muted-foreground">
-          <X aria-hidden="true" className="size-4" strokeWidth={1.5} />
+        <button disabled type="button" aria-label="Close" className="flex w-9 items-center justify-center text-muted-foreground">
+          <X aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
         </button>
       </div>
     </header>
