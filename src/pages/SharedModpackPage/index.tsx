@@ -1,20 +1,21 @@
 import type { Modpack } from '~/domain/interfaces/modpack.interface';
 
 import React from 'react';
-import { toast } from 'sonner';
 import { useParams, useNavigate } from 'react-router-dom';
+
+import { toast } from 'sonner';
 import { Copy, Boxes, Loader2, Download, ShieldCheck } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { LOADER_NAMES } from '~/usecase/mock/games';
-import { useAppStore } from '~/usecase/store/appStore';
 import GameIcon from '~/components/commons/GameIcon';
+import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';
 import { projectService } from '~/usecase/service/project';
 import { modpackService } from '~/usecase/service/modpack';
 import ProjectIcon from '~/components/commons/ProjectIcon';
-import { ProviderBadge, VersionBadge } from '~/components/commons/Badges';
+import { VersionBadge, ProviderBadge } from '~/components/commons/Badges';
 import { Alert, AlertTitle, AlertDescription } from '~/components/ui/alert';
 
 const SharedModpackPage = () => {
@@ -75,7 +76,9 @@ const SharedModpackPage = () => {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
       <div
         className="relative flex h-44 items-end overflow-hidden rounded-xl border p-5"
-        style={{ background: `linear-gradient(120deg, ${modpack.coverColor} 0%, color-mix(in oklch, ${modpack.coverColor} 35%, var(--card)) 100%)` }}
+        style={{
+          background: `linear-gradient(120deg, ${modpack.coverColor} 0%, color-mix(in oklch, ${modpack.coverColor} 35%, var(--card)) 100%)`
+        }}
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_10%,oklch(1_0_0/15%),transparent_45%)]" />
         <div className="relative flex flex-col gap-1 text-white">
@@ -96,7 +99,7 @@ const SharedModpackPage = () => {
           {modpack.shareCode}
         </Badge>
         <span className="flex-1" />
-        <Button variant="outline" onClick={clone}>
+        <Button onClick={clone} variant="outline">
           <Copy data-icon="inline-start" />
           Clone
         </Button>
@@ -111,8 +114,12 @@ const SharedModpackPage = () => {
       {versionMismatch && (
         <Alert>
           <ShieldCheck />
-          <AlertTitle>Targets {game.name} {modpack.gameVersion}</AlertTitle>
-          <AlertDescription>Your existing instances use a different version. Installing creates a new instance, so nothing breaks.</AlertDescription>
+          <AlertTitle>
+            Targets {game.name} {modpack.gameVersion}
+          </AlertTitle>
+          <AlertDescription>
+            Your existing instances use a different version. Installing creates a new instance, so nothing breaks.
+          </AlertDescription>
         </Alert>
       )}
 

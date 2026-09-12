@@ -1,25 +1,27 @@
+import type { MarkdownProps } from './types';
 import type { Project, ProjectVersion } from '~/domain/interfaces/project.interface';
 
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+
 import { Heart, Clock, Loader2, Package, Download, ExternalLink } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { LOADER_NAMES } from '~/usecase/mock/games';
-import { useAppStore } from '~/usecase/store/appStore';
 import GameIcon from '~/components/commons/GameIcon';
+import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';
 import { projectService } from '~/usecase/service/project';
-import InstallDialog from '~/components/Mods/InstallDialog';
 import ProjectIcon from '~/components/commons/ProjectIcon';
-import { getProviderMeta } from '~/usecase/service/providers';
+import InstallDialog from '~/components/Mods/InstallDialog';
 import InstanceIcon from '~/components/commons/InstanceIcon';
+import { getProviderMeta } from '~/usecase/service/providers';
 import DependencyList from '~/components/Mods/DependencyList';
 import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
-import { Table, TableRow, TableBody, TableCell, TableHead, TableHeader } from '~/components/ui/table';
 import { ProviderBadge, CompatibilityBadge } from '~/components/commons/Badges';
 import { formatDate, formatBytes, formatCompact, formatRelative } from '~/usecase/util/formatUtils';
+import { Table, TableRow, TableBody, TableCell, TableHead, TableHeader } from '~/components/ui/table';
 
 const ProjectPage = () => {
   const { projectId } = useParams();
@@ -74,7 +76,9 @@ const ProjectPage = () => {
     <div className="flex flex-col">
       <div
         className="h-32 shrink-0"
-        style={{ background: `linear-gradient(120deg, color-mix(in oklch, ${project.iconColor} 30%, var(--background)) 0%, var(--background) 80%)` }}
+        style={{
+          background: `linear-gradient(120deg, color-mix(in oklch, ${project.iconColor} 30%, var(--background)) 0%, var(--background) 80%)`
+        }}
       />
       <div className="-mt-12 flex flex-col gap-6 px-6 pb-6">
         <div className="flex items-end gap-5">
@@ -100,8 +104,8 @@ const ProjectPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 pb-1">
-            <Button variant="outline" asChild>
-              <a href={project.provider.url} target="_blank" rel="noreferrer">
+            <Button asChild variant="outline">
+              <a target="_blank" rel="noreferrer" href={project.provider.url}>
                 <ExternalLink data-icon="inline-start" />
                 {provider.name}
               </a>
@@ -143,7 +147,7 @@ const ProjectPage = () => {
               <TabsTrigger value="compatibility">Compatibility</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="description" className="pt-2">
+            <TabsContent className="pt-2" value="description">
               <Markdown source={project.description} />
             </TabsContent>
 
@@ -180,8 +184,12 @@ const ProjectPage = () => {
                           {v.number}
                           {i === 0 && <Badge className="ml-2 bg-primary/10 text-primary">Latest</Badge>}
                         </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">{v.gameVersions.slice(0, 3).join(', ')}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{v.loaders.map((l) => LOADER_NAMES[l]).join(', ') || 'Any'}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {v.gameVersions.slice(0, 3).join(', ')}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {v.loaders.map((l) => LOADER_NAMES[l]).join(', ') || 'Any'}
+                        </TableCell>
                         <TableCell className="text-right tabular-nums">{formatCompact(v.downloads)}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatBytes(v.fileSize)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{formatDate(v.publishedAt)}</TableCell>
@@ -197,7 +205,7 @@ const ProjectPage = () => {
               </div>
             </TabsContent>
 
-            <TabsContent value="dependencies" className="pt-2">
+            <TabsContent className="pt-2" value="dependencies">
               <DependencyList dependencies={latest?.dependencies ?? []} />
             </TabsContent>
 
@@ -228,7 +236,12 @@ const ProjectPage = () => {
                         </span>
                       </span>
                       <CompatibilityBadge issues={report.issues} />
-                      <Button size="xs" variant="secondary" disabled={!report.compatible} onClick={() => navigate(`/discover?instance=${instance.id}`)}>
+                      <Button
+                        size="xs"
+                        variant="secondary"
+                        disabled={!report.compatible}
+                        onClick={() => navigate(`/discover?instance=${instance.id}`)}
+                      >
                         Browse for it
                       </Button>
                     </div>
@@ -280,14 +293,10 @@ const ProjectPage = () => {
         </div>
       </div>
 
-      <InstallDialog open={installOpen} project={project} version={installVersion} onOpenChange={setInstallOpen} />
+      <InstallDialog project={project} open={installOpen} version={installVersion} onOpenChange={setInstallOpen} />
     </div>
   );
 };
-
-interface MarkdownProps {
-  source: string;
-}
 
 const Markdown = ({ source }: MarkdownProps) => (
   <div className="flex max-w-3xl flex-col gap-3 text-sm leading-relaxed">

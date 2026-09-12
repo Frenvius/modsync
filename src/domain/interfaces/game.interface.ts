@@ -10,9 +10,9 @@ export interface Game {
   id: GameId;
   name: string;
   color: string;
+  ecosystemLabel: string;
   versions: Array<string>;
   loaders: Array<GameLoader>;
   providers: Array<ProviderId>;
   contentTypes: Array<ProjectType>;
-  ecosystemLabel: string;
 }

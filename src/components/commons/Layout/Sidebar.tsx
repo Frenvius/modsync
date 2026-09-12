@@ -1,25 +1,13 @@
-import type { LucideIcon } from 'lucide-react';
-
 import { NavLink } from 'react-router-dom';
-import { Plus, Compass, Library, Download, Settings } from 'lucide-react';
+
+import { Plus } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Button } from '~/components/ui/button';
 import { useAppStore } from '~/usecase/store/appStore';
 import { DownloadStatus } from '~/domain/enums/provider.enum';
 
-interface NavItem {
-  to: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-const NAV: Array<NavItem> = [
-  { to: '/', label: 'Library', icon: Library },
-  { to: '/discover', label: 'Discover', icon: Compass },
-  { to: '/downloads', label: 'Downloads', icon: Download },
-  { to: '/settings', label: 'Settings', icon: Settings }
-];
+import { NAV_ITEMS } from './constants';
 
 const Sidebar = () => {
   const openCreate = useAppStore((s) => s.setCreateInstanceOpen);
@@ -28,17 +16,22 @@ const Sidebar = () => {
   return (
     <aside className="flex w-56 shrink-0 flex-col overflow-hidden rounded-lg bg-sidebar text-sidebar-foreground">
       <div className="border-b border-sidebar-border bg-secondary/80 p-1">
-        <Button size="sm" variant="ghost" className="w-full justify-start text-primary hover:bg-primary/15 hover:text-primary" onClick={() => openCreate(true)}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => openCreate(true)}
+          className="w-full justify-start text-primary hover:bg-primary/15 hover:text-primary"
+        >
           <Plus data-icon="inline-start" />
           Create instance
         </Button>
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 p-2">
-        {NAV.map((item) => (
+        {NAV_ITEMS.map((item) => (
           <NavLink
-            key={item.to}
             to={item.to}
+            key={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
               cn(

@@ -1,9 +1,10 @@
-import type { DiscoverFilters } from '~/components/Discover/FilterPopover';
+import type { DiscoverFilters } from '~/components/Discover/types';
 import type { Project, SearchSort } from '~/domain/interfaces/project.interface';
 
 import React from 'react';
-import { Clock, Compass, Download, Plus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+
+import { Plus, Clock, Compass, Download } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -13,22 +14,17 @@ import SearchBar from '~/components/commons/SearchBar';
 import EmptyState from '~/components/commons/EmptyState';
 import PageHeader from '~/components/commons/PageHeader';
 import { projectService } from '~/usecase/service/project';
-import InstallDialog from '~/components/Mods/InstallDialog';
-import FilterPopover from '~/components/Discover/FilterPopover';
-import ProjectDetailsPanel from '~/components/Discover/ProjectDetailsPanel';
-import { getProviderMeta } from '~/usecase/service/providers';
-import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
 import ProjectIcon from '~/components/commons/ProjectIcon';
+import InstallDialog from '~/components/Mods/InstallDialog';
 import { ProviderBadge } from '~/components/commons/Badges';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table';
+import { getProviderMeta } from '~/usecase/service/providers';
+import FilterPopover from '~/components/Discover/FilterPopover';
+import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
+import ProjectDetailsPanel from '~/components/Discover/ProjectDetailsPanel';
+import { Table, TableRow, TableBody, TableCell, TableHead, TableHeader } from '~/components/ui/table';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
-const SORTS: Array<{ value: SearchSort; label: string }> = [
-  { value: 'relevance', label: 'Relevance' },
-  { value: 'downloads', label: 'Downloads' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'updated', label: 'Recently updated' }
-];
+import { DISCOVER_SORTS } from './constants';
 
 const DiscoverPage = () => {
   const [params] = useSearchParams();
@@ -41,8 +37,8 @@ const DiscoverPage = () => {
   const [sort, setSort] = React.useState<SearchSort>('relevance');
   const [loading, setLoading] = React.useState(true);
   const [results, setResults] = React.useState<Array<Project>>([]);
-  const [installTarget, setInstallTarget] = React.useState<Project | null>(null);
-  const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
+  const [installTarget, setInstallTarget] = React.useState<null | Project>(null);
+  const [selectedProject, setSelectedProject] = React.useState<null | Project>(null);
   const [filters, setFilters] = React.useState<DiscoverFilters>({
     providers: [],
     loader: targetInstance?.loader,
@@ -59,7 +55,7 @@ const DiscoverPage = () => {
     let cancelled = false;
     setLoading(true);
     const handle = setTimeout(() => {
-      void projectService.search({ gameId, query, sort, ...filters }).then((r) => {
+      void projectService.search({ sort, query, gameId, ...filters }).then((r) => {
         if (cancelled) return;
         setResults(r.items);
         setLoading(false);
@@ -75,17 +71,20 @@ const DiscoverPage = () => {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <PageHeader title="Discover" description={targetInstance ? `Installing into ${targetInstance.name}` : 'One catalog across every provider.'} />
+      <PageHeader
+        title="Discover"
+        description={targetInstance ? `Installing into ${targetInstance.name}` : 'One catalog across every provider.'}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
-        <SearchBar value={query} onChange={setQuery} placeholder={`Search ${game.name} mods`} className="w-80" />
+        <SearchBar value={query} className="w-80" onChange={setQuery} placeholder={`Search ${game.name} mods`} />
         <Select value={sort} onValueChange={(v) => setSort(v as SearchSort)}>
           <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {SORTS.map((s) => (
+              {DISCOVER_SORTS.map((s) => (
                 <SelectItem key={s.value} value={s.value}>
                   Sort: {s.label}
                 </SelectItem>
@@ -93,7 +92,7 @@ const DiscoverPage = () => {
             </SelectGroup>
           </SelectContent>
         </Select>
-        <FilterPopover game={game} filters={filters} categories={categories} onChange={setFilters} />
+        <FilterPopover game={game} filters={filters} onChange={setFilters} categories={categories} />
         <span className="flex-1" />
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           {game.providers.map((p) => (
@@ -107,7 +106,13 @@ const DiscoverPage = () => {
 
       <div className="flex flex-wrap gap-1.5">
         {categories.map((c) => (
-          <Button key={c} size="xs" variant={filters.category === c ? 'default' : 'outline'} className="rounded-full" onClick={() => toggleCategory(c)}>
+          <Button
+            key={c}
+            size="xs"
+            className="rounded-full"
+            onClick={() => toggleCategory(c)}
+            variant={filters.category === c ? 'default' : 'outline'}
+          >
             {c}
           </Button>
         ))}
@@ -138,7 +143,9 @@ const DiscoverPage = () => {
                   <TableHead className="text-right">Downloads</TableHead>
                   <TableHead>Updated</TableHead>
                   <TableHead>Versions</TableHead>
-                  <TableHead><span className="sr-only">Actions</span></TableHead>
+                  <TableHead>
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -146,15 +153,24 @@ const DiscoverPage = () => {
                   const installed = targetInstance?.mods.some((mod) => mod.projectId === project.id);
 
                   return (
-                    <TableRow key={project.id} data-project-row className="cursor-pointer" onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedProject(project);
-                    }}>
+                    <TableRow
+                      key={project.id}
+                      data-project-row
+                      className="cursor-pointer"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedProject(project);
+                      }}
+                    >
                       <TableCell className="min-w-96 whitespace-normal">
                         <div className="flex items-start gap-3">
                           <ProjectIcon size="md" name={project.name} color={project.iconColor} />
                           <div className="min-w-0">
-                            <button type="button" className="block max-w-full truncate text-left font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-2" onClick={() => setSelectedProject(project)}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProject(project)}
+                              className="block max-w-full truncate text-left font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+                            >
                               {project.name}
                             </button>
                             <span className="block truncate text-xs text-muted-foreground">by {project.author}</span>
@@ -162,26 +178,41 @@ const DiscoverPage = () => {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell><ProviderBadge providerId={project.provider.id} /></TableCell>
+                      <TableCell>
+                        <ProviderBadge providerId={project.provider.id} />
+                      </TableCell>
                       <TableCell>
                         <div className="flex max-w-48 flex-wrap gap-1">
                           {project.categories.slice(0, 2).map((category) => (
-                            <Badge key={category} variant="outline" className="text-muted-foreground">{category}</Badge>
+                            <Badge key={category} variant="outline" className="text-muted-foreground">
+                              {category}
+                            </Badge>
                           ))}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs tabular-nums">
-                        <span className="inline-flex items-center gap-1"><Download className="size-3" />{formatCompact(project.downloads)}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Download className="size-3" />
+                          {formatCompact(project.downloads)}
+                        </span>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1"><Clock className="size-3" />{formatRelative(project.updatedAt)}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="size-3" />
+                          {formatRelative(project.updatedAt)}
+                        </span>
                       </TableCell>
                       <TableCell className="font-mono text-xs">{project.gameVersions.slice(0, 2).join(', ')}</TableCell>
                       <TableCell className="text-right">
-                        <Button size="xs" variant={installed ? 'secondary' : 'default'} disabled={installed} onClick={(event) => {
-                          event.stopPropagation();
-                          setInstallTarget(project);
-                        }}>
+                        <Button
+                          size="xs"
+                          disabled={installed}
+                          variant={installed ? 'secondary' : 'default'}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setInstallTarget(project);
+                          }}
+                        >
                           {!installed && <Plus data-icon="inline-start" />}
                           {installed ? 'Installed' : 'Install'}
                         </Button>
@@ -198,13 +229,18 @@ const DiscoverPage = () => {
       {selectedProject && (
         <ProjectDetailsPanel
           project={selectedProject}
-          installed={targetInstance?.mods.some((mod) => mod.projectId === selectedProject.id)}
-          onClose={() => setSelectedProject(null)}
           onInstall={setInstallTarget}
+          onClose={() => setSelectedProject(null)}
+          installed={targetInstance?.mods.some((mod) => mod.projectId === selectedProject.id)}
         />
       )}
 
-      <InstallDialog open={installTarget !== null} project={installTarget} instanceId={instanceId} onOpenChange={(o) => !o && setInstallTarget(null)} />
+      <InstallDialog
+        project={installTarget}
+        instanceId={instanceId}
+        open={installTarget !== null}
+        onOpenChange={(o) => !o && setInstallTarget(null)}
+      />
     </div>
   );
 };

@@ -1,6 +1,8 @@
-import type { Instance, ConfigFile } from '~/domain/interfaces/instance.interface';
+import type { InstanceTabProps } from '~/components/Instance/types';
+import type { ConfigFile } from '~/domain/interfaces/instance.interface';
 
 import React from 'react';
+
 import { toast } from 'sonner';
 import { Save, FileCode, FolderOpen } from 'lucide-react';
 
@@ -11,10 +13,6 @@ import { Textarea } from '~/components/ui/textarea';
 import EmptyState from '~/components/commons/EmptyState';
 import { formatBytes, formatRelative } from '~/usecase/util/formatUtils';
 
-interface ConfigTabProps {
-  instance: Instance;
-}
-
 const sampleContent = (file: ConfigFile) => {
   if (file.format === 'json') return '{\n  "enabled": true,\n  "renderDistance": 12,\n  "vsync": false\n}';
   if (file.format === 'toml') return '[general]\nenabled = true\n\n[client]\nshowOverlay = true\nscale = 1.0';
@@ -22,8 +20,8 @@ const sampleContent = (file: ConfigFile) => {
   return '[General]\n## Enable the mod\nEnabled = true\n\n[Logging]\nLogLevel = Info';
 };
 
-const ConfigTab = ({ instance }: ConfigTabProps) => {
-  const [active, setActive] = React.useState<ConfigFile | undefined>(instance.configs[0]);
+const ConfigTab = ({ instance }: InstanceTabProps) => {
+  const [active, setActive] = React.useState<undefined | ConfigFile>(instance.configs[0]);
   const [content, setContent] = React.useState(active ? sampleContent(active) : '');
   const [dirty, setDirty] = React.useState(false);
 
@@ -52,10 +50,13 @@ const ConfigTab = ({ instance }: ConfigTabProps) => {
       <div className="flex flex-col gap-1 rounded-lg border bg-card p-1">
         {instance.configs.map((file) => (
           <button
-            key={file.path}
             type="button"
+            key={file.path}
             onClick={() => openFile(file)}
-            className={cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent', active?.path === file.path && 'bg-accent')}
+            className={cn(
+              'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent',
+              active?.path === file.path && 'bg-accent'
+            )}
           >
             <FileCode className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex min-w-0 flex-1 flex-col">
@@ -78,16 +79,16 @@ const ConfigTab = ({ instance }: ConfigTabProps) => {
             {active?.format}
           </Badge>
           <span className="flex-1" />
-          <Button size="sm" disabled={!dirty} onClick={save}>
+          <Button size="sm" onClick={save} disabled={!dirty}>
             <Save data-icon="inline-start" />
             Save
           </Button>
         </div>
         <Textarea
           value={content}
+          onChange={edit}
           spellCheck={false}
           className="min-h-[360px] resize-y font-mono text-xs leading-relaxed"
-          onChange={edit}
         />
       </div>
     </div>

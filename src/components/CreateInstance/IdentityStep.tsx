@@ -1,22 +1,16 @@
-import type { WizardDraft } from './index';
-
-import React from 'react';
+import type { IdentityStepProps } from './types';
 
 import { cn } from '~/lib/utils';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
-import InstanceIcon, { INSTANCE_ICONS, INSTANCE_COLORS } from '~/components/commons/InstanceIcon';
-
-interface IdentityStepProps {
-  draft: WizardDraft;
-  onChange: (patch: Partial<WizardDraft>) => void;
-}
+import InstanceIcon from '~/components/commons/InstanceIcon';
+import { INSTANCE_ICONS, INSTANCE_COLORS } from '~/components/commons/InstanceIcon/constants';
 
 const IdentityStep = ({ draft, onChange }: IdentityStepProps) => (
   <div className="flex gap-6">
     <div className="flex flex-col items-center gap-3">
       <InstanceIcon size="xl" icon={draft.icon} color={draft.color} />
-      <div className="flex flex-wrap justify-center gap-1.5" style={{ maxWidth: 120 }}>
+      <div style={{ maxWidth: 120 }} className="flex flex-wrap justify-center gap-1.5">
         {INSTANCE_COLORS.map((color) => (
           <button
             key={color}
@@ -24,7 +18,10 @@ const IdentityStep = ({ draft, onChange }: IdentityStepProps) => (
             aria-label={`Color ${color}`}
             style={{ background: color }}
             onClick={() => onChange({ color })}
-            className={cn('size-5 rounded-full ring-offset-2 ring-offset-background transition-transform hover:scale-110', draft.color === color && 'ring-2 ring-foreground')}
+            className={cn(
+              'size-5 rounded-full ring-offset-2 ring-offset-background transition-transform hover:scale-110',
+              draft.color === color && 'ring-2 ring-foreground'
+            )}
           />
         ))}
       </div>
@@ -32,7 +29,13 @@ const IdentityStep = ({ draft, onChange }: IdentityStepProps) => (
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="instance-name">Instance name</Label>
-        <Input id="instance-name" autoFocus value={draft.name} placeholder="e.g. Create Survival" onChange={(e) => onChange({ name: e.target.value })} />
+        <Input
+          autoFocus
+          id="instance-name"
+          value={draft.name}
+          placeholder="e.g. Create Survival"
+          onChange={(e) => onChange({ name: e.target.value })}
+        />
       </div>
       <div className="flex flex-col gap-2">
         <Label>Icon</Label>

@@ -1,11 +1,11 @@
-import type { Project } from '~/domain/interfaces/project.interface';
+import type { InstallDialogProps } from './types';
 
 import React from 'react';
+
 import { toast } from 'sonner';
 import { Ban, Loader2, Download, TriangleAlert } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
-import DependencyList from './DependencyList';
 import { Button } from '~/components/ui/button';
 import { Checkbox } from '~/components/ui/checkbox';
 import { useAppStore } from '~/usecase/store/appStore';
@@ -16,13 +16,7 @@ import { Alert, AlertTitle, AlertDescription } from '~/components/ui/alert';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 import { Dialog, DialogTitle, DialogFooter, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
 
-interface InstallDialogProps {
-  open: boolean;
-  version?: string;
-  project: Project | null;
-  instanceId?: string;
-  onOpenChange: (open: boolean) => void;
-}
+import DependencyList from './DependencyList';
 
 const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: InstallDialogProps) => {
   const instances = useAppStore((s) => s.instances);
@@ -40,8 +34,10 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
 
   if (!project) return null;
 
-  const report = instance ? projectService.checkCompatibility(project, instance) : { compatible: false, issues: [] };
-  const deps = instance ? projectService.resolveDependencies(project, instance) : { toInstall: [], optional: [], conflicts: [], alreadyInstalled: [] };
+  const report = instance ? projectService.checkCompatibility(project, instance) : { issues: [], compatible: false };
+  const deps = instance
+    ? projectService.resolveDependencies(project, instance)
+    : { optional: [], toInstall: [], conflicts: [], alreadyInstalled: [] };
   const alreadyInstalled = instance?.mods.some((m) => m.projectId === project.id) ?? false;
   const blocked = !instance || !report.compatible || alreadyInstalled;
 
@@ -50,7 +46,10 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
   const install = async () => {
     if (!instance) return;
     setBusy(true);
-    await installMod(instance.id, project, { version, dependencies: [...deps.toInstall.map((d) => d.projectId), ...optionalPicked] });
+    await installMod(instance.id, project, {
+      version,
+      dependencies: [...deps.toInstall.map((d) => d.projectId), ...optionalPicked]
+    });
     setBusy(false);
     onOpenChange(false);
     const extra = deps.toInstall.length + optionalPicked.length;
@@ -104,12 +103,18 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
           {alreadyInstalled && (
             <Alert>
               <AlertTitle>Already installed</AlertTitle>
-              <AlertDescription>This project is already part of {instance?.name}. Change its version from the Mods tab.</AlertDescription>
+              <AlertDescription>
+                This project is already part of {instance?.name}. Change its version from the Mods tab.
+              </AlertDescription>
             </Alert>
           )}
 
           {report.issues.map((issue) => (
-            <Alert key={issue.message} variant={issue.severity === 'error' ? 'destructive' : 'default'} className={cn(issue.severity === 'warning' && 'border-warning/40 text-warning')}>
+            <Alert
+              key={issue.message}
+              variant={issue.severity === 'error' ? 'destructive' : 'default'}
+              className={cn(issue.severity === 'warning' && 'border-warning/40 text-warning')}
+            >
               {issue.severity === 'error' ? <Ban /> : <TriangleAlert />}
               <AlertTitle>{issue.message}</AlertTitle>
               {issue.remediation && <AlertDescription>{issue.remediation}</AlertDescription>}
@@ -131,7 +136,11 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
               <ul className="flex flex-col gap-1.5">
                 {deps.optional.map((d) => (
                   <li key={d.projectId} className="flex items-center gap-2 text-sm">
-                    <Checkbox id={`opt-${d.projectId}`} checked={optionalPicked.includes(d.projectId)} onCheckedChange={(v) => toggleOptional(d.projectId, v === true)} />
+                    <Checkbox
+                      id={`opt-${d.projectId}`}
+                      checked={optionalPicked.includes(d.projectId)}
+                      onCheckedChange={(v) => toggleOptional(d.projectId, v === true)}
+                    />
                     <label htmlFor={`opt-${d.projectId}`}>{d.name}</label>
                   </li>
                 ))}
@@ -144,7 +153,7 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={blocked || busy} onClick={install}>
+          <Button onClick={install} disabled={blocked || busy}>
             {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Download data-icon="inline-start" />}
             Install
           </Button>

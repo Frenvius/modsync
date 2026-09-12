@@ -1,33 +1,18 @@
-import type { Game } from '~/domain/interfaces/game.interface';
-import type { LoaderId } from '~/domain/enums/provider.enum';
+import type { LoaderStepProps } from './types';
 
-import React from 'react';
 import { Check } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Badge } from '~/components/ui/badge';
 
-interface LoaderStepProps {
-  game: Game;
-  value?: LoaderId;
-  onChange: (loader: LoaderId) => void;
-}
-
-const DESCRIPTIONS: Record<string, string> = {
-  vanilla: 'No mod loader. Resource packs, shaders and data packs only.',
-  fabric: 'Lightweight, fast updates, best for performance and client mods.',
-  forge: 'The classic loader with the largest catalog of older mods.',
-  neoforge: 'Modern fork of Forge with active development.',
-  quilt: 'Fabric-compatible loader with extra features.',
-  bepinex: 'Unity plugin framework. Required by nearly every mod for this game.'
-};
+import { LOADER_DESCRIPTIONS } from './constants';
 
 const LoaderStep = ({ game, value, onChange }: LoaderStepProps) => (
   <div className="grid grid-cols-2 gap-3">
     {game.loaders.map((loader) => (
       <button
-        key={loader.id}
         type="button"
+        key={loader.id}
         onClick={() => onChange(loader.id)}
         className={cn(
           'flex flex-col gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/40 hover:bg-accent',
@@ -40,7 +25,7 @@ const LoaderStep = ({ game, value, onChange }: LoaderStepProps) => (
           <span className="flex-1" />
           {value === loader.id && <Check className="size-4 text-primary" />}
         </span>
-        <span className="text-xs text-muted-foreground">{DESCRIPTIONS[loader.id]}</span>
+        <span className="text-xs text-muted-foreground">{LOADER_DESCRIPTIONS[loader.id]}</span>
       </button>
     ))}
   </div>

@@ -1,4 +1,3 @@
-import React from 'react';
 import { X, Search } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
@@ -24,7 +23,13 @@ const SearchBar = ({ value, onChange, className, autoFocus, placeholder = 'Searc
       onChange={(e) => onChange(e.target.value)}
     />
     {value && (
-      <Button size="icon-xs" variant="ghost" aria-label="Clear search" className="absolute top-1/2 right-1 -translate-y-1/2" onClick={() => onChange('')}>
+      <Button
+        size="icon-xs"
+        variant="ghost"
+        aria-label="Clear search"
+        onClick={() => onChange('')}
+        className="absolute top-1/2 right-1 -translate-y-1/2"
+      >
         <X />
       </Button>
     )}

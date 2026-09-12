@@ -1,6 +1,8 @@
-import type { Modpack, ShareLink } from '~/domain/interfaces/modpack.interface';
+import type { ShareDialogProps } from './types';
+import type { ShareLink } from '~/domain/interfaces/modpack.interface';
 
 import React from 'react';
+
 import { toast } from 'sonner';
 import { Copy, Check, QrCode, Loader2 } from 'lucide-react';
 
@@ -9,14 +11,9 @@ import { Button } from '~/components/ui/button';
 import { modpackService } from '~/usecase/service/modpack';
 import { Dialog, DialogTitle, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
 
-interface ShareDialogProps {
-  modpack: Modpack | null;
-  onOpenChange: (open: boolean) => void;
-}
-
 const ShareDialog = ({ modpack, onOpenChange }: ShareDialogProps) => {
-  const [link, setLink] = React.useState<ShareLink | null>(null);
-  const [copied, setCopied] = React.useState<'url' | 'code' | null>(null);
+  const [link, setLink] = React.useState<null | ShareLink>(null);
+  const [copied, setCopied] = React.useState<null | 'url' | 'code'>(null);
 
   React.useEffect(() => {
     setLink(null);
@@ -36,7 +33,9 @@ const ShareDialog = ({ modpack, onOpenChange }: ShareDialogProps) => {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Invite friends</DialogTitle>
-          <DialogDescription>Anyone with the link or code can install "{modpack?.name}" with the exact same mods.</DialogDescription>
+          <DialogDescription>
+            Anyone with the link or code can install "{modpack?.name}" with the exact same mods.
+          </DialogDescription>
         </DialogHeader>
         {!link ? (
           <div className="flex h-40 items-center justify-center text-muted-foreground">

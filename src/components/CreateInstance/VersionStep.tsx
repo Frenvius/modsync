@@ -1,17 +1,12 @@
-import type { Game } from '~/domain/interfaces/game.interface';
+import type { VersionStepProps } from './types';
 
 import React from 'react';
+
 import { Check } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Badge } from '~/components/ui/badge';
 import SearchBar from '~/components/commons/SearchBar';
-
-interface VersionStepProps {
-  game: Game;
-  value?: string;
-  onChange: (version: string) => void;
-}
 
 const VersionStep = ({ game, value, onChange }: VersionStepProps) => {
   const [query, setQuery] = React.useState('');

@@ -1,9 +1,10 @@
-import type { Instance } from '~/domain/interfaces/instance.interface';
+import type { InstanceMenuProps } from './types';
 
 import React from 'react';
-import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { Copy, Trash2, Share2, FolderOpen, Settings2, MoreHorizontal } from 'lucide-react';
+
+import { toast } from 'sonner';
+import { Copy, Trash2, Share2, Settings2, FolderOpen, MoreHorizontal } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import { useAppStore } from '~/usecase/store/appStore';
@@ -16,12 +17,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from '~/components/ui/dropdown-menu';
-
-interface InstanceMenuProps {
-  instance: Instance;
-  size?: 'icon-xs' | 'icon-sm' | 'icon';
-  variant?: 'ghost' | 'outline';
-}
 
 const InstanceMenu = ({ instance, size = 'icon-sm', variant = 'ghost' }: InstanceMenuProps) => {
   const navigate = useNavigate();
@@ -88,8 +83,8 @@ const InstanceMenu = ({ instance, size = 'icon-sm', variant = 'ghost' }: Instanc
       </DropdownMenu>
       <ConfirmDialog
         destructive
-        open={confirmDelete}
         onConfirm={remove}
+        open={confirmDelete}
         confirmLabel="Delete"
         onOpenChange={setConfirmDelete}
         title={`Delete "${instance.name}"?`}

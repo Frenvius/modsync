@@ -17,19 +17,19 @@ export interface InstalledMod {
 export interface ConfigFile {
   path: string;
   size: number;
-  format: 'cfg' | 'json' | 'toml' | 'yaml' | 'properties';
   modifiedAt: string;
+  format: 'cfg' | 'json' | 'toml' | 'yaml' | 'properties';
 }
 
 export interface LogLine {
-  level: 'info' | 'warn' | 'error' | 'debug';
   message: string;
   timestamp: string;
+  level: 'info' | 'warn' | 'error' | 'debug';
 }
 
 export interface InstanceModpackRef {
-  modpackId: string;
   version: string;
+  modpackId: string;
 }
 
 export interface Instance {
@@ -38,20 +38,20 @@ export interface Instance {
   icon: string;
   gameId: GameId;
   loader: LoaderId;
+  memoryMb: number;
   createdAt: string;
   iconColor: string;
   updatedAt: string;
-  lastPlayed: string | null;
+  javaArgs?: string;
   description: string;
   gameVersion: string;
   logs: Array<LogLine>;
   loaderVersion: string;
-  mods: Array<InstalledMod>;
   playtimeMinutes: number;
+  lastPlayed: null | string;
+  mods: Array<InstalledMod>;
   configs: Array<ConfigFile>;
   modpack?: InstanceModpackRef;
-  memoryMb: number;
-  javaArgs?: string;
 }
 
 export interface CreateInstanceInput {

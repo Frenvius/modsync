@@ -1,20 +1,15 @@
-import type { Project } from '~/domain/interfaces/project.interface';
+import type { ModCardProps } from './types';
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Download, Plus } from 'lucide-react';
+
+import { Plus, Clock, Download } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
-import { ProviderBadge } from '~/components/commons/Badges';
 import ProjectIcon from '~/components/commons/ProjectIcon';
+import { ProviderBadge } from '~/components/commons/Badges';
 import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
-
-interface ModCardProps {
-  project: Project;
-  installed?: boolean;
-  onInstall: (project: Project) => void;
-}
 
 const ModCard = ({ project, installed, onInstall }: ModCardProps) => {
   const navigate = useNavigate();
@@ -61,7 +56,7 @@ const ModCard = ({ project, installed, onInstall }: ModCardProps) => {
           </span>
           <span className="truncate font-mono">{project.gameVersions.slice(0, 2).join(', ')}</span>
           <span className="flex-1" />
-          <Button size="xs" variant={installed ? 'secondary' : 'default'} disabled={installed} onClick={install}>
+          <Button size="xs" onClick={install} disabled={installed} variant={installed ? 'secondary' : 'default'}>
             {!installed && <Plus data-icon="inline-start" />}
             {installed ? 'Installed' : 'Install'}
           </Button>

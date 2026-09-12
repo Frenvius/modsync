@@ -1,21 +1,19 @@
-import type { Instance } from '~/domain/interfaces/instance.interface';
+import type { InstanceListItemProps } from './types';
 
-import React from 'react';
-import { Play, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-import InstanceMenu from './InstanceMenu';
+import { Play, Loader2 } from 'lucide-react';
+
 import { Button } from '~/components/ui/button';
-import { usePlay, summarizeStatus } from './InstanceCard';
+import { usePlay } from '~/usecase/hooks/usePlay';
 import GameIcon from '~/components/commons/GameIcon';
 import { projectService } from '~/usecase/service/project';
 import InstanceIcon from '~/components/commons/InstanceIcon';
+import { summarizeStatus } from '~/usecase/util/instanceUtils';
 import { UpdateBadge, VersionBadge } from '~/components/commons/Badges';
 import { formatRelative, formatPlaytime } from '~/usecase/util/formatUtils';
 
-interface InstanceListItemProps {
-  instance: Instance;
-}
+import InstanceMenu from './InstanceMenu';
 
 const InstanceListItem = ({ instance }: InstanceListItemProps) => {
   const navigate = useNavigate();
@@ -36,15 +34,17 @@ const InstanceListItem = ({ instance }: InstanceListItemProps) => {
         <GameIcon size="sm" gameId={instance.gameId} />
         <span className="truncate">{game.name}</span>
       </span>
-      <VersionBadge version={instance.gameVersion} loader={instance.loader} />
+      <VersionBadge loader={instance.loader} version={instance.gameVersion} />
       <span className="w-16 text-right text-xs text-muted-foreground tabular-nums">{instance.mods.length} mods</span>
-      <span className="w-20 text-right text-xs text-muted-foreground tabular-nums">{formatPlaytime(instance.playtimeMinutes)}</span>
+      <span className="w-20 text-right text-xs text-muted-foreground tabular-nums">
+        {formatPlaytime(instance.playtimeMinutes)}
+      </span>
       <span className="w-40 flex justify-end">
         <UpdateBadge status={summarizeStatus(instance)} />
       </span>
       <span className="flex items-center gap-1">
         <span className="w-16 text-right text-xs text-muted-foreground">{formatRelative(instance.lastPlayed)}</span>
-        <Button size="icon-sm" variant="ghost" aria-label="Play" disabled={playing} onClick={play}>
+        <Button size="icon-sm" onClick={play} variant="ghost" aria-label="Play" disabled={playing}>
           {playing ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
         </Button>
         <InstanceMenu instance={instance} />

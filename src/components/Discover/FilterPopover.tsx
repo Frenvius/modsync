@@ -1,7 +1,6 @@
-import type { Game } from '~/domain/interfaces/game.interface';
+import type { FilterSelectProps, FilterPopoverProps } from './types';
 import type { LoaderId, ProviderId } from '~/domain/enums/provider.enum';
 
-import React from 'react';
 import { ListFilter } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
@@ -11,26 +10,14 @@ import { getProviderMeta } from '~/usecase/service/providers';
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
-export interface DiscoverFilters {
-  loader?: LoaderId;
-  category?: string;
-  gameVersion?: string;
-  providers: Array<ProviderId>;
-}
+import { ANY_FILTER } from './constants';
 
-interface FilterPopoverProps {
-  game: Game;
-  filters: DiscoverFilters;
-  categories: Array<string>;
-  onChange: (filters: DiscoverFilters) => void;
-}
-
-const ANY = '__any';
-
-const FilterPopover = ({ game, filters, categories, onChange }: FilterPopoverProps) => {
-  const activeCount = [filters.loader, filters.category, filters.gameVersion].filter(Boolean).length + (filters.providers.length ? 1 : 0);
-  const patch = (p: Partial<DiscoverFilters>) => onChange({ ...filters, ...p });
-  const toggleProvider = (id: ProviderId, on: boolean) => patch({ providers: on ? [...filters.providers, id] : filters.providers.filter((p) => p !== id) });
+const FilterPopover = ({ game, filters, onChange, categories }: FilterPopoverProps) => {
+  const activeCount =
+    [filters.loader, filters.category, filters.gameVersion].filter(Boolean).length + (filters.providers.length ? 1 : 0);
+  const patch = (p: Partial<FilterPopoverProps['filters']>) => onChange({ ...filters, ...p });
+  const toggleProvider = (id: ProviderId, on: boolean) =>
+    patch({ providers: on ? [...filters.providers, id] : filters.providers.filter((p) => p !== id) });
 
   return (
     <Popover>
@@ -42,7 +29,12 @@ const FilterPopover = ({ game, filters, categories, onChange }: FilterPopoverPro
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-72 flex-col gap-4">
-        <FilterSelect label="Game version" value={filters.gameVersion} options={game.versions} onChange={(gameVersion) => patch({ gameVersion })} />
+        <FilterSelect
+          label="Game version"
+          options={game.versions}
+          value={filters.gameVersion}
+          onChange={(gameVersion) => patch({ gameVersion })}
+        />
         {game.loaders.length > 1 && (
           <FilterSelect
             label="Loader"
@@ -51,7 +43,12 @@ const FilterPopover = ({ game, filters, categories, onChange }: FilterPopoverPro
             onChange={(loader) => patch({ loader: loader as LoaderId | undefined })}
           />
         )}
-        <FilterSelect label="Category" value={filters.category} options={categories} onChange={(category) => patch({ category })} />
+        <FilterSelect
+          label="Category"
+          options={categories}
+          value={filters.category}
+          onChange={(category) => patch({ category })}
+        />
         {game.providers.length > 1 && (
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-1 text-xs font-medium text-muted-foreground">Providers</legend>
@@ -72,23 +69,16 @@ const FilterPopover = ({ game, filters, categories, onChange }: FilterPopoverPro
   );
 };
 
-interface FilterSelectProps {
-  label: string;
-  value?: string;
-  options: Array<string>;
-  onChange: (value: string | undefined) => void;
-}
-
 const FilterSelect = ({ label, value, options, onChange }: FilterSelectProps) => (
   <div className="flex flex-col gap-1.5">
     <span className="text-xs font-medium text-muted-foreground">{label}</span>
-    <Select value={value ?? ANY} onValueChange={(v) => onChange(v === ANY ? undefined : v)}>
+    <Select value={value ?? ANY_FILTER} onValueChange={(v) => onChange(v === ANY_FILTER ? undefined : v)}>
       <SelectTrigger className="w-full">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectItem value={ANY}>Any</SelectItem>
+          <SelectItem value={ANY_FILTER}>Any</SelectItem>
           {options.map((o) => (
             <SelectItem key={o} value={o} className="capitalize">
               {o}

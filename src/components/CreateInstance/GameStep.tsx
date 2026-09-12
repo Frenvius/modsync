@@ -1,19 +1,26 @@
+import type { GameStepProps } from './types';
+import type { GameId } from '~/domain/enums/provider.enum';
+
 import React from 'react';
+
 import { Check, Search } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { GAMES } from '~/usecase/mock/games';
 import { Button } from '~/components/ui/button';
 import GameIcon from '~/components/commons/GameIcon';
-import { GameId, ProviderId } from '~/domain/enums/provider.enum';
-import { Command, CommandItem, CommandList, CommandEmpty, CommandGroup, CommandInput, CommandDialog } from '~/components/ui/command';
+import { ProviderId } from '~/domain/enums/provider.enum';
+import {
+  Command,
+  CommandItem,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandDialog
+} from '~/components/ui/command';
 
-interface GameStepProps {
-  selected?: GameId;
-  onSelect: (gameId: GameId) => void;
-}
-
-const FEATURED = [GameId.Minecraft, GameId.Valheim, GameId.VintageStory];
+import { FEATURED_GAMES } from './constants';
 
 const GameStep = ({ selected, onSelect }: GameStepProps) => {
   const [pickerOpen, setPickerOpen] = React.useState(false);
@@ -26,7 +33,7 @@ const GameStep = ({ selected, onSelect }: GameStepProps) => {
 
   return (
     <div className="grid grid-cols-2 gap-3">
-      {FEATURED.map((id) => {
+      {FEATURED_GAMES.map((id) => {
         const game = GAMES.find((g) => g.id === id)!;
         const active = selected === id;
         return (
@@ -62,7 +69,12 @@ const GameStep = ({ selected, onSelect }: GameStepProps) => {
         </span>
       </button>
 
-      <CommandDialog open={pickerOpen} onOpenChange={setPickerOpen} title="Choose a game" description="Thunderstore supported games">
+      <CommandDialog
+        open={pickerOpen}
+        title="Choose a game"
+        onOpenChange={setPickerOpen}
+        description="Thunderstore supported games"
+      >
         <Command>
           <CommandInput placeholder="Search games" />
           <CommandList>

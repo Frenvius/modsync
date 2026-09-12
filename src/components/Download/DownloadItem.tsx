@@ -1,32 +1,21 @@
-import type { LucideIcon } from 'lucide-react';
-import type { DownloadItem as DownloadItemModel } from '~/domain/interfaces/download.interface';
+import type { DownloadItemProps } from './types';
 
-import React from 'react';
-import { X, Play, Check, Pause, Boxes, Package, ArrowUp, HardDrive, RotateCcw, TriangleAlert } from 'lucide-react';
+import { X, Play, Check, Pause, RotateCcw, TriangleAlert } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Button } from '~/components/ui/button';
 import { Progress } from '~/components/ui/progress';
 import { useAppStore } from '~/usecase/store/appStore';
-import { DownloadKind, DownloadStatus } from '~/domain/enums/provider.enum';
+import { DownloadStatus } from '~/domain/enums/provider.enum';
 import { formatEta, formatBytes, formatSpeed } from '~/usecase/util/formatUtils';
 
-interface DownloadItemProps {
-  item: DownloadItemModel;
-}
-
-const KIND_ICON: Record<DownloadKind, LucideIcon> = {
-  [DownloadKind.InstallMod]: Package,
-  [DownloadKind.UpdateMod]: ArrowUp,
-  [DownloadKind.InstallModpack]: Boxes,
-  [DownloadKind.DownloadGameVersion]: HardDrive
-};
+import { DOWNLOAD_KIND_ICONS } from './constants';
 
 const DownloadItem = ({ item }: DownloadItemProps) => {
   const pause = useAppStore((s) => s.pauseDownload);
   const resume = useAppStore((s) => s.resumeDownload);
   const cancel = useAppStore((s) => s.cancelDownload);
-  const Icon = KIND_ICON[item.kind];
+  const Icon = DOWNLOAD_KIND_ICONS[item.kind];
   const active = item.status === DownloadStatus.Active;
   const done = item.status === DownloadStatus.Completed;
   const failed = item.status === DownloadStatus.Failed;
@@ -84,7 +73,14 @@ const DownloadItem = ({ item }: DownloadItemProps) => {
         </span>
       </div>
       {!done && !cancelled && (
-        <Progress value={item.progress} className={cn('h-1.5', failed && '[&>div]:bg-destructive', item.status === DownloadStatus.Paused && '[&>div]:bg-muted-foreground')} />
+        <Progress
+          value={item.progress}
+          className={cn(
+            'h-1.5',
+            failed && '[&>div]:bg-destructive',
+            item.status === DownloadStatus.Paused && '[&>div]:bg-muted-foreground'
+          )}
+        />
       )}
     </div>
   );

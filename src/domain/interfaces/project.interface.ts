@@ -2,8 +2,8 @@ import type { GameId, LoaderId, ProviderId, ProjectType, DependencyType } from '
 
 export interface Dependency {
   name: string;
-  type: DependencyType;
   projectId: string;
+  type: DependencyType;
   versionRange?: string;
 }
 
@@ -22,8 +22,8 @@ export interface ProjectVersion {
 }
 
 export interface ProjectProviderInfo {
-  id: ProviderId;
   url: string;
+  id: ProviderId;
   externalId: string;
 }
 
@@ -40,12 +40,12 @@ export interface Project {
   followers: number;
   type: ProjectType;
   description: string;
-  categories: Array<string>;
+  latestVersion: string;
   gallery: Array<string>;
   loaders: Array<LoaderId>;
+  categories: Array<string>;
   gameVersions: Array<string>;
   provider: ProjectProviderInfo;
-  latestVersion: string;
 }
 
 export interface SearchQuery {
@@ -67,13 +67,13 @@ export interface SearchResult {
 }
 
 export interface CompatibilityIssue {
-  kind: 'loader' | 'version' | 'conflict' | 'dependency';
   message: string;
-  severity: 'error' | 'warning';
   remediation?: string;
+  severity: 'error' | 'warning';
+  kind: 'loader' | 'version' | 'conflict' | 'dependency';
 }
 
 export interface CompatibilityReport {
-  issues: Array<CompatibilityIssue>;
   compatible: boolean;
+  issues: Array<CompatibilityIssue>;
 }

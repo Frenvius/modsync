@@ -2,15 +2,15 @@ import type { ProviderId } from '~/domain/enums/provider.enum';
 import type { ModProvider, ProviderMeta } from '~/domain/interfaces/provider.interface';
 import type { Project, SearchQuery, SearchResult, ProjectVersion } from '~/domain/interfaces/project.interface';
 
-import { wait } from '~/usecase/util/formatUtils';
 import { PROVIDERS } from '~/usecase/mock/games';
+import { wait } from '~/usecase/util/formatUtils';
 import { PROJECTS, PROJECT_VERSIONS } from '~/usecase/mock/projects';
 
 const SORTERS: Record<NonNullable<SearchQuery['sort']>, (a: Project, b: Project) => number> = {
-  newest: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
-  updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
   relevance: (a, b) => b.downloads - a.downloads,
-  downloads: (a, b) => b.downloads - a.downloads
+  downloads: (a, b) => b.downloads - a.downloads,
+  newest: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
+  updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt)
 };
 
 const matches = (project: Project, query: SearchQuery) => {
@@ -20,7 +20,11 @@ const matches = (project: Project, query: SearchQuery) => {
   if (query.loader && project.loaders.length > 0 && !project.loaders.includes(query.loader)) return false;
   if (query.query) {
     const q = query.query.toLowerCase();
-    return project.name.toLowerCase().includes(q) || project.summary.toLowerCase().includes(q) || project.author.toLowerCase().includes(q);
+    return (
+      project.name.toLowerCase().includes(q) ||
+      project.summary.toLowerCase().includes(q) ||
+      project.author.toLowerCase().includes(q)
+    );
   }
   return true;
 };
@@ -30,8 +34,10 @@ class MockProvider implements ModProvider {
 
   async search(query: SearchQuery): Promise<SearchResult> {
     await wait(120 + Math.random() * 180);
-    const items = PROJECTS.filter((p) => p.provider.id === this.meta.id && matches(p, query)).sort(SORTERS[query.sort ?? 'relevance']);
-    return { total: items.length, items };
+    const items = PROJECTS.filter((p) => p.provider.id === this.meta.id && matches(p, query)).sort(
+      SORTERS[query.sort ?? 'relevance']
+    );
+    return { items, total: items.length };
   }
 
   async getProject(projectId: string): Promise<Project | undefined> {

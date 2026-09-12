@@ -1,4 +1,5 @@
-export const formatCompact = (value: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+export const formatCompact = (value: number) =>
+  Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 
 export const formatBytes = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -9,7 +10,7 @@ export const formatBytes = (bytes: number) => {
 
 export const formatSpeed = (bytesPerSecond: number) => `${formatBytes(bytesPerSecond)}/s`;
 
-export const formatRelative = (iso: string | null) => {
+export const formatRelative = (iso: null | string) => {
   if (!iso) return 'Never';
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(diff / 60_000);
@@ -24,7 +25,8 @@ export const formatRelative = (iso: string | null) => {
   return `${Math.round(months / 12)}y ago`;
 };
 
-export const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+export const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 export const formatPlaytime = (minutes: number) => {
   if (minutes === 0) return '0h';

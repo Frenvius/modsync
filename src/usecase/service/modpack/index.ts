@@ -22,44 +22,61 @@ class Service {
     const now = new Date().toISOString();
     const base = { gameId: instance.gameId };
     return {
-      id: uid('pack'),
-      name: instance.name,
       author,
-      gameId: instance.gameId,
-      gameVersion: instance.gameVersion,
-      loader: instance.loader,
-      version: '1.0.0',
-      shareCode: shareCodeFor(base),
-      coverColor: instance.iconColor,
       updatedAt: now,
-      description: instance.description,
+      id: uid('pack'),
+      version: '1.0.0',
+      name: instance.name,
+      gameId: instance.gameId,
+      loader: instance.loader,
+      shareCode: shareCodeFor(base),
       sourceInstanceId: instance.id,
+      coverColor: instance.iconColor,
+      gameVersion: instance.gameVersion,
+      description: instance.description,
+      releases: [{ date: now, version: '1.0.0', changelog: `Exported from instance "${instance.name}".` }],
       mods: instance.mods
         .filter((m) => m.enabled)
-        .map((m) => ({ name: m.name, pinned: false, version: m.installedVersion, provider: m.provider, projectId: m.projectId, iconColor: m.iconColor })),
-      releases: [{ version: '1.0.0', date: now, changelog: `Exported from instance "${instance.name}".` }]
+        .map((m) => ({
+          name: m.name,
+          pinned: false,
+          provider: m.provider,
+          projectId: m.projectId,
+          iconColor: m.iconColor,
+          version: m.installedVersion
+        }))
     };
   }
 
-  async createEmpty(input: Pick<Modpack, 'name' | 'gameId' | 'gameVersion' | 'loader' | 'description'>, author: string): Promise<Modpack> {
+  async createEmpty(
+    input: Pick<Modpack, 'name' | 'gameId' | 'loader' | 'gameVersion' | 'description'>,
+    author: string
+  ): Promise<Modpack> {
     await wait(400);
     const now = new Date().toISOString();
     return {
       ...input,
-      id: uid('pack'),
       author,
-      version: '0.1.0',
-      shareCode: shareCodeFor(input),
-      coverColor: '#7a9cc6',
-      updatedAt: now,
       mods: [],
-      releases: [{ version: '0.1.0', date: now, changelog: 'Created.' }]
+      updatedAt: now,
+      id: uid('pack'),
+      version: '0.1.0',
+      coverColor: '#7a9cc6',
+      shareCode: shareCodeFor(input),
+      releases: [{ date: now, version: '0.1.0', changelog: 'Created.' }]
     };
   }
 
   async clone(source: Modpack, author: string): Promise<Modpack> {
     await wait(300);
-    return { ...source, id: uid('pack'), author, name: `${source.name} (fork)`, shareCode: shareCodeFor(source), updatedAt: new Date().toISOString() };
+    return {
+      ...source,
+      author,
+      id: uid('pack'),
+      name: `${source.name} (fork)`,
+      shareCode: shareCodeFor(source),
+      updatedAt: new Date().toISOString()
+    };
   }
 
   async share(modpack: Modpack): Promise<ShareLink> {

@@ -1,39 +1,24 @@
-import type { Instance } from '~/domain/interfaces/instance.interface';
 import type { ProjectVersion } from '~/domain/interfaces/project.interface';
+import type { ModSortKey, ModsTabProps, ModStatusFilter, ChangeVersionDialogProps } from '~/components/Instance/types';
 
 import React from 'react';
-import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+
+import { toast } from 'sonner';
 import { Plus, Trash2, ArrowUp, Package } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import { Checkbox } from '~/components/ui/checkbox';
 import { useAppStore } from '~/usecase/store/appStore';
 import SearchBar from '~/components/commons/SearchBar';
-import EmptyState from '~/components/commons/EmptyState';
 import ModListItem from '~/components/Mods/ModListItem';
+import EmptyState from '~/components/commons/EmptyState';
 import { projectService } from '~/usecase/service/project';
 import ConfirmDialog from '~/components/commons/ConfirmDialog';
+import { MOD_STATUS_LABELS } from '~/components/Instance/constants';
 import { ProjectType, UpdateStatus } from '~/domain/enums/provider.enum';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 import { Dialog, DialogTitle, DialogFooter, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
-
-interface ModsTabProps {
-  instance: Instance;
-  contentType: ProjectType;
-}
-
-type StatusFilter = 'all' | UpdateStatus;
-type SortKey = 'name' | 'status' | 'provider';
-
-const STATUS_LABELS: Record<StatusFilter, string> = {
-  all: 'All statuses',
-  [UpdateStatus.UpToDate]: 'Up to date',
-  [UpdateStatus.UpdateAvailable]: 'Update available',
-  [UpdateStatus.Incompatible]: 'Incompatible',
-  [UpdateStatus.DependencyMissing]: 'Dependency missing',
-  [UpdateStatus.Disabled]: 'Disabled'
-};
 
 const ModsTab = ({ instance, contentType }: ModsTabProps) => {
   const navigate = useNavigate();
@@ -41,17 +26,23 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
   const removeMods = useAppStore((s) => s.removeMods);
   const toggleMod = useAppStore((s) => s.toggleMod);
   const [query, setQuery] = React.useState('');
-  const [sort, setSort] = React.useState<SortKey>('name');
-  const [status, setStatus] = React.useState<StatusFilter>('all');
+  const [sort, setSort] = React.useState<ModSortKey>('name');
+  const [status, setStatus] = React.useState<ModStatusFilter>('all');
   const [selected, setSelected] = React.useState<Array<string>>([]);
   const [removeTarget, setRemoveTarget] = React.useState<Array<string>>([]);
-  const [versionTarget, setVersionTarget] = React.useState<string | null>(null);
+  const [versionTarget, setVersionTarget] = React.useState<null | string>(null);
 
   const mods = instance.mods
     .filter((m) => m.type === contentType)
     .filter((m) => status === 'all' || m.status === status)
     .filter((m) => m.name.toLowerCase().includes(query.toLowerCase()) || m.author.toLowerCase().includes(query.toLowerCase()))
-    .sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : sort === 'status' ? a.status.localeCompare(b.status) : a.provider.localeCompare(b.provider)));
+    .sort((a, b) =>
+      sort === 'name'
+        ? a.name.localeCompare(b.name)
+        : sort === 'status'
+          ? a.status.localeCompare(b.status)
+          : a.provider.localeCompare(b.provider)
+    );
 
   const updatable = mods.filter((m) => m.status === UpdateStatus.UpdateAvailable).map((m) => m.projectId);
   const selectedUpdatable = selected.filter((id) => updatable.includes(id));
@@ -75,31 +66,38 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
   const handlers = {
     onUpdate: (id: string) => void update([id]),
     onRemove: (id: string) => setRemoveTarget([id]),
-    onToggle: (id: string, enabled: boolean) => toggleMod(instance.id, id, enabled),
-    onChangeVersion: (id: string) => setVersionTarget(id)
+    onChangeVersion: (id: string) => setVersionTarget(id),
+    onToggle: (id: string, enabled: boolean) => toggleMod(instance.id, id, enabled)
   };
 
-  const label = contentType === ProjectType.Mod ? 'mods' : contentType === ProjectType.ShaderPack ? 'shader packs' : contentType === ProjectType.DataPack ? 'data packs' : 'resource packs';
+  const label =
+    contentType === ProjectType.Mod
+      ? 'mods'
+      : contentType === ProjectType.ShaderPack
+        ? 'shader packs'
+        : contentType === ProjectType.DataPack
+          ? 'data packs'
+          : 'resource packs';
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <SearchBar value={query} onChange={setQuery} placeholder={`Search ${label}`} className="w-64" />
-        <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
+        <SearchBar value={query} className="w-64" onChange={setQuery} placeholder={`Search ${label}`} />
+        <Select value={status} onValueChange={(v) => setStatus(v as ModStatusFilter)}>
           <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {(Object.keys(STATUS_LABELS) as Array<StatusFilter>).map((k) => (
+              {(Object.keys(MOD_STATUS_LABELS) as Array<ModStatusFilter>).map((k) => (
                 <SelectItem key={k} value={k}>
-                  {STATUS_LABELS[k]}
+                  {MOD_STATUS_LABELS[k]}
                 </SelectItem>
               ))}
             </SelectGroup>
           </SelectContent>
         </Select>
-        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+        <Select value={sort} onValueChange={(v) => setSort(v as ModSortKey)}>
           <SelectTrigger className="w-36">
             <SelectValue />
           </SelectTrigger>
@@ -115,7 +113,12 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
         {selected.length > 0 ? (
           <>
             <span className="text-xs text-muted-foreground">{selected.length} selected</span>
-            <Button size="sm" variant="secondary" disabled={selectedUpdatable.length === 0} onClick={() => update(selectedUpdatable)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={selectedUpdatable.length === 0}
+              onClick={() => update(selectedUpdatable)}
+            >
               <ArrowUp data-icon="inline-start" />
               Update selected ({selectedUpdatable.length})
             </Button>
@@ -137,7 +140,11 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
       </div>
 
       {mods.length === 0 ? (
-        <EmptyState icon={Package} title={`No ${label}`} description={query || status !== 'all' ? 'Nothing matches the current filters.' : `Browse Discover to add ${label}.`}>
+        <EmptyState
+          icon={Package}
+          title={`No ${label}`}
+          description={query || status !== 'all' ? 'Nothing matches the current filters.' : `Browse Discover to add ${label}.`}
+        >
           <Button onClick={() => navigate(`/discover?instance=${instance.id}`)}>
             <Plus data-icon="inline-start" />
             Discover {label}
@@ -156,16 +163,22 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
             <span />
           </div>
           {mods.map((m) => (
-            <ModListItem key={m.projectId} mod={m} handlers={handlers} selected={selected.includes(m.projectId)} onSelect={select} />
+            <ModListItem
+              mod={m}
+              key={m.projectId}
+              onSelect={select}
+              handlers={handlers}
+              selected={selected.includes(m.projectId)}
+            />
           ))}
         </div>
       )}
 
       <ConfirmDialog
         destructive
+        onConfirm={remove}
         confirmLabel="Remove"
         open={removeTarget.length > 0}
-        onConfirm={remove}
         onOpenChange={(o) => !o && setRemoveTarget([])}
         title={`Remove ${removeTarget.length} ${removeTarget.length === 1 ? 'mod' : 'mods'}?`}
         description="Config files are kept so you can reinstall later without losing settings."
@@ -174,12 +187,6 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
     </div>
   );
 };
-
-interface ChangeVersionDialogProps {
-  instance: Instance;
-  projectId: string | null;
-  onOpenChange: (open: boolean) => void;
-}
 
 const ChangeVersionDialog = ({ instance, projectId, onOpenChange }: ChangeVersionDialogProps) => {
   const changeModVersion = useAppStore((s) => s.changeModVersion);
@@ -228,7 +235,7 @@ const ChangeVersionDialog = ({ instance, projectId, onOpenChange }: ChangeVersio
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={!picked} onClick={apply}>
+          <Button onClick={apply} disabled={!picked}>
             Switch version
           </Button>
         </DialogFooter>

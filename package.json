@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
-    "lint": "oxlint",
+    "lint": "eslint src vite.config.ts",
+    "lint:fix": "eslint src vite.config.ts --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "preview": "vite preview",
     "dev:vite": "vite --port 1420",
     "build:vite": "tsc -b && vite build"
@@ -31,13 +34,22 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
-    "oxlint": "^1.79.0",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-perfectionist": "^5.11.0",
+    "eslint-plugin-prettier": "^5.5.6",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.6",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "prettier": "^3.9.6",
     "typescript": "~6.0.2",
+    "typescript-eslint": "^8.70.0",
     "vite": "^8.2.2"
   }
 }

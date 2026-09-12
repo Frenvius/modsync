@@ -1,15 +1,16 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useNavigate } from 'react-router-dom';
-import { Boxes, ChevronDown, LogOut, Minus, Settings, Square, User, X } from 'lucide-react';
+import { X, User, Boxes, Minus, LogOut, Square, Settings, ChevronDown } from 'lucide-react';
 
-import { USER } from '~/usecase/mock/settings';
 import { GAMES } from '~/usecase/mock/games';
-import { Avatar, AvatarFallback } from '~/components/ui/avatar';
+import { USER } from '~/usecase/mock/settings';
+import GameIcon from '~/components/commons/GameIcon';
 import { GameId } from '~/domain/enums/provider.enum';
 import { useAppStore } from '~/usecase/store/appStore';
-import GameIcon from '~/components/commons/GameIcon';
+import { Avatar, AvatarFallback } from '~/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuItem,
@@ -29,21 +30,26 @@ const Titlebar = () => {
   const minimizeWindow = () => void getCurrentWindow().minimize();
   const maximizeWindow = () => void getCurrentWindow().toggleMaximize();
   const startDragging = (event: React.MouseEvent<HTMLElement>) => {
-    if (!desktop || event.button !== 0 || !(event.target instanceof HTMLElement) || event.target.closest('button, [role="menuitem"], input')) return;
+    if (
+      !desktop ||
+      event.button !== 0 ||
+      !(event.target instanceof HTMLElement) ||
+      event.target.closest('button, [role="menuitem"], input')
+    )
+      return;
 
     if (event.detail === 2) {
       void getCurrentWindow().toggleMaximize();
       return;
     }
 
-    let onMove: () => void;
+    const onMove = () => {
+      cleanup();
+      void getCurrentWindow().startDragging();
+    };
     const cleanup = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', cleanup);
-    };
-    onMove = () => {
-      cleanup();
-      void getCurrentWindow().startDragging();
     };
 
     window.addEventListener('mousemove', onMove);
@@ -53,10 +59,13 @@ const Titlebar = () => {
   const selectedGame = GAMES.find((game) => game.id === selectedGameId)!;
 
   return (
-    <header onMouseDown={startDragging} className="flex h-8 shrink-0 select-none items-center border-b border-border/50 bg-toolbar text-foreground">
+    <header
+      onMouseDown={startDragging}
+      className="flex h-8 shrink-0 select-none items-center border-b border-border/50 bg-toolbar text-foreground"
+    >
       <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
         <span className="flex size-5 items-center justify-center rounded bg-primary text-primary-foreground">
-          <Boxes aria-hidden="true" className="size-3.5" strokeWidth={2} />
+          <Boxes strokeWidth={2} aria-hidden="true" className="size-3.5" />
         </span>
         <span className="truncate text-xs font-semibold">Forge Hub</span>
       </div>
@@ -65,8 +74,8 @@ const Titlebar = () => {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex h-6 min-w-36 items-center gap-2 rounded px-2 text-xs transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             aria-label="Select game"
+            className="flex h-6 min-w-36 items-center gap-2 rounded px-2 text-xs transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <GameIcon size="sm" gameId={selectedGame.id} />
             <span className="flex-1 text-left font-medium">{selectedGame.name}</span>
@@ -75,7 +84,11 @@ const Titlebar = () => {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
           {GAMES.map((game) => (
-            <DropdownMenuItem key={game.id} className={game.id === selectedGameId ? 'bg-accent' : undefined} onClick={() => setSelectedGame(game.id)}>
+            <DropdownMenuItem
+              key={game.id}
+              onClick={() => setSelectedGame(game.id)}
+              className={game.id === selectedGameId ? 'bg-accent' : undefined}
+            >
               <GameIcon size="sm" gameId={game.id} />
               {game.name}
             </DropdownMenuItem>
@@ -88,11 +101,14 @@ const Titlebar = () => {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="mr-1 flex size-6 items-center justify-center rounded transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               aria-label="Minecraft account"
+              className="mr-1 flex size-6 items-center justify-center rounded transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               <Avatar className="size-5">
-                <AvatarFallback style={{ background: USER.avatarColor }} className="text-[11px] font-semibold text-primary-foreground">
+                <AvatarFallback
+                  style={{ background: USER.avatarColor }}
+                  className="text-[11px] font-semibold text-primary-foreground"
+                >
                   {USER.name.slice(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
@@ -123,14 +139,32 @@ const Titlebar = () => {
       )}
 
       <div role="group" className="flex h-full" aria-label="Window controls">
-        <button disabled={!desktop} type="button" aria-label="Minimize" onClick={minimizeWindow} className="flex w-9 items-center justify-center text-muted-foreground">
-          <Minus aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
+        <button
+          type="button"
+          disabled={!desktop}
+          aria-label="Minimize"
+          onClick={minimizeWindow}
+          className="flex w-9 items-center justify-center text-muted-foreground"
+        >
+          <Minus strokeWidth={1.5} aria-hidden="true" className="size-3.5" />
         </button>
-        <button disabled={!desktop} type="button" aria-label="Maximize" onClick={maximizeWindow} className="flex w-9 items-center justify-center text-muted-foreground">
-          <Square aria-hidden="true" className="size-3" strokeWidth={1.5} />
+        <button
+          type="button"
+          disabled={!desktop}
+          aria-label="Maximize"
+          onClick={maximizeWindow}
+          className="flex w-9 items-center justify-center text-muted-foreground"
+        >
+          <Square strokeWidth={1.5} aria-hidden="true" className="size-3" />
         </button>
-        <button disabled={!desktop} type="button" aria-label="Close" onClick={closeWindow} className="flex w-9 items-center justify-center text-muted-foreground">
-          <X aria-hidden="true" className="size-3.5" strokeWidth={1.5} />
+        <button
+          type="button"
+          aria-label="Close"
+          disabled={!desktop}
+          onClick={closeWindow}
+          className="flex w-9 items-center justify-center text-muted-foreground"
+        >
+          <X strokeWidth={1.5} aria-hidden="true" className="size-3.5" />
         </button>
       </div>
     </header>

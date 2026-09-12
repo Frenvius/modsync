@@ -1,5 +1,3 @@
-import React from 'react';
-
 import { Button } from '~/components/ui/button';
 import { Dialog, DialogTitle, DialogFooter, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
 
@@ -13,7 +11,15 @@ interface ConfirmDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const ConfirmDialog = ({ open, title, description, confirmLabel = 'Confirm', destructive, onConfirm, onOpenChange }: ConfirmDialogProps) => {
+const ConfirmDialog = ({
+  open,
+  title,
+  onConfirm,
+  description,
+  destructive,
+  onOpenChange,
+  confirmLabel = 'Confirm'
+}: ConfirmDialogProps) => {
   const confirm = () => {
     onConfirm();
     onOpenChange(false);
@@ -30,7 +36,7 @@ const ConfirmDialog = ({ open, title, description, confirmLabel = 'Confirm', des
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant={destructive ? 'destructive' : 'default'} onClick={confirm}>
+          <Button onClick={confirm} variant={destructive ? 'destructive' : 'default'}>
             {confirmLabel}
           </Button>
         </DialogFooter>

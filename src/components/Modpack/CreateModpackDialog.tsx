@@ -1,27 +1,24 @@
+import type { CreateModpackDialogProps } from './types';
 import type { GameId, LoaderId } from '~/domain/enums/provider.enum';
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 
 import { GAMES } from '~/usecase/mock/games';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
-import { useAppStore } from '~/usecase/store/appStore';
 import GameIcon from '~/components/commons/GameIcon';
+import { useAppStore } from '~/usecase/store/appStore';
 import { projectService } from '~/usecase/service/project';
 import InstanceIcon from '~/components/commons/InstanceIcon';
 import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 import { Dialog, DialogTitle, DialogFooter, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
-
-interface CreateModpackDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
 
 const CreateModpackDialog = ({ open, onOpenChange }: CreateModpackDialogProps) => {
   const navigate = useNavigate();
@@ -61,7 +58,7 @@ const CreateModpackDialog = ({ open, onOpenChange }: CreateModpackDialogProps) =
   const submitEmpty = async () => {
     if (name.trim().length < 2) return;
     setBusy(true);
-    const pack = await createEmpty({ name: name.trim(), gameId, gameVersion, loader, description });
+    const pack = await createEmpty({ gameId, loader, gameVersion, description, name: name.trim() });
     finish(pack.id);
   };
 
@@ -102,7 +99,7 @@ const CreateModpackDialog = ({ open, onOpenChange }: CreateModpackDialogProps) =
               </Select>
             </div>
             <DialogFooter>
-              <Button disabled={!instanceId || busy} onClick={submitFromInstance}>
+              <Button onClick={submitFromInstance} disabled={!instanceId || busy}>
                 {busy && <Loader2 data-icon="inline-start" className="animate-spin" />}
                 Create modpack
               </Button>
@@ -111,7 +108,7 @@ const CreateModpackDialog = ({ open, onOpenChange }: CreateModpackDialogProps) =
           <TabsContent value="empty" className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="pack-name">Name</Label>
-              <Input id="pack-name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input value={name} id="pack-name" onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col gap-2">
@@ -169,10 +166,10 @@ const CreateModpackDialog = ({ open, onOpenChange }: CreateModpackDialogProps) =
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="pack-desc">Description</Label>
-              <Textarea id="pack-desc" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+              <Textarea rows={3} id="pack-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
             <DialogFooter>
-              <Button disabled={name.trim().length < 2 || busy} onClick={submitEmpty}>
+              <Button onClick={submitEmpty} disabled={name.trim().length < 2 || busy}>
                 {busy && <Loader2 data-icon="inline-start" className="animate-spin" />}
                 Create modpack
               </Button>

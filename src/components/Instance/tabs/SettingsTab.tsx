@@ -1,25 +1,22 @@
-import type { Instance } from '~/domain/interfaces/instance.interface';
+import type { SwitchRowProps, InstanceTabProps } from '~/components/Instance/types';
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import { toast } from 'sonner';
 import { Save, Trash2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
 import { Switch } from '~/components/ui/switch';
 import { Textarea } from '~/components/ui/textarea';
-import { useAppStore } from '~/usecase/store/appStore';
 import { GameId } from '~/domain/enums/provider.enum';
+import { useAppStore } from '~/usecase/store/appStore';
 import ConfirmDialog from '~/components/commons/ConfirmDialog';
 import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '~/components/ui/card';
 
-interface SettingsTabProps {
-  instance: Instance;
-}
-
-const SettingsTab = ({ instance }: SettingsTabProps) => {
+const SettingsTab = ({ instance }: InstanceTabProps) => {
   const navigate = useNavigate();
   const renameInstance = useAppStore((s) => s.renameInstance);
   const deleteInstance = useAppStore((s) => s.deleteInstance);
@@ -50,10 +47,14 @@ const SettingsTab = ({ instance }: SettingsTabProps) => {
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="inst-name">Name</Label>
-            <Input id="inst-name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input value={name} id="inst-name" onChange={(e) => setName(e.target.value)} />
           </div>
-          <SwitchRow label="Close launcher when the game starts" description="Reopens when the game exits." defaultChecked />
-          <SwitchRow label="Check for mod updates on launch" description="Only safe updates are applied automatically." defaultChecked={false} />
+          <SwitchRow defaultChecked description="Reopens when the game exits." label="Close launcher when the game starts" />
+          <SwitchRow
+            defaultChecked={false}
+            label="Check for mod updates on launch"
+            description="Only safe updates are applied automatically."
+          />
         </CardContent>
       </Card>
 
@@ -66,11 +67,25 @@ const SettingsTab = ({ instance }: SettingsTabProps) => {
           <CardContent className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="inst-memory">Memory (MB)</Label>
-              <Input id="inst-memory" type="number" step={512} min={1024} value={memory} className="w-40" onChange={(e) => setMemory(e.target.value)} />
+              <Input
+                step={512}
+                min={1024}
+                type="number"
+                value={memory}
+                id="inst-memory"
+                className="w-40"
+                onChange={(e) => setMemory(e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="inst-java">JVM arguments</Label>
-              <Textarea id="inst-java" rows={2} value={javaArgs} className="font-mono text-xs" onChange={(e) => setJavaArgs(e.target.value)} />
+              <Textarea
+                rows={2}
+                id="inst-java"
+                value={javaArgs}
+                className="font-mono text-xs"
+                onChange={(e) => setJavaArgs(e.target.value)}
+              />
             </div>
           </CardContent>
         </Card>
@@ -98,8 +113,8 @@ const SettingsTab = ({ instance }: SettingsTabProps) => {
 
       <ConfirmDialog
         destructive
-        open={confirmDelete}
         onConfirm={remove}
+        open={confirmDelete}
         confirmLabel="Delete"
         onOpenChange={setConfirmDelete}
         title={`Delete "${instance.name}"?`}
@@ -108,12 +123,6 @@ const SettingsTab = ({ instance }: SettingsTabProps) => {
     </div>
   );
 };
-
-interface SwitchRowProps {
-  label: string;
-  description?: string;
-  defaultChecked?: boolean;
-}
 
 export const SwitchRow = ({ label, description, defaultChecked }: SwitchRowProps) => {
   const [checked, setChecked] = React.useState(defaultChecked ?? false);

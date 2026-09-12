@@ -1,16 +1,16 @@
-import type { InstalledMod } from '~/domain/interfaces/instance.interface';
+import type { ModListItemProps } from './types';
 
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import { Trash2, ArrowUp, History, ExternalLink, MoreHorizontal } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Button } from '~/components/ui/button';
 import { Switch } from '~/components/ui/switch';
 import { Checkbox } from '~/components/ui/checkbox';
-import { UpdateStatus } from '~/domain/enums/provider.enum';
 import ProjectIcon from '~/components/commons/ProjectIcon';
-import { ProviderBadge, UpdateBadge } from '~/components/commons/Badges';
+import { UpdateStatus } from '~/domain/enums/provider.enum';
+import { UpdateBadge, ProviderBadge } from '~/components/commons/Badges';
 import {
   DropdownMenu,
   DropdownMenuItem,
@@ -19,20 +19,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from '~/components/ui/dropdown-menu';
-
-export interface ModRowHandlers {
-  onUpdate: (projectId: string) => void;
-  onRemove: (projectId: string) => void;
-  onToggle: (projectId: string, enabled: boolean) => void;
-  onChangeVersion: (projectId: string) => void;
-}
-
-interface ModListItemProps {
-  mod: InstalledMod;
-  selected: boolean;
-  handlers: ModRowHandlers;
-  onSelect: (projectId: string, selected: boolean) => void;
-}
 
 const ModListItem = ({ mod, selected, handlers, onSelect }: ModListItemProps) => {
   const navigate = useNavigate();
@@ -46,10 +32,18 @@ const ModListItem = ({ mod, selected, handlers, onSelect }: ModListItemProps) =>
         !mod.enabled && 'opacity-60'
       )}
     >
-      <Checkbox checked={selected} aria-label={`Select ${mod.name}`} onCheckedChange={(v) => onSelect(mod.projectId, v === true)} />
+      <Checkbox
+        checked={selected}
+        aria-label={`Select ${mod.name}`}
+        onCheckedChange={(v) => onSelect(mod.projectId, v === true)}
+      />
       <ProjectIcon size="md" name={mod.name} color={mod.iconColor} />
       <div className="flex min-w-0 flex-col">
-        <button type="button" className="truncate text-left font-medium hover:underline" onClick={() => navigate(`/project/${mod.projectId}`)}>
+        <button
+          type="button"
+          onClick={() => navigate(`/project/${mod.projectId}`)}
+          className="truncate text-left font-medium hover:underline"
+        >
           {mod.name}
         </button>
         <span className="truncate text-xs text-muted-foreground">

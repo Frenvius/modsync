@@ -13,7 +13,7 @@ interface EmptyStateProps {
   children?: React.ReactNode;
 }
 
-const EmptyState = ({ icon: Icon, title, description, children, className }: EmptyStateProps) => (
+const EmptyState = ({ title, children, className, icon: Icon, description }: EmptyStateProps) => (
   <Empty className={cn('rounded-lg border border-dashed border-border/70 bg-card/40 py-16', className)}>
     <EmptyHeader>
       <EmptyMedia variant="icon">

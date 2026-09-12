@@ -5,95 +5,95 @@ import { GameId, LoaderId, ProviderId, ProjectType } from '~/domain/enums/provid
 
 export const GAMES: Array<Game> = [
   {
-    id: GameId.Minecraft,
-    name: 'Minecraft',
     color: '#5b8c3a',
+    name: 'Minecraft',
+    id: GameId.Minecraft,
     ecosystemLabel: 'Modrinth + CurseForge',
     providers: [ProviderId.Modrinth, ProviderId.CurseForge],
+    contentTypes: [ProjectType.Mod, ProjectType.ResourcePack, ProjectType.ShaderPack, ProjectType.DataPack],
     versions: ['1.21.4', '1.21.1', '1.21', '1.20.6', '1.20.4', '1.20.1', '1.19.2', '1.18.2', '1.16.5', '1.12.2'],
     loaders: [
-      { id: LoaderId.Vanilla, name: 'Vanilla' },
-      { id: LoaderId.Fabric, name: 'Fabric', recommended: true },
-      { id: LoaderId.Forge, name: 'Forge' },
-      { id: LoaderId.NeoForge, name: 'NeoForge' },
-      { id: LoaderId.Quilt, name: 'Quilt' }
-    ],
-    contentTypes: [ProjectType.Mod, ProjectType.ResourcePack, ProjectType.ShaderPack, ProjectType.DataPack]
+      { name: 'Vanilla', id: LoaderId.Vanilla },
+      { name: 'Fabric', recommended: true, id: LoaderId.Fabric },
+      { name: 'Forge', id: LoaderId.Forge },
+      { name: 'NeoForge', id: LoaderId.NeoForge },
+      { name: 'Quilt', id: LoaderId.Quilt }
+    ]
   },
   {
-    id: GameId.Valheim,
     name: 'Valheim',
     color: '#b08a4a',
+    id: GameId.Valheim,
     ecosystemLabel: 'Thunderstore',
+    contentTypes: [ProjectType.Mod],
     providers: [ProviderId.Thunderstore],
     versions: ['0.219.16', '0.219.13', '0.218.21', '0.217.46'],
-    loaders: [{ id: LoaderId.BepInEx, name: 'BepInEx', recommended: true }],
-    contentTypes: [ProjectType.Mod]
+    loaders: [{ name: 'BepInEx', recommended: true, id: LoaderId.BepInEx }]
   },
   {
-    id: GameId.VintageStory,
-    name: 'Vintage Story',
     color: '#7a6a4d',
+    name: 'Vintage Story',
+    id: GameId.VintageStory,
     ecosystemLabel: 'ModDB',
+    contentTypes: [ProjectType.Mod],
     providers: [ProviderId.VintageStoryDb],
     versions: ['1.20.4', '1.20.1', '1.19.8', '1.19.4', '1.18.15'],
-    loaders: [{ id: LoaderId.Vanilla, name: 'Built-in', recommended: true }],
-    contentTypes: [ProjectType.Mod]
+    loaders: [{ name: 'Built-in', recommended: true, id: LoaderId.Vanilla }]
   },
   {
+    color: '#3f7fbf',
     id: GameId.RiskOfRain2,
     name: 'Risk of Rain 2',
-    color: '#3f7fbf',
     ecosystemLabel: 'Thunderstore',
+    contentTypes: [ProjectType.Mod],
     providers: [ProviderId.Thunderstore],
     versions: ['1.3.9', '1.3.6', '1.2.4'],
-    loaders: [{ id: LoaderId.BepInEx, name: 'BepInEx', recommended: true }],
-    contentTypes: [ProjectType.Mod]
+    loaders: [{ name: 'BepInEx', recommended: true, id: LoaderId.BepInEx }]
   },
   {
-    id: GameId.LethalCompany,
-    name: 'Lethal Company',
     color: '#c9532f',
+    name: 'Lethal Company',
+    id: GameId.LethalCompany,
     ecosystemLabel: 'Thunderstore',
+    contentTypes: [ProjectType.Mod],
     providers: [ProviderId.Thunderstore],
     versions: ['v69', 'v64', 'v56', 'v50'],
-    loaders: [{ id: LoaderId.BepInEx, name: 'BepInEx', recommended: true }],
-    contentTypes: [ProjectType.Mod]
+    loaders: [{ name: 'BepInEx', recommended: true, id: LoaderId.BepInEx }]
   }
 ];
 
 export const PROVIDERS: Array<ProviderMeta> = [
   {
-    id: ProviderId.Modrinth,
     name: 'Modrinth',
     color: '#1bd96a',
-    website: 'https://modrinth.com',
+    requiresApiKey: false,
+    id: ProviderId.Modrinth,
     games: [GameId.Minecraft],
-    requiresApiKey: false
+    website: 'https://modrinth.com'
   },
   {
-    id: ProviderId.CurseForge,
-    name: 'CurseForge',
     color: '#f16436',
-    website: 'https://curseforge.com',
+    name: 'CurseForge',
+    requiresApiKey: true,
+    id: ProviderId.CurseForge,
     games: [GameId.Minecraft],
-    requiresApiKey: true
+    website: 'https://curseforge.com'
   },
   {
-    id: ProviderId.Thunderstore,
-    name: 'Thunderstore',
     color: '#4fa3ff',
+    name: 'Thunderstore',
+    requiresApiKey: false,
+    id: ProviderId.Thunderstore,
     website: 'https://thunderstore.io',
-    games: [GameId.Valheim, GameId.RiskOfRain2, GameId.LethalCompany],
-    requiresApiKey: false
+    games: [GameId.Valheim, GameId.RiskOfRain2, GameId.LethalCompany]
   },
   {
-    id: ProviderId.VintageStoryDb,
-    name: 'Vintage Story ModDB',
     color: '#d0a45a',
-    website: 'https://mods.vintagestory.at',
+    requiresApiKey: false,
+    name: 'Vintage Story ModDB',
     games: [GameId.VintageStory],
-    requiresApiKey: false
+    id: ProviderId.VintageStoryDb,
+    website: 'https://mods.vintagestory.at'
   }
 ];
 

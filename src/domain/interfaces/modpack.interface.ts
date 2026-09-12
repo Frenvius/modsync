@@ -20,16 +20,16 @@ export interface Modpack {
   name: string;
   author: string;
   gameId: GameId;
-  loader: LoaderId;
   version: string;
+  loader: LoaderId;
   shareCode: string;
   updatedAt: string;
   coverColor: string;
   description: string;
   gameVersion: string;
   mods: Array<ModpackMod>;
-  releases: Array<ModpackRelease>;
   sourceInstanceId?: string;
+  releases: Array<ModpackRelease>;
 }
 
 export interface ShareLink {

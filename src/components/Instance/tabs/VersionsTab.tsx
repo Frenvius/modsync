@@ -1,6 +1,7 @@
-import type { Instance } from '~/domain/interfaces/instance.interface';
+import type { InstanceTabProps } from '~/components/Instance/types';
 
 import React from 'react';
+
 import { toast } from 'sonner';
 import { Check, TriangleAlert } from 'lucide-react';
 
@@ -12,11 +13,7 @@ import { LOADER_NAMES } from '~/usecase/mock/games';
 import { projectService } from '~/usecase/service/project';
 import { Alert, AlertTitle, AlertDescription } from '~/components/ui/alert';
 
-interface VersionsTabProps {
-  instance: Instance;
-}
-
-const VersionsTab = ({ instance }: VersionsTabProps) => {
+const VersionsTab = ({ instance }: InstanceTabProps) => {
   const game = projectService.getGame(instance.gameId);
   const [picked, setPicked] = React.useState(instance.gameVersion);
   const unsupported = instance.mods.filter((m) => {
@@ -64,8 +61,12 @@ const VersionsTab = ({ instance }: VersionsTabProps) => {
             {unsupported.length > 0 ? (
               <Alert className="border-warning/40 text-warning">
                 <TriangleAlert />
-                <AlertTitle>{unsupported.length} mods have no release for {picked}</AlertTitle>
-                <AlertDescription>{unsupported.map((m) => m.name).join(', ')}. They will be disabled after switching.</AlertDescription>
+                <AlertTitle>
+                  {unsupported.length} mods have no release for {picked}
+                </AlertTitle>
+                <AlertDescription>
+                  {unsupported.map((m) => m.name).join(', ')}. They will be disabled after switching.
+                </AlertDescription>
               </Alert>
             ) : (
               <Alert>

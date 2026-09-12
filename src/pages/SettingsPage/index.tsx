@@ -1,28 +1,28 @@
 import type { AppSettings } from '~/domain/interfaces/settings.interface';
+import type { RowProps, ToggleRowProps, SectionBodyProps } from './types';
 
-import React from 'react';
-import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
+
+import { toast } from 'sonner';
 import { Check, FolderOpen } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Switch } from '~/components/ui/switch';
-import { useAppStore } from '~/usecase/store/appStore';
 import GameIcon from '~/components/commons/GameIcon';
+import { useAppStore } from '~/usecase/store/appStore';
 import PageHeader from '~/components/commons/PageHeader';
 import { projectService } from '~/usecase/service/project';
 import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '~/components/ui/card';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
-const SECTIONS = ['General', 'Appearance', 'Games', 'Advanced'] as const;
-type Section = (typeof SECTIONS)[number];
+import { SETTINGS_SECTIONS } from './constants';
 
 const SettingsPage = () => {
   const [params, setParams] = useSearchParams();
   const raw = params.get('section') ?? 'general';
-  const section = SECTIONS.find((s) => s.toLowerCase() === raw) ?? 'General';
+  const section = SETTINGS_SECTIONS.find((s) => s.toLowerCase() === raw) ?? 'General';
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const patch = (p: Partial<AppSettings>) => updateSettings(p);
@@ -32,7 +32,7 @@ const SettingsPage = () => {
       <PageHeader title="Settings" />
       <div className="grid grid-cols-[168px_minmax(0,1fr)] gap-4">
         <nav className="flex flex-col gap-0.5">
-          {SECTIONS.map((s) => (
+          {SETTINGS_SECTIONS.map((s) => (
             <button
               key={s}
               type="button"
@@ -47,20 +47,14 @@ const SettingsPage = () => {
           ))}
         </nav>
         <div className="flex max-w-2xl flex-col gap-4">
-          <SectionBody section={section} settings={settings} patch={patch} />
+          <SectionBody patch={patch} section={section} settings={settings} />
         </div>
       </div>
     </div>
   );
 };
 
-interface SectionBodyProps {
-  section: Section;
-  settings: AppSettings;
-  patch: (p: Partial<AppSettings>) => void;
-}
-
-const SectionBody = ({ section, settings, patch }: SectionBodyProps) => {
+const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
   if (section === 'General') {
     return (
       <Card>
@@ -83,8 +77,17 @@ const SectionBody = ({ section, settings, patch }: SectionBodyProps) => {
               </SelectContent>
             </Select>
           </Row>
-          <ToggleRow label="Launch on system startup" checked={settings.launchOnStartup} onChange={(launchOnStartup) => patch({ launchOnStartup })} />
-          <ToggleRow label="Close to tray" description="Keep downloads running in the background." checked={settings.closeToTray} onChange={(closeToTray) => patch({ closeToTray })} />
+          <ToggleRow
+            label="Launch on system startup"
+            checked={settings.launchOnStartup}
+            onChange={(launchOnStartup) => patch({ launchOnStartup })}
+          />
+          <ToggleRow
+            label="Close to tray"
+            checked={settings.closeToTray}
+            onChange={(closeToTray) => patch({ closeToTray })}
+            description="Keep downloads running in the background."
+          />
         </CardContent>
       </Card>
     );
@@ -114,9 +117,9 @@ const SectionBody = ({ section, settings, patch }: SectionBodyProps) => {
           <Row label="Accent hue">
             <div className="flex items-center gap-3">
               <input
-                type="range"
                 min={0}
                 max={360}
+                type="range"
                 value={settings.accentHue}
                 className="w-44 accent-primary"
                 onChange={(e) => patch({ accentHue: Number(e.target.value) })}
@@ -190,13 +193,7 @@ const SectionBody = ({ section, settings, patch }: SectionBodyProps) => {
   );
 };
 
-interface RowProps {
-  label: string;
-  description?: string;
-  children: React.ReactNode;
-}
-
-const Row = ({ label, description, children }: RowProps) => (
+const Row = ({ label, children, description }: RowProps) => (
   <div className="flex items-center gap-4">
     <span className="flex flex-1 flex-col">
       <span className="text-sm font-medium">{label}</span>
@@ -206,14 +203,7 @@ const Row = ({ label, description, children }: RowProps) => (
   </div>
 );
 
-interface ToggleRowProps {
-  label: string;
-  checked: boolean;
-  description?: string;
-  onChange: (checked: boolean) => void;
-}
-
-const ToggleRow = ({ label, checked, description, onChange }: ToggleRowProps) => (
+const ToggleRow = ({ label, checked, onChange, description }: ToggleRowProps) => (
   <Row label={label} description={description}>
     <Switch checked={checked} onCheckedChange={onChange} />
   </Row>

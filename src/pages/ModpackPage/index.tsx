@@ -1,9 +1,24 @@
-import type { Modpack, ModpackMod } from '~/domain/interfaces/modpack.interface';
+import type { ModpackMod } from '~/domain/interfaces/modpack.interface';
+import type { AddModDialogProps, EditMetadataDialogProps } from './types';
 
 import React from 'react';
-import { toast } from 'sonner';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Pin, Plus, Copy, Boxes, Trash2, Share2, Pencil, PinOff, Loader2, Download, FileDown, MoreHorizontal } from 'lucide-react';
+
+import { toast } from 'sonner';
+import {
+  Pin,
+  Plus,
+  Copy,
+  Boxes,
+  Trash2,
+  Share2,
+  Pencil,
+  PinOff,
+  Loader2,
+  Download,
+  FileDown,
+  MoreHorizontal
+} from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Badge } from '~/components/ui/badge';
@@ -11,8 +26,6 @@ import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
-import { DependencyType } from '~/domain/enums/provider.enum';
-import { PROJECTS, PROJECT_VERSIONS } from '~/usecase/mock/projects';
 import GameIcon from '~/components/commons/GameIcon';
 import SearchBar from '~/components/commons/SearchBar';
 import EmptyState from '~/components/commons/EmptyState';
@@ -20,12 +33,15 @@ import { projectService } from '~/usecase/service/project';
 import { modpackService } from '~/usecase/service/modpack';
 import ShareDialog from '~/components/Modpack/ShareDialog';
 import ProjectIcon from '~/components/commons/ProjectIcon';
-import ConfirmDialog from '~/components/commons/ConfirmDialog';
+import { DependencyType } from '~/domain/enums/provider.enum';
 import DependencyList from '~/components/Mods/DependencyList';
-import { useAppStore, useModpack } from '~/usecase/store/appStore';
-import { ProviderBadge, VersionBadge } from '~/components/commons/Badges';
-import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
+import ConfirmDialog from '~/components/commons/ConfirmDialog';
+import { useModpack, useAppStore } from '~/usecase/store/appStore';
+import { PROJECTS, PROJECT_VERSIONS } from '~/usecase/mock/projects';
 import { formatDate, formatRelative } from '~/usecase/util/formatUtils';
+import { VersionBadge, ProviderBadge } from '~/components/commons/Badges';
+import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
+import { Dialog, DialogTitle, DialogFooter, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuItem,
@@ -34,7 +50,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from '~/components/ui/dropdown-menu';
-import { Dialog, DialogTitle, DialogFooter, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
 
 const ModpackPage = () => {
   const { modpackId } = useParams();
@@ -66,7 +81,10 @@ const ModpackPage = () => {
   const uniqueDeps = modpack.mods
     .flatMap((m) => PROJECT_VERSIONS[m.projectId]?.[0]?.dependencies ?? [])
     .filter((d) => d.type === DependencyType.Required)
-    .filter((d, i, arr) => arr.findIndex((x) => x.projectId === d.projectId) === i && !modpack.mods.some((m) => m.projectId === d.projectId));
+    .filter(
+      (d, i, arr) =>
+        arr.findIndex((x) => x.projectId === d.projectId) === i && !modpack.mods.some((m) => m.projectId === d.projectId)
+    );
 
   const install = async () => {
     setBusy(true);
@@ -96,7 +114,8 @@ const ModpackPage = () => {
   const togglePin = (projectId: string) =>
     updateModpack(modpack.id, { mods: modpack.mods.map((m) => (m.projectId === projectId ? { ...m, pinned: !m.pinned } : m)) });
 
-  const removeMod = (projectId: string) => updateModpack(modpack.id, { mods: modpack.mods.filter((m) => m.projectId !== projectId) });
+  const removeMod = (projectId: string) =>
+    updateModpack(modpack.id, { mods: modpack.mods.filter((m) => m.projectId !== projectId) });
 
   const addMod = (mod: ModpackMod) => {
     updateModpack(modpack.id, { mods: [...modpack.mods, mod] });
@@ -107,7 +126,9 @@ const ModpackPage = () => {
     <div className="flex flex-col">
       <div
         className="relative h-40 shrink-0"
-        style={{ background: `linear-gradient(120deg, ${modpack.coverColor} 0%, color-mix(in oklch, ${modpack.coverColor} 35%, var(--background)) 70%, var(--background) 100%)` }}
+        style={{
+          background: `linear-gradient(120deg, ${modpack.coverColor} 0%, color-mix(in oklch, ${modpack.coverColor} 35%, var(--background)) 70%, var(--background) 100%)`
+        }}
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_10%,oklch(1_0_0/15%),transparent_45%)]" />
       </div>
@@ -115,7 +136,9 @@ const ModpackPage = () => {
         <div className="flex items-end gap-5">
           <span
             className="flex size-24 shrink-0 items-center justify-center rounded-2xl border-4 border-background text-white shadow-lg"
-            style={{ background: `linear-gradient(145deg, ${modpack.coverColor}, color-mix(in oklch, ${modpack.coverColor} 50%, black))` }}
+            style={{
+              background: `linear-gradient(145deg, ${modpack.coverColor}, color-mix(in oklch, ${modpack.coverColor} 50%, black))`
+            }}
           >
             <Boxes className="size-10" />
           </span>
@@ -129,7 +152,7 @@ const ModpackPage = () => {
                 <GameIcon size="sm" gameId={modpack.gameId} className="size-3.5 rounded-[3px] [&>svg]:size-2.5" />
                 {game.name}
               </Badge>
-              <VersionBadge version={modpack.gameVersion} loader={modpack.loader} />
+              <VersionBadge loader={modpack.loader} version={modpack.gameVersion} />
               <Badge variant="secondary">{modpack.mods.length} mods</Badge>
               <Badge variant="outline" className="font-mono">
                 {modpack.shareCode}
@@ -190,7 +213,9 @@ const ModpackPage = () => {
 
           <TabsContent value="mods" className="flex flex-col gap-3 pt-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Pinned mods keep their exact version when the pack is installed.</span>
+              <span className="text-xs text-muted-foreground">
+                Pinned mods keep their exact version when the pack is installed.
+              </span>
               <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
                 <Plus data-icon="inline-start" />
                 Add mod
@@ -203,15 +228,29 @@ const ModpackPage = () => {
                 {modpack.mods.map((m) => (
                   <div key={m.projectId} className="flex items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0">
                     <ProjectIcon size="md" name={m.name} color={m.iconColor} />
-                    <button type="button" className="min-w-0 flex-1 truncate text-left font-medium hover:underline" onClick={() => navigate(`/project/${m.projectId}`)}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/project/${m.projectId}`)}
+                      className="min-w-0 flex-1 truncate text-left font-medium hover:underline"
+                    >
                       {m.name}
                     </button>
                     <ProviderBadge providerId={m.provider} />
-                    <span className={cn('flex items-center gap-1 font-mono text-xs tabular-nums', m.pinned ? 'text-foreground' : 'text-muted-foreground')}>
+                    <span
+                      className={cn(
+                        'flex items-center gap-1 font-mono text-xs tabular-nums',
+                        m.pinned ? 'text-foreground' : 'text-muted-foreground'
+                      )}
+                    >
                       {m.pinned && <Pin className="size-3" />}
                       {m.version}
                     </span>
-                    <Button size="icon-xs" variant="ghost" aria-label={m.pinned ? 'Unpin version' : 'Pin version'} onClick={() => togglePin(m.projectId)}>
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      onClick={() => togglePin(m.projectId)}
+                      aria-label={m.pinned ? 'Unpin version' : 'Pin version'}
+                    >
                       {m.pinned ? <PinOff /> : <Pin />}
                     </Button>
                     <Button size="icon-xs" variant="ghost" aria-label="Remove" onClick={() => removeMod(m.projectId)}>
@@ -223,8 +262,10 @@ const ModpackPage = () => {
             )}
           </TabsContent>
 
-          <TabsContent value="dependencies" className="pt-2">
-            <p className="mb-3 text-xs text-muted-foreground">Required by mods in this pack but not listed. They are installed automatically.</p>
+          <TabsContent className="pt-2" value="dependencies">
+            <p className="mb-3 text-xs text-muted-foreground">
+              Required by mods in this pack but not listed. They are installed automatically.
+            </p>
             <DependencyList dependencies={uniqueDeps} />
           </TabsContent>
 
@@ -255,13 +296,13 @@ const ModpackPage = () => {
         </Tabs>
       </div>
 
-      <ShareDialog modpack={shareOpen ? modpack : null} onOpenChange={setShareOpen} />
+      <ShareDialog onOpenChange={setShareOpen} modpack={shareOpen ? modpack : null} />
       <EditMetadataDialog open={editOpen} modpack={modpack} onOpenChange={setEditOpen} />
-      <AddModDialog open={addOpen} modpack={modpack} onAdd={addMod} onOpenChange={setAddOpen} />
+      <AddModDialog open={addOpen} onAdd={addMod} modpack={modpack} onOpenChange={setAddOpen} />
       <ConfirmDialog
         destructive
-        open={confirmDelete}
         onConfirm={remove}
+        open={confirmDelete}
         confirmLabel="Delete"
         onOpenChange={setConfirmDelete}
         title={`Delete "${modpack.name}"?`}
@@ -270,12 +311,6 @@ const ModpackPage = () => {
     </div>
   );
 };
-
-interface EditMetadataDialogProps {
-  open: boolean;
-  modpack: Modpack;
-  onOpenChange: (open: boolean) => void;
-}
 
 const EditMetadataDialog = ({ open, modpack, onOpenChange }: EditMetadataDialogProps) => {
   const updateModpack = useAppStore((s) => s.updateModpack);
@@ -320,7 +355,7 @@ const EditMetadataDialog = ({ open, modpack, onOpenChange }: EditMetadataDialogP
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="mp-desc">Description</Label>
-            <Textarea id="mp-desc" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Textarea rows={3} id="mp-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
@@ -334,22 +369,25 @@ const EditMetadataDialog = ({ open, modpack, onOpenChange }: EditMetadataDialogP
   );
 };
 
-interface AddModDialogProps {
-  open: boolean;
-  modpack: Modpack;
-  onAdd: (mod: ModpackMod) => void;
-  onOpenChange: (open: boolean) => void;
-}
-
-const AddModDialog = ({ open, modpack, onAdd, onOpenChange }: AddModDialogProps) => {
+const AddModDialog = ({ open, onAdd, modpack, onOpenChange }: AddModDialogProps) => {
   const [query, setQuery] = React.useState('');
   const candidates = PROJECTS.filter(
-    (p) => p.gameId === modpack.gameId && !modpack.mods.some((m) => m.projectId === p.id) && p.name.toLowerCase().includes(query.toLowerCase())
+    (p) =>
+      p.gameId === modpack.gameId &&
+      !modpack.mods.some((m) => m.projectId === p.id) &&
+      p.name.toLowerCase().includes(query.toLowerCase())
   );
 
   const add = (projectId: string) => {
     const p = PROJECTS.find((x) => x.id === projectId)!;
-    onAdd({ name: p.name, pinned: false, version: p.latestVersion, provider: p.provider.id, projectId: p.id, iconColor: p.iconColor });
+    onAdd({
+      name: p.name,
+      pinned: false,
+      projectId: p.id,
+      iconColor: p.iconColor,
+      provider: p.provider.id,
+      version: p.latestVersion
+    });
   };
 
   return (

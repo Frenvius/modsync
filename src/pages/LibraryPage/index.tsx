@@ -1,37 +1,34 @@
 import type { GameId } from '~/domain/enums/provider.enum';
+import type { LibraryView, LibrarySortKey } from './types';
 
 import React from 'react';
+
 import { Plus, List, Library, LayoutGrid } from 'lucide-react';
 
 import { GAMES } from '~/usecase/mock/games';
 import { Button } from '~/components/ui/button';
+import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
 import SearchBar from '~/components/commons/SearchBar';
 import EmptyState from '~/components/commons/EmptyState';
 import PageHeader from '~/components/commons/PageHeader';
-import GameIcon from '~/components/commons/GameIcon';
 import InstanceCard from '~/components/Instance/InstanceCard';
 import InstanceListItem from '~/components/Instance/InstanceListItem';
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
-type SortKey = 'name' | 'game' | 'updated' | 'lastPlayed';
-type View = 'grid' | 'list';
-
-const ALL = '__all';
-
-const SORT_LABELS: Record<SortKey, string> = { lastPlayed: 'Last played', name: 'Name', game: 'Game', updated: 'Updated' };
+import { ALL_GAMES, LIBRARY_SORT_LABELS } from './constants';
 
 const LibraryPage = () => {
   const instances = useAppStore((s) => s.instances);
   const openCreate = useAppStore((s) => s.setCreateInstanceOpen);
   const [query, setQuery] = React.useState('');
-  const [view, setView] = React.useState<View>('grid');
-  const [sort, setSort] = React.useState<SortKey>('lastPlayed');
-  const [game, setGame] = React.useState<string>(ALL);
+  const [view, setView] = React.useState<LibraryView>('grid');
+  const [sort, setSort] = React.useState<LibrarySortKey>('lastPlayed');
+  const [game, setGame] = React.useState<string>(ALL_GAMES);
 
   const visible = instances
-    .filter((i) => game === ALL || i.gameId === game)
+    .filter((i) => game === ALL_GAMES || i.gameId === game)
     .filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
       if (sort === 'name') return a.name.localeCompare(b.name);
@@ -42,7 +39,10 @@ const LibraryPage = () => {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <PageHeader title="Library" description={`${instances.length} instances across ${new Set(instances.map((i) => i.gameId)).size} games.`}>
+      <PageHeader
+        title="Library"
+        description={`${instances.length} instances across ${new Set(instances.map((i) => i.gameId)).size} games.`}
+      >
         <Button onClick={() => openCreate(true)}>
           <Plus data-icon="inline-start" />
           Create instance
@@ -50,14 +50,14 @@ const LibraryPage = () => {
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2">
-        <SearchBar value={query} onChange={setQuery} placeholder="Search instances" className="w-64" />
-        <Select value={game} onValueChange={(v) => setGame(v as GameId | typeof ALL)}>
+        <SearchBar value={query} className="w-64" onChange={setQuery} placeholder="Search instances" />
+        <Select value={game} onValueChange={(v) => setGame(v as GameId | typeof ALL_GAMES)}>
           <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value={ALL}>All games</SelectItem>
+              <SelectItem value={ALL_GAMES}>All games</SelectItem>
               {GAMES.map((game) => (
                 <SelectItem key={game.id} value={game.id}>
                   <GameIcon size="sm" gameId={game.id} />
@@ -67,22 +67,22 @@ const LibraryPage = () => {
             </SelectGroup>
           </SelectContent>
         </Select>
-        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+        <Select value={sort} onValueChange={(v) => setSort(v as LibrarySortKey)}>
           <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {(Object.keys(SORT_LABELS) as Array<SortKey>).map((k) => (
+              {(Object.keys(LIBRARY_SORT_LABELS) as Array<LibrarySortKey>).map((k) => (
                 <SelectItem key={k} value={k}>
-                  Sort: {SORT_LABELS[k]}
+                  Sort: {LIBRARY_SORT_LABELS[k]}
                 </SelectItem>
               ))}
             </SelectGroup>
           </SelectContent>
         </Select>
         <span className="flex-1" />
-        <ToggleGroup type="single" variant="outline" value={view} onValueChange={(v) => v && setView(v as View)}>
+        <ToggleGroup value={view} type="single" variant="outline" onValueChange={(v) => v && setView(v as LibraryView)}>
           <ToggleGroupItem value="grid" aria-label="Grid view">
             <LayoutGrid />
           </ToggleGroupItem>
@@ -93,7 +93,11 @@ const LibraryPage = () => {
       </div>
 
       {visible.length === 0 ? (
-        <EmptyState icon={Library} title="No instances" description={query ? 'Nothing matches your search.' : 'Create your first instance to get started.'}>
+        <EmptyState
+          icon={Library}
+          title="No instances"
+          description={query ? 'Nothing matches your search.' : 'Create your first instance to get started.'}
+        >
           <Button onClick={() => openCreate(true)}>
             <Plus data-icon="inline-start" />
             Create instance

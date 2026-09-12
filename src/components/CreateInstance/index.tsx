@@ -1,32 +1,23 @@
-import type { GameId, LoaderId } from '~/domain/enums/provider.enum';
+import type { WizardDraft, SummaryProps } from './types';
+import type { GameId } from '~/domain/enums/provider.enum';
 
 import React from 'react';
-import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+
+import { toast } from 'sonner';
+import { Loader2, ArrowLeft, ArrowRight } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
+import { Button } from '~/components/ui/button';
+import { useAppStore } from '~/usecase/store/appStore';
+import { projectService } from '~/usecase/service/project';
+import { Dialog, DialogTitle, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
+
 import GameStep from './GameStep';
 import LoaderStep from './LoaderStep';
 import VersionStep from './VersionStep';
 import IdentityStep from './IdentityStep';
-import { Button } from '~/components/ui/button';
-import { useAppStore } from '~/usecase/store/appStore';
-import { projectService } from '~/usecase/service/project';
-import { INSTANCE_COLORS } from '~/components/commons/InstanceIcon';
-import { Dialog, DialogTitle, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
-
-export interface WizardDraft {
-  name: string;
-  icon: string;
-  color: string;
-  gameId?: GameId;
-  loader?: LoaderId;
-  gameVersion?: string;
-}
-
-const STEPS = ['Game', 'Version', 'Loader', 'Identity', 'Create'];
-const EMPTY: WizardDraft = { name: '', icon: 'sparkles', color: INSTANCE_COLORS[0] };
+import { STEPS, EMPTY_WIZARD_DRAFT } from './constants';
 
 const CreateInstanceDialog = () => {
   const navigate = useNavigate();
@@ -35,7 +26,7 @@ const CreateInstanceDialog = () => {
   const createInstance = useAppStore((s) => s.createInstance);
   const [step, setStep] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
-  const [draft, setDraft] = React.useState<WizardDraft>(EMPTY);
+  const [draft, setDraft] = React.useState<WizardDraft>(EMPTY_WIZARD_DRAFT);
 
   const game = draft.gameId ? projectService.getGame(draft.gameId) : undefined;
   const skipLoader = (game?.loaders.length ?? 0) <= 1;
@@ -46,17 +37,29 @@ const CreateInstanceDialog = () => {
     setOpen(next);
     if (!next) {
       setStep(0);
-      setDraft(EMPTY);
+      setDraft(EMPTY_WIZARD_DRAFT);
     }
   };
 
   const pickGame = (gameId: GameId) => {
     const g = projectService.getGame(gameId);
-    setDraft({ ...EMPTY, gameId, color: g.color, gameVersion: g.versions[0], loader: g.loaders.find((l) => l.recommended)?.id ?? g.loaders[0].id });
+    setDraft({
+      ...EMPTY_WIZARD_DRAFT,
+      gameId,
+      color: g.color,
+      gameVersion: g.versions[0],
+      loader: g.loaders.find((l) => l.recommended)?.id ?? g.loaders[0].id
+    });
     setStep(1);
   };
 
-  const canContinue = [Boolean(draft.gameId), Boolean(draft.gameVersion), Boolean(draft.loader), draft.name.trim().length > 1, true][step];
+  const canContinue = [
+    Boolean(draft.gameId),
+    Boolean(draft.gameVersion),
+    Boolean(draft.loader),
+    draft.name.trim().length > 1,
+    true
+  ][step];
 
   const next = () => {
     if (step === 1 && skipLoader) return setStep(3);
@@ -72,11 +75,11 @@ const CreateInstanceDialog = () => {
     if (!draft.gameId || !draft.gameVersion || !draft.loader) return;
     setBusy(true);
     const instance = await createInstance({
-      name: draft.name.trim(),
       icon: draft.icon,
       gameId: draft.gameId,
       loader: draft.loader,
       iconColor: draft.color,
+      name: draft.name.trim(),
       gameVersion: draft.gameVersion
     });
     setBusy(false);
@@ -109,20 +112,22 @@ const CreateInstanceDialog = () => {
         </DialogHeader>
 
         <div className="min-h-[320px] flex-1 overflow-y-auto p-4">
-          {step === 0 && <GameStep selected={draft.gameId} onSelect={pickGame} />}
-          {step === 1 && game && <VersionStep game={game} value={draft.gameVersion} onChange={(gameVersion) => patch({ gameVersion })} />}
+          {step === 0 && <GameStep onSelect={pickGame} selected={draft.gameId} />}
+          {step === 1 && game && (
+            <VersionStep game={game} value={draft.gameVersion} onChange={(gameVersion) => patch({ gameVersion })} />
+          )}
           {step === 2 && game && <LoaderStep game={game} value={draft.loader} onChange={(loader) => patch({ loader })} />}
           {step === 3 && <IdentityStep draft={draft} onChange={patch} />}
           {step === 4 && game && <Summary draft={draft} gameName={game.name} />}
         </div>
 
         <div className="flex items-center justify-between border-t px-4 py-3">
-          <Button variant="ghost" disabled={step === 0} onClick={back}>
+          <Button onClick={back} variant="ghost" disabled={step === 0}>
             <ArrowLeft data-icon="inline-start" />
             Back
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button disabled={!canContinue} onClick={next}>
+            <Button onClick={next} disabled={!canContinue}>
               Continue
               <ArrowRight data-icon="inline-end" />
             </Button>
@@ -137,11 +142,6 @@ const CreateInstanceDialog = () => {
     </Dialog>
   );
 };
-
-interface SummaryProps {
-  draft: WizardDraft;
-  gameName: string;
-}
 
 const Summary = ({ draft, gameName }: SummaryProps) => (
   <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-3 text-sm">

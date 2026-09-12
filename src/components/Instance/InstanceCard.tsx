@@ -1,44 +1,21 @@
-import type { Instance } from '~/domain/interfaces/instance.interface';
+import type { InstanceCardProps } from './types';
 
-import React from 'react';
-import { Play, Clock, Loader2, Package } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import { Play, Clock, Loader2, Package } from 'lucide-react';
+
 import { cn } from '~/lib/utils';
-import InstanceMenu from './InstanceMenu';
 import { Button } from '~/components/ui/button';
-import { useAppStore } from '~/usecase/store/appStore';
+import { usePlay } from '~/usecase/hooks/usePlay';
 import GameIcon from '~/components/commons/GameIcon';
-import { UpdateStatus } from '~/domain/enums/provider.enum';
 import { projectService } from '~/usecase/service/project';
-import InstanceIcon from '~/components/commons/InstanceIcon';
-import { UpdateBadge, VersionBadge } from '~/components/commons/Badges';
+import { UpdateStatus } from '~/domain/enums/provider.enum';
 import { formatRelative } from '~/usecase/util/formatUtils';
+import InstanceIcon from '~/components/commons/InstanceIcon';
+import { summarizeStatus } from '~/usecase/util/instanceUtils';
+import { UpdateBadge, VersionBadge } from '~/components/commons/Badges';
 
-interface InstanceCardProps {
-  instance: Instance;
-  className?: string;
-}
-
-export const summarizeStatus = (instance: Instance): UpdateStatus => {
-  const statuses = instance.mods.map((m) => m.status);
-  if (statuses.includes(UpdateStatus.Incompatible)) return UpdateStatus.Incompatible;
-  if (statuses.includes(UpdateStatus.DependencyMissing)) return UpdateStatus.DependencyMissing;
-  if (statuses.includes(UpdateStatus.UpdateAvailable)) return UpdateStatus.UpdateAvailable;
-  return UpdateStatus.UpToDate;
-};
-
-export const usePlay = (instanceId: string) => {
-  const [playing, setPlaying] = React.useState(false);
-  const playInstance = useAppStore((s) => s.playInstance);
-  const play = async (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    setPlaying(true);
-    await playInstance(instanceId);
-    setPlaying(false);
-  };
-  return { play, playing };
-};
+import InstanceMenu from './InstanceMenu';
 
 const InstanceCard = ({ instance, className }: InstanceCardProps) => {
   const navigate = useNavigate();
@@ -66,7 +43,7 @@ const InstanceCard = ({ instance, className }: InstanceCardProps) => {
             <GameIcon size="sm" gameId={instance.gameId} className="size-3.5 rounded-[3px] [&>svg]:size-2.5" />
             <span className="truncate">{game.name}</span>
           </span>
-          <VersionBadge className="mt-1 w-fit" version={instance.gameVersion} loader={instance.loader} />
+          <VersionBadge className="mt-1 w-fit" loader={instance.loader} version={instance.gameVersion} />
         </div>
         <InstanceMenu instance={instance} />
       </div>
@@ -83,9 +60,17 @@ const InstanceCard = ({ instance, className }: InstanceCardProps) => {
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        {status === UpdateStatus.UpToDate ? <span className="text-xs text-muted-foreground">All up to date</span> : <UpdateBadge status={status} />}
-        <Button size="sm" disabled={playing} onClick={play} className="shadow-[0_0_0_1px_oklch(0_0_0/20%)]">
-          {playing ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Play data-icon="inline-start" className="fill-current" />}
+        {status === UpdateStatus.UpToDate ? (
+          <span className="text-xs text-muted-foreground">All up to date</span>
+        ) : (
+          <UpdateBadge status={status} />
+        )}
+        <Button size="sm" onClick={play} disabled={playing} className="shadow-[0_0_0_1px_oklch(0_0_0/20%)]">
+          {playing ? (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <Play data-icon="inline-start" className="fill-current" />
+          )}
           Play
         </Button>
       </div>

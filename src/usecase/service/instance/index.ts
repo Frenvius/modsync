@@ -18,36 +18,43 @@ class Service {
     const now = new Date().toISOString();
     return {
       ...input,
-      id: uid('inst'),
-      description: `${game?.name ?? 'Game'} ${input.gameVersion}`,
-      loaderVersion: 'latest',
-      createdAt: now,
-      updatedAt: now,
-      lastPlayed: null,
-      playtimeMinutes: 0,
-      memoryMb: 4096,
       mods: [],
       configs: [],
+      createdAt: now,
+      updatedAt: now,
+      memoryMb: 4096,
+      id: uid('inst'),
+      lastPlayed: null,
+      playtimeMinutes: 0,
+      loaderVersion: 'latest',
+      description: `${game?.name ?? 'Game'} ${input.gameVersion}`,
       logs: [{ level: 'info', timestamp: now, message: 'Instance created' }]
     };
   }
 
   async duplicate(source: Instance): Promise<Instance> {
     await wait(400);
-    return { ...source, id: uid('inst'), name: `${source.name} (copy)`, lastPlayed: null, playtimeMinutes: 0, createdAt: new Date().toISOString() };
+    return {
+      ...source,
+      id: uid('inst'),
+      lastPlayed: null,
+      playtimeMinutes: 0,
+      name: `${source.name} (copy)`,
+      createdAt: new Date().toISOString()
+    };
   }
 
   toInstalledMod(project: Project, version = project.latestVersion): InstalledMod {
     return {
+      enabled: true,
       name: project.name,
       type: project.type,
-      author: project.author,
-      enabled: true,
       projectId: project.id,
+      author: project.author,
+      installedVersion: version,
       iconColor: project.iconColor,
       provider: project.provider.id,
       status: UpdateStatus.UpToDate,
-      installedVersion: version,
       latestCompatibleVersion: project.latestVersion
     };
   }

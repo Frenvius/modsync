@@ -2,9 +2,9 @@ import type { GameId, ProviderId } from '~/domain/enums/provider.enum';
 import type { Project, SearchQuery, SearchResult, ProjectVersion } from '~/domain/interfaces/project.interface';
 
 export interface ProviderMeta {
-  id: ProviderId;
   name: string;
   color: string;
+  id: ProviderId;
   website: string;
   games: Array<GameId>;
   requiresApiKey: boolean;

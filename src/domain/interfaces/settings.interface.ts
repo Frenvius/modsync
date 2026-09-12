@@ -14,10 +14,10 @@ export interface UserProfile {
 }
 
 export interface AppSettings {
-  theme: 'dark' | 'system';
   language: string;
   accentHue: number;
-  launchOnStartup: boolean;
   closeToTray: boolean;
+  theme: 'dark' | 'system';
+  launchOnStartup: boolean;
   gamePaths: Array<GamePathSetting>;
 }

@@ -7,8 +7,8 @@ export enum ProviderId {
 
 export enum GameId {
   Valheim = 'valheim',
-  Minecraft = 'minecraft',
   RiskOfRain2 = 'ror2',
+  Minecraft = 'minecraft',
   VintageStory = 'vintagestory',
   LethalCompany = 'lethal-company'
 }
@@ -31,8 +31,8 @@ export enum ProjectType {
 }
 
 export enum UpdateStatus {
-  UpToDate = 'up-to-date',
   Disabled = 'disabled',
+  UpToDate = 'up-to-date',
   Incompatible = 'incompatible',
   UpdateAvailable = 'update-available',
   DependencyMissing = 'dependency-missing'
@@ -45,8 +45,8 @@ export enum DependencyType {
 }
 
 export enum DownloadKind {
-  InstallMod = 'install-mod',
   UpdateMod = 'update-mod',
+  InstallMod = 'install-mod',
   InstallModpack = 'install-modpack',
   DownloadGameVersion = 'download-game'
 }
