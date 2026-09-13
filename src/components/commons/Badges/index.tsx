@@ -4,7 +4,7 @@ import { Ban, Check, TriangleAlert } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Badge } from '~/components/ui/badge';
-import { LOADER_NAMES } from '~/usecase/mock/games';
+import { LOADER_NAMES } from '~/domain/data/catalog';
 import { LoaderId } from '~/domain/enums/provider.enum';
 import { getProviderMeta } from '~/usecase/service/providers';
 

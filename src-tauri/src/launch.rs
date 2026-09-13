@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -19,15 +19,18 @@ const VERSION_MANIFEST_URL: &str =
     "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const ASSET_URL: &str = "https://resources.download.minecraft.net";
 const MAX_CONFIGURED_ARGUMENTS: usize = 64;
+const MAX_PROCESS_LOG_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_PROCESS_LOG_LINES: usize = 5_000;
 
 struct ProcessLaunch {
     child: Child,
     cleanup: Vec<CleanupFile>,
 }
 
+#[derive(Debug)]
 struct CleanupFile {
     path: PathBuf,
-    previous: Option<Vec<u8>>,
+    backup: Option<PathBuf>,
     installed: Vec<u8>,
 }
 
@@ -118,17 +121,17 @@ pub fn list_process_logs(
     }
     let file = File::open(path)
         .map_err(|error| CommandError::io("Could not read process logs", &error))?;
-    let mut lines = BufReader::new(file)
-        .lines()
-        .filter_map(|line| {
-            line.ok()
-                .and_then(|value| serde_json::from_str::<LogLine>(&value).ok())
-        })
-        .collect::<Vec<_>>();
-    if lines.len() > 5_000 {
-        lines.drain(..lines.len() - 5_000);
+    let mut lines = VecDeque::with_capacity(MAX_PROCESS_LOG_LINES);
+    for line in BufReader::new(file).lines().filter_map(|line| {
+        line.ok()
+            .and_then(|value| serde_json::from_str::<LogLine>(&value).ok())
+    }) {
+        if lines.len() == MAX_PROCESS_LOG_LINES {
+            lines.pop_front();
+        }
+        lines.push_back(line);
     }
-    Ok(lines)
+    Ok(lines.into())
 }
 
 async fn launch(app: &AppHandle, instance_id: &str) -> Result<InstanceManifest, CommandError> {
@@ -608,32 +611,20 @@ fn launch_bepinex(
                 "BepInEx Doorstop bootstrap is missing; repair the loader before launching",
             )
         })?;
-    let mut cleanup = vec![install_launch_file(
+    let cleanup = vec![install_launch_file(
         &fs::read(&bootstrap)
             .map_err(|error| CommandError::io("Could not read the Doorstop bootstrap", &error))?,
         &game_directory.join(bootstrap.file_name().unwrap_or_default()),
     )?];
-    let doorstop_config = format!(
-        "[UnityDoorstop]\r\nenabled=true\r\ntargetAssembly={}\r\n",
-        preloader
-            .canonicalize()
-            .unwrap_or_else(|_| preloader.clone())
-            .display()
-    );
-    match install_launch_file(
-        doorstop_config.as_bytes(),
-        &game_directory.join("doorstop_config.ini"),
-    ) {
-        Ok(file) => cleanup.push(file),
-        Err(error) => {
-            restore_launch_files(cleanup);
-            return Err(error);
-        }
-    }
+    let (enabled_argument, target_argument) = if doorstop_major(instance_directory) >= 4 {
+        ("--doorstop-enabled", "--doorstop-target-assembly")
+    } else {
+        ("--doorstop-enable", "--doorstop-target")
+    };
 
     let mut command = Command::new(executable);
     command
-        .args(["--doorstop-enable", "true", "--doorstop-target"])
+        .args([enabled_argument, "true", target_argument])
         .arg(&preloader)
         .env("DOORSTOP_ENABLED", "TRUE")
         .env("DOORSTOP_TARGET_ASSEMBLY", &preloader)
@@ -650,23 +641,40 @@ fn launch_bepinex(
     }
 }
 
+fn doorstop_major(instance_directory: &Path) -> u32 {
+    fs::read_to_string(instance_directory.join(".doorstop_version"))
+        .ok()
+        .and_then(|value| value.trim().split('.').next()?.parse().ok())
+        .unwrap_or(3)
+}
+
 fn install_launch_file(bytes: &[u8], path: &Path) -> Result<CleanupFile, CommandError> {
-    let previous = if path.exists() {
-        Some(fs::read(path).map_err(|error| {
-            CommandError::io("Could not back up an existing game launch file", &error)
-        })?)
-    } else {
-        None
-    };
-    atomic_write(path, bytes).map_err(|error| {
-        CommandError::io(
-            "Could not prepare the selected instance environment",
-            &error,
+    let name = path.file_name().ok_or_else(|| {
+        CommandError::new(
+            CommandErrorCode::InvalidInput,
+            "Game launch file path is invalid",
         )
     })?;
+    let backup = path.with_file_name(format!(".{}.modsync-backup", name.to_string_lossy()));
+    let mut moved = false;
+    if path.exists() && !backup.exists() {
+        fs::rename(path, &backup).map_err(|error| {
+            CommandError::io("Could not preserve an existing game launch file", &error)
+        })?;
+        moved = true;
+    }
+    if let Err(error) = atomic_write(path, bytes) {
+        if moved {
+            let _ = fs::rename(&backup, path);
+        }
+        return Err(CommandError::io(
+            "Could not prepare the selected instance environment",
+            &error,
+        ));
+    }
     Ok(CleanupFile {
         path: path.to_path_buf(),
-        previous,
+        backup: backup.exists().then_some(backup),
         installed: bytes.to_vec(),
     })
 }
@@ -676,8 +684,9 @@ fn restore_launch_files(files: Vec<CleanupFile>) {
         if fs::read(&file.path).ok().as_deref() != Some(file.installed.as_slice()) {
             continue;
         }
-        if let Some(previous) = file.previous {
-            let _ = atomic_write(&file.path, &previous);
+        if let Some(backup) = file.backup {
+            let _ = fs::remove_file(&file.path);
+            let _ = fs::rename(backup, file.path);
         } else {
             let _ = fs::remove_file(file.path);
         }
@@ -800,7 +809,12 @@ fn persist_and_emit(
 ) {
     if let Some(writer) = writer {
         if let (Ok(mut file), Ok(json)) = (writer.lock(), serde_json::to_string(line)) {
-            let _ = writeln!(file, "{json}");
+            if file
+                .metadata()
+                .is_ok_and(|metadata| metadata.len() < MAX_PROCESS_LOG_BYTES)
+            {
+                let _ = writeln!(file, "{json}");
+            }
         }
     }
     let _ = app.emit("launch-log", LaunchLogEvent { instance_id, line });
@@ -1393,6 +1407,19 @@ mod tests {
     }
 
     #[test]
+    fn doorstop_version_selects_modern_arguments() {
+        let directory = std::env::temp_dir().join(format!(
+            "modsync-doorstop-version-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        atomic_write(&directory.join(".doorstop_version"), b"4.3.0").unwrap();
+
+        assert_eq!(doorstop_major(&directory), 4);
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn temporary_launch_files_restore_existing_game_files() {
         let directory = std::env::temp_dir().join(format!(
             "modsync-launch-cleanup-{}",
@@ -1401,10 +1428,43 @@ mod tests {
         let path = directory.join("doorstop_config.ini");
         atomic_write(&path, b"original").unwrap();
         let cleanup = install_launch_file(b"temporary", &path).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"temporary");
 
         restore_launch_files(vec![cleanup]);
 
         assert_eq!(fs::read(&path).unwrap(), b"original");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn interrupted_launch_backup_survives_the_next_launch() {
+        let directory = std::env::temp_dir().join(format!(
+            "modsync-launch-recovery-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let path = directory.join("winhttp.dll");
+        atomic_write(&path, b"original").unwrap();
+        let _interrupted = install_launch_file(b"first-instance", &path).unwrap();
+        let cleanup = install_launch_file(b"second-instance", &path).unwrap();
+
+        restore_launch_files(vec![cleanup]);
+
+        assert_eq!(fs::read(&path).unwrap(), b"original");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn temporary_launch_files_are_removed_after_exit() {
+        let directory = std::env::temp_dir().join(format!(
+            "modsync-launch-removal-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let path = directory.join("doorstop_config.ini");
+        let cleanup = install_launch_file(b"temporary", &path).unwrap();
+
+        restore_launch_files(vec![cleanup]);
+
+        assert!(!path.exists());
         fs::remove_dir_all(directory).unwrap();
     }
 }

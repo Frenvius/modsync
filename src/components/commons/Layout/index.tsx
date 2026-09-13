@@ -2,11 +2,14 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 
 import { AlertTriangle } from 'lucide-react';
+import { isTauri } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 import { Button } from '~/components/ui/button';
 import { Toaster } from '~/components/ui/sonner';
 import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';
+import { DownloadStatus } from '~/domain/enums/provider.enum';
 import CreateInstanceDialog from '~/components/CreateInstance';
 
 import Sidebar from './Sidebar';
@@ -21,12 +24,49 @@ const Layout = () => {
     void hydrate();
   }, [hydrate]);
 
+  React.useEffect(() => {
+    if (!isTauri()) return;
+    let disposed = false;
+    let closing = false;
+    let unlisten: () => void = () => undefined;
+    void getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        const active = useAppStore
+          .getState()
+          .downloads.filter((download) => [DownloadStatus.Active, DownloadStatus.Queued].includes(download.status));
+        if (active.length === 0 || closing) return;
+        event.preventDefault();
+        if (!window.confirm('Cancel active operations and close ModSync?')) return;
+        closing = true;
+        await Promise.allSettled(active.map((download) => useAppStore.getState().cancelDownload(download.id)));
+        await getCurrentWindow().destroy();
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, []);
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+      <a
+        href="#main-content"
+        className="fixed top-1 left-1 z-50 -translate-y-12 rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-transform focus:translate-y-0"
+      >
+        Skip to content
+      </a>
       <Titlebar />
       <div className="flex min-h-0 flex-1 gap-1.5 overflow-hidden p-1.5">
         <Sidebar />
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-y-auto rounded-lg bg-panel">
+        <main
+          tabIndex={-1}
+          id="main-content"
+          className="relative flex min-w-0 flex-1 flex-col overflow-y-auto rounded-lg bg-panel"
+        >
           {!ready ? (
             <div role="status" className="m-auto text-sm text-muted-foreground">
               Loading ModSync...

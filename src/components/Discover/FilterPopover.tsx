@@ -73,7 +73,7 @@ const FilterSelect = ({ label, value, options, onChange }: FilterSelectProps) =>
   <div className="flex flex-col gap-1.5">
     <span className="text-xs font-medium text-muted-foreground">{label}</span>
     <Select value={value ?? ANY_FILTER} onValueChange={(v) => onChange(v === ANY_FILTER ? undefined : v)}>
-      <SelectTrigger className="w-full">
+      <SelectTrigger className="w-full" aria-label={label}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -1,5 +1,6 @@
 import type { DownloadItemProps } from './types';
 
+import { toast } from 'sonner';
 import { X, Check, TriangleAlert } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
@@ -7,6 +8,7 @@ import { Button } from '~/components/ui/button';
 import { Progress } from '~/components/ui/progress';
 import { useAppStore } from '~/usecase/store/appStore';
 import { DownloadStatus } from '~/domain/enums/provider.enum';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { formatEta, formatBytes, formatSpeed } from '~/usecase/util/formatUtils';
 
 import { DOWNLOAD_KIND_ICONS } from './constants';
@@ -19,9 +21,19 @@ const DownloadItem = ({ item }: DownloadItemProps) => {
   const failed = item.status === DownloadStatus.Failed;
   const cancelled = item.status === DownloadStatus.Cancelled;
   const transferred = Math.round((item.totalBytes * item.progress) / 100);
+  const requestCancellation = async () => {
+    try {
+      await cancel(item.id);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not cancel the operation'));
+    }
+  };
 
   return (
     <div className={cn('flex flex-col gap-2 rounded-lg border bg-card p-3', (done || cancelled) && 'opacity-70')}>
+      <span role="status" className="sr-only">
+        {item.title}: {item.step}, {Math.round(item.progress)}%
+      </span>
       <div className="flex items-center gap-3">
         <span
           className={cn(
@@ -49,22 +61,13 @@ const DownloadItem = ({ item }: DownloadItemProps) => {
         </span>
         <span className="flex items-center gap-1">
           {(active || item.status === DownloadStatus.Queued) && (
-            <Button size="icon-sm" variant="ghost" aria-label="Cancel" onClick={() => void cancel(item.id)}>
+            <Button size="icon-sm" variant="ghost" aria-label="Cancel" onClick={() => void requestCancellation()}>
               <X />
             </Button>
           )}
         </span>
       </div>
-      {!done && !cancelled && (
-        <Progress
-          value={item.progress}
-          className={cn(
-            'h-1.5',
-            failed && '[&>div]:bg-destructive',
-            item.status === DownloadStatus.Paused && '[&>div]:bg-muted-foreground'
-          )}
-        />
-      )}
+      {!done && !cancelled && <Progress value={item.progress} className={cn('h-1.5', failed && '[&>div]:bg-destructive')} />}
     </div>
   );
 };

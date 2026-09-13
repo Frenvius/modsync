@@ -8,10 +8,5 @@ export interface GamePathSetting {
 
 export interface AppSettings {
   schemaVersion: 1;
-  language: string;
-  accentHue: number;
-  closeToTray: boolean;
-  theme: 'dark' | 'system';
-  launchOnStartup: boolean;
   gamePaths: Array<GamePathSetting>;
 }

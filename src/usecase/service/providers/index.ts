@@ -4,7 +4,7 @@ import type { Project, SearchQuery, ProjectVersion } from '~/domain/interfaces/p
 
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
-import { PROVIDERS } from '~/usecase/mock/games';
+import { PROVIDERS } from '~/domain/data/catalog';
 
 interface ProviderSearchResult {
   total: number;

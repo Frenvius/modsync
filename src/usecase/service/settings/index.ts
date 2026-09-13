@@ -7,12 +7,7 @@ import { GameId } from '~/domain/enums/provider.enum';
 const STORAGE_KEY = 'modsync.settings.v1';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'dark',
-  accentHue: 152,
   schemaVersion: 1,
-  language: 'en-US',
-  closeToTray: true,
-  launchOnStartup: false,
   gamePaths: [
     { path: '', detected: false, gameId: GameId.Minecraft },
     { path: '', detected: false, gameId: GameId.Valheim },

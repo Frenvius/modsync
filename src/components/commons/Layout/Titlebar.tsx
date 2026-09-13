@@ -59,7 +59,7 @@ const Titlebar = () => {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label="Select game"
+            aria-label={`Select game, ${selectedGame.name}`}
             className="flex h-6 min-w-36 items-center gap-2 rounded px-2 text-xs transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <GameIcon size="sm" gameId={selectedGame.id} />
@@ -87,7 +87,7 @@ const Titlebar = () => {
           disabled={!desktop}
           aria-label="Minimize"
           onClick={minimizeWindow}
-          className="flex w-9 items-center justify-center text-muted-foreground"
+          className="flex w-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
         >
           <Minus strokeWidth={1.5} aria-hidden="true" className="size-3.5" />
         </button>
@@ -96,7 +96,7 @@ const Titlebar = () => {
           disabled={!desktop}
           aria-label="Maximize"
           onClick={maximizeWindow}
-          className="flex w-9 items-center justify-center text-muted-foreground"
+          className="flex w-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
         >
           <Square strokeWidth={1.5} aria-hidden="true" className="size-3" />
         </button>
@@ -105,7 +105,7 @@ const Titlebar = () => {
           aria-label="Close"
           disabled={!desktop}
           onClick={closeWindow}
-          className="flex w-9 items-center justify-center text-muted-foreground"
+          className="flex w-9 items-center justify-center text-muted-foreground hover:bg-destructive hover:text-white focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
         >
           <X strokeWidth={1.5} aria-hidden="true" className="size-3.5" />
         </button>

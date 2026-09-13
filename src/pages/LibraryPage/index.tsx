@@ -52,7 +52,7 @@ const LibraryPage = () => {
       <div className="flex flex-wrap items-center gap-2">
         <SearchBar value={query} className="w-64" onChange={setQuery} placeholder="Search instances" />
         <Select value={game} onValueChange={(v) => setGame(v as GameId | typeof ALL_GAMES)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" aria-label="Filter instances by game">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -68,7 +68,7 @@ const LibraryPage = () => {
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(v) => setSort(v as LibrarySortKey)}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" aria-label="Sort instances">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

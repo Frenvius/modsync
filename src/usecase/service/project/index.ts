@@ -11,7 +11,7 @@ import type {
   CompatibilityReport
 } from '~/domain/interfaces/project.interface';
 
-import { GAMES, LOADER_NAMES } from '~/usecase/mock/games';
+import { GAMES, LOADER_NAMES } from '~/domain/data/catalog';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { ProjectType, DependencyType } from '~/domain/enums/provider.enum';
 import { getProviderMeta, providerService } from '~/usecase/service/providers';

@@ -50,7 +50,6 @@ export enum DownloadKind {
 }
 
 export enum DownloadStatus {
-  Paused = 'paused',
   Queued = 'queued',
   Failed = 'failed',
   Active = 'active',

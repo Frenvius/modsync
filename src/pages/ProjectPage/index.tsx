@@ -8,7 +8,7 @@ import { Heart, Clock, Loader2, Package, Download, ExternalLink, AlertTriangle }
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
-import { LOADER_NAMES } from '~/usecase/mock/games';
+import { LOADER_NAMES } from '~/domain/data/catalog';
 import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';

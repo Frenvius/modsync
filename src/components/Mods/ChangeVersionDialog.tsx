@@ -118,7 +118,7 @@ const ChangeVersionDialog = ({ mod, open, instance, onChanged, onOpenChange }: C
 
         <div className="flex flex-col gap-3">
           <Select value={versionId} onValueChange={setVersionId} disabled={loading || versions.length === 0}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full" aria-label="Content version">
               <SelectValue placeholder={loading ? 'Loading compatible versions' : 'Select a version'} />
             </SelectTrigger>
             <SelectContent>

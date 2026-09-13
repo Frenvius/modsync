@@ -58,15 +58,15 @@
   --card-foreground: hsl(214 20% 94%);
   --popover: hsl(220 24% 11%);
   --popover-foreground: hsl(214 20% 94%);
-  --primary: hsl(217 91% 62%);
-  --primary-foreground: hsl(0 0% 100%);
+  --primary: hsl(217 91% 70%);
+  --primary-foreground: hsl(222 28% 7%);
   --secondary: hsl(218 32% 18%);
   --secondary-foreground: hsl(214 20% 94%);
   --muted: hsl(219 24% 16%);
   --muted-foreground: hsl(215 14% 69%);
   --accent: hsl(217 38% 24%);
   --accent-foreground: hsl(214 25% 96%);
-  --destructive: hsl(0 72% 55%);
+  --destructive: hsl(0 72% 66%);
   --warning: hsl(42 94% 58%);
   --info: hsl(190 80% 58%);
   --border: hsl(218 24% 27%);
@@ -82,8 +82,8 @@
   --chart-5: hsl(0 0% 60%);
   --sidebar: hsl(220 24% 11%);
   --sidebar-foreground: hsl(214 20% 94%);
-  --sidebar-primary: hsl(217 91% 62%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-primary: hsl(217 91% 70%);
+  --sidebar-primary-foreground: hsl(222 28% 7%);
   --sidebar-accent: hsl(218 32% 18%);
   --sidebar-accent-foreground: hsl(214 20% 94%);
   --sidebar-border: hsl(218 24% 23%);
@@ -133,5 +133,16 @@
 
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-muted-foreground;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

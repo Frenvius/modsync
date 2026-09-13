@@ -5,7 +5,7 @@ import { Play, Loader2, Package, Settings2 } from 'lucide-react';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { usePlay } from '~/usecase/hooks/usePlay';
-import { LOADER_NAMES } from '~/usecase/mock/games';
+import { LOADER_NAMES } from '~/domain/data/catalog';
 import GameIcon from '~/components/commons/GameIcon';
 import { useInstance } from '~/usecase/store/appStore';
 import LogsTab from '~/components/Instance/tabs/LogsTab';

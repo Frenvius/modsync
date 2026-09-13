@@ -1,7 +1,7 @@
 import type { InstanceTabProps } from '~/components/Instance/types';
 
 import { Badge } from '~/components/ui/badge';
-import { LOADER_NAMES } from '~/usecase/mock/games';
+import { LOADER_NAMES } from '~/domain/data/catalog';
 import { projectService } from '~/usecase/service/project';
 
 const VersionsTab = ({ instance }: InstanceTabProps) => {

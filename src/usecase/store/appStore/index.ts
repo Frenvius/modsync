@@ -3,7 +3,7 @@ import type { DownloadItem } from '~/domain/interfaces/download.interface';
 
 import { create } from 'zustand';
 
-import { GAMES } from '~/usecase/mock/games';
+import { GAMES } from '~/domain/data/catalog';
 import { uid } from '~/usecase/util/formatUtils';
 import { catalogService } from '~/usecase/service/catalog';
 import { projectService } from '~/usecase/service/project';
@@ -68,8 +68,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   selectedGameId: GameId.Minecraft,
 
-  cancelDownload: async (id) => contentService.cancel(id),
-
   setSelectedGame: (selectedGameId) => set({ selectedGameId }),
 
   setCreateInstanceOpen: (createInstanceOpen) => set({ createInstanceOpen }),
@@ -108,6 +106,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const instance = await instanceService.update(input);
     set((s) => ({ instances: s.instances.map((current) => (current.id === instance.id ? instance : current)) }));
     return instance;
+  },
+
+  cancelDownload: async (id) => {
+    await contentService.cancel(id);
+    set((state) => ({
+      downloads: state.downloads.map((download) =>
+        download.id === id ? { ...download, step: 'Cancellation requested', status: DownloadStatus.Cancelled } : download
+      )
+    }));
   },
 
   refreshContent: async (instanceId) => {

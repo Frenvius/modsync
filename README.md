@@ -39,9 +39,10 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo check --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
+bun run build
 ```
 
-Provider smoke tests require network access and are ignored by default:
+The release build must produce both MSI and NSIS installers. Provider smoke tests require network access and are ignored by default:
 
 ```sh
 cargo test --manifest-path src-tauri/Cargo.toml providers:: -- --ignored

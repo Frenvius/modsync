@@ -5,8 +5,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::catalog::GameId;
 use crate::contracts::{
-    CommandError, CommandErrorCode, GamePathSetting, SettingsManifest, Theme,
-    MANIFEST_SCHEMA_VERSION,
+    CommandError, CommandErrorCode, GamePathSetting, SettingsManifest, MANIFEST_SCHEMA_VERSION,
 };
 use crate::persistence::atomic_write;
 
@@ -46,11 +45,6 @@ fn app_data_directory(app: &AppHandle) -> Result<PathBuf, CommandError> {
 fn default_settings() -> SettingsManifest {
     SettingsManifest {
         schema_version: MANIFEST_SCHEMA_VERSION,
-        language: "en-US".into(),
-        accent_hue: 152,
-        close_to_tray: true,
-        theme: Theme::Dark,
-        launch_on_startup: false,
         game_paths: default_game_paths(),
     }
 }
@@ -112,9 +106,63 @@ fn vintage_story_path() -> Option<PathBuf> {
 
 #[cfg(windows)]
 fn steam_game_path(game: &str) -> Option<PathBuf> {
-    std::env::var_os("ProgramFiles(x86)")
-        .map(PathBuf::from)
-        .map(|path| path.join("Steam/steamapps/common").join(game))
+    let mut roots = steam_registry_path().into_iter().collect::<Vec<_>>();
+    if let Some(program_files) = std::env::var_os("ProgramFiles(x86)") {
+        roots.push(PathBuf::from(program_files).join("Steam"));
+    }
+    for root in roots {
+        let libraries = fs::read_to_string(root.join("steamapps/libraryfolders.vdf")).map_or_else(
+            |_| vec![root.clone()],
+            |value| steam_library_paths(&root, &value),
+        );
+        for library in libraries {
+            let candidate = library.join("steamapps/common").join(game);
+            if candidate.is_dir() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn steam_registry_path() -> Option<PathBuf> {
+    [
+        (r"HKCU\Software\Valve\Steam", "SteamPath"),
+        (r"HKLM\SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+        (r"HKLM\SOFTWARE\Valve\Steam", "InstallPath"),
+    ]
+    .into_iter()
+    .find_map(|(key, value)| {
+        let output = std::process::Command::new("reg")
+            .args(["query", key, "/v", value])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .find_map(|line| {
+                line.split_once("REG_SZ")
+                    .map(|(_, path)| PathBuf::from(path.trim()))
+            })
+    })
+}
+
+#[cfg(windows)]
+fn steam_library_paths(root: &Path, contents: &str) -> Vec<PathBuf> {
+    let mut paths = vec![root.to_path_buf()];
+    paths.extend(contents.lines().filter_map(|line| {
+        let fields = line.split('"').collect::<Vec<_>>();
+        (fields.get(1) == Some(&"path"))
+            .then(|| fields.get(3))
+            .flatten()
+            .map(|path| PathBuf::from(path.replace(r"\\", r"\")))
+    }));
+    paths.sort();
+    paths.dedup();
+    paths
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -137,18 +185,6 @@ fn validate_settings(settings: &SettingsManifest) -> Result<(), CommandError> {
         return Err(CommandError::new(
             CommandErrorCode::InvalidInput,
             format!("Unsupported settings version {}", settings.schema_version),
-        ));
-    }
-    if settings.accent_hue > 360 {
-        return Err(CommandError::new(
-            CommandErrorCode::InvalidInput,
-            "Accent hue must be between 0 and 360",
-        ));
-    }
-    if settings.language.trim().is_empty() || settings.language.len() > 35 {
-        return Err(CommandError::new(
-            CommandErrorCode::InvalidInput,
-            "Language identifier is invalid",
         ));
     }
     for game_path in &settings.game_paths {
@@ -220,12 +256,30 @@ mod tests {
         let path = directory.join(SETTINGS_FILE);
         let mut settings = default_settings();
         write_settings(&path, &settings).unwrap();
-        settings.language = "pt-BR".into();
+        settings.game_paths[0].detected = true;
 
         write_settings(&path, &settings).unwrap();
 
-        assert_eq!(read_settings(&path).unwrap().language, "pt-BR");
+        assert!(read_settings(&path).unwrap().game_paths[0].detected);
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn steam_libraries_include_registry_root_and_vdf_paths() {
+        let root = Path::new(r"F:\Program Files (x86)\Steam");
+        let paths = steam_library_paths(
+            root,
+            r#"
+                "path" "F:\\Program Files (x86)\\Steam"
+                "path" "D:\\SteamLibrary"
+            "#,
+        );
+
+        assert_eq!(
+            paths,
+            vec![PathBuf::from(r"D:\SteamLibrary"), root.to_path_buf()]
+        );
     }
 
     #[test]

@@ -332,6 +332,21 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
+    fn concurrent_operations_can_be_cancelled_independently() {
+        tauri::async_runtime::block_on(async {
+            register_operation("test-operation-one").await.unwrap();
+            register_operation("test-operation-two").await.unwrap();
+
+            cancel_operation("test-operation-one".into()).await.unwrap();
+
+            assert!(is_cancelled("test-operation-one").await);
+            assert!(!is_cancelled("test-operation-two").await);
+            finish_operation("test-operation-one").await;
+            finish_operation("test-operation-two").await;
+        });
+    }
+
+    #[test]
     fn verify_rejects_a_hash_mismatch() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)

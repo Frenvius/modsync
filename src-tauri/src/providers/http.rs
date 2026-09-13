@@ -134,3 +134,19 @@ fn network_error(error: reqwest::Error) -> CommandError {
         details: Some(error.to_string()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_statuses_report_credentials_and_rate_limits() {
+        let unauthorized = status_error(StatusCode::UNAUTHORIZED);
+        assert!(!unauthorized.retryable);
+        assert!(unauthorized.message.contains("credentials"));
+
+        let rate_limited = status_error(StatusCode::TOO_MANY_REQUESTS);
+        assert!(rate_limited.retryable);
+        assert!(rate_limited.message.contains("rate limit"));
+    }
+}

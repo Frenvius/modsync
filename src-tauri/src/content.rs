@@ -2221,6 +2221,26 @@ mod tests {
     }
 
     #[test]
+    fn malformed_archive_reports_corrupted_data() {
+        let root = test_root("malformed-archive");
+        fs::create_dir_all(&root).unwrap();
+        let archive = root.join("bad.zip");
+        fs::write(&archive, b"not a zip archive").unwrap();
+
+        let error = extract_thunderstore(
+            ("thunderstore:test", "test"),
+            &archive,
+            &root.join("staging"),
+            &mut Vec::new(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(error.code, CommandErrorCode::CorruptedData));
+        assert_eq!(error.message, "Package archive is malformed");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn thunderstore_package_root_is_removed_before_installation() {
         let root = test_root("package-root");
         fs::create_dir_all(&root).unwrap();

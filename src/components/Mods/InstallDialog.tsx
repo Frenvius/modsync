@@ -124,7 +124,7 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
               </Alert>
             ) : (
               <Select value={instance?.id} onValueChange={setTarget}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full" aria-label="Target instance">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

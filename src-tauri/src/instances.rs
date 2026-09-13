@@ -488,6 +488,20 @@ mod tests {
     }
 
     #[test]
+    fn corrupted_manifest_stops_loading_with_an_actionable_error() {
+        let root = test_root("corrupted");
+        let instance = root.join("inst-corrupted");
+        fs::create_dir_all(&instance).unwrap();
+        fs::write(instance.join(MANIFEST_FILE), b"{not-json").unwrap();
+
+        let error = list_from(&root).unwrap_err();
+
+        assert!(matches!(error.code, CommandErrorCode::CorruptedData));
+        assert_eq!(error.message, "The instance manifest is corrupted");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn duplicate_managed_copies_content_without_sharing_its_path() {
         let root = test_root("duplicate");
         let source = create_managed(&root, input("Source")).unwrap();

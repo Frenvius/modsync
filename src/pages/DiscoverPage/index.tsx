@@ -119,7 +119,7 @@ const DiscoverPage = () => {
       <div className="flex flex-wrap items-center gap-2">
         <SearchBar value={query} className="w-80" onChange={setQuery} placeholder={`Search ${game.name} mods`} />
         <Select value={sort} onValueChange={(v) => setSort(v as SearchSort)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" aria-label="Sort discovered projects">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -254,7 +254,7 @@ const DiscoverPage = () => {
                                   onPointerLeave={scheduleCategoryMenuClose}
                                   onClick={(event) => event.stopPropagation()}
                                   onPointerEnter={() => openCategoryMenu(project.id)}
-                                  aria-label={`${project.categories.length - 1} more categories`}
+                                  aria-label={`+${project.categories.length - 1} more categories`}
                                   className="rounded-md bg-secondary/70 text-[10px] text-secondary-foreground"
                                 >
                                   +{project.categories.length - 1}

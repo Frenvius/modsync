@@ -3,7 +3,7 @@ import type { ProviderMeta } from '~/domain/interfaces/provider.interface';
 
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
-import { GAMES, PROVIDERS } from '~/usecase/mock/games';
+import { GAMES, PROVIDERS } from '~/domain/data/catalog';
 
 export interface Catalog {
   games: Array<Game>;

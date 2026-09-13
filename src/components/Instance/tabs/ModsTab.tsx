@@ -171,7 +171,7 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
       <div className="flex flex-wrap items-center gap-2">
         <SearchBar value={query} className="w-64" onChange={setQuery} placeholder={`Search ${label}`} />
         <Select value={status} onValueChange={(value) => setStatus(value as ModStatusFilter)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" aria-label="Filter content by status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -185,7 +185,7 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(value) => setSort(value as ModSortKey)}>
-          <SelectTrigger className="w-36">
+          <SelectTrigger className="w-36" aria-label="Sort installed content">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

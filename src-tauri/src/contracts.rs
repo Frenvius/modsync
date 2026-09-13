@@ -103,21 +103,9 @@ pub struct GamePathSetting {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Theme {
-    Dark,
-    System,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsManifest {
     pub schema_version: u32,
-    pub language: String,
-    pub accent_hue: u16,
-    pub close_to_tray: bool,
-    pub theme: Theme,
-    pub launch_on_startup: bool,
     pub game_paths: Vec<GamePathSetting>,
 }
 
@@ -158,11 +146,7 @@ impl CommandError {
     }
 
     pub fn io(message: impl Into<String>, error: &std::io::Error) -> Self {
-        let code = match error.kind() {
-            std::io::ErrorKind::NotFound => CommandErrorCode::NotFound,
-            std::io::ErrorKind::PermissionDenied => CommandErrorCode::PermissionDenied,
-            _ => CommandErrorCode::Io,
-        };
+        let code = io_error_code(error);
 
         Self {
             code,
@@ -173,6 +157,24 @@ impl CommandError {
             ),
             details: Some(error.to_string()),
         }
+    }
+}
+
+fn io_error_code(error: &std::io::Error) -> CommandErrorCode {
+    #[cfg(windows)]
+    match error.raw_os_error() {
+        Some(112) => return CommandErrorCode::DiskFull,
+        Some(32) | Some(33) => return CommandErrorCode::Conflict,
+        _ => {}
+    }
+    #[cfg(unix)]
+    if error.raw_os_error() == Some(28) {
+        return CommandErrorCode::DiskFull;
+    }
+    match error.kind() {
+        std::io::ErrorKind::NotFound => CommandErrorCode::NotFound,
+        std::io::ErrorKind::PermissionDenied => CommandErrorCode::PermissionDenied,
+        _ => CommandErrorCode::Io,
     }
 }
 
@@ -235,14 +237,24 @@ mod tests {
     }
 
     #[test]
+    fn io_errors_identify_disk_full_and_locked_files() {
+        let disk_full = std::io::Error::from_raw_os_error(if cfg!(windows) { 112 } else { 28 });
+        assert!(matches!(
+            CommandError::io("write failed", &disk_full).code,
+            CommandErrorCode::DiskFull
+        ));
+
+        #[cfg(windows)]
+        assert!(matches!(
+            CommandError::io("write failed", &std::io::Error::from_raw_os_error(32)).code,
+            CommandErrorCode::Conflict
+        ));
+    }
+
+    #[test]
     fn settings_manifest_round_trips() {
         let manifest = SettingsManifest {
             schema_version: MANIFEST_SCHEMA_VERSION,
-            language: "en-US".into(),
-            accent_hue: 152,
-            close_to_tray: true,
-            theme: Theme::Dark,
-            launch_on_startup: false,
             game_paths: vec![GamePathSetting {
                 path: ".minecraft".into(),
                 game_id: GameId::Minecraft,

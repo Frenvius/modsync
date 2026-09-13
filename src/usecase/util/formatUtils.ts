@@ -48,6 +48,4 @@ export const initials = (name: string) =>
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('');
 
-export const wait = (ms = 250) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-export const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
+export const uid = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
