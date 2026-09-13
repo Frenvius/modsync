@@ -96,6 +96,110 @@
   --color-info: var(--info);
 }
 
+@layer components {
+  .rich-content {
+    @apply text-sm leading-relaxed text-muted-foreground;
+    overflow-wrap: anywhere;
+  }
+
+  .rich-content > :first-child {
+    margin-block-start: 0;
+  }
+
+  .rich-content > :last-child {
+    margin-block-end: 0;
+  }
+
+  .rich-content h1,
+  .rich-content h2,
+  .rich-content h3,
+  .rich-content h4 {
+    @apply font-semibold text-foreground;
+    margin-block: 1.5rem 0.5rem;
+    line-height: 1.2;
+  }
+
+  .rich-content h1 {
+    @apply text-xl;
+  }
+
+  .rich-content h2 {
+    @apply text-lg;
+  }
+
+  .rich-content h3,
+  .rich-content h4 {
+    @apply text-base;
+  }
+
+  .rich-content p,
+  .rich-content ul,
+  .rich-content ol,
+  .rich-content pre,
+  .rich-content table,
+  .rich-content blockquote {
+    margin-block: 1rem;
+  }
+
+  .rich-content ul,
+  .rich-content ol {
+    padding-inline-start: 1.25rem;
+  }
+
+  .rich-content ul {
+    list-style: disc;
+  }
+
+  .rich-content ol {
+    list-style: decimal;
+  }
+
+  .rich-content li + li {
+    margin-block-start: 0.25rem;
+  }
+
+  .rich-content a {
+    @apply text-primary underline underline-offset-2 hover:text-primary/80;
+  }
+
+  .rich-content img {
+    @apply mx-auto my-4 h-auto max-w-full rounded-md outline outline-1 outline-white/10;
+  }
+
+  .rich-content blockquote {
+    @apply border-l-2 border-primary/60 pl-3 text-foreground/90;
+  }
+
+  .rich-content code {
+    @apply rounded bg-secondary px-1 py-0.5 font-mono text-xs text-foreground;
+  }
+
+  .rich-content pre {
+    @apply overflow-x-auto rounded-md border bg-background p-3;
+  }
+
+  .rich-content pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .rich-content table {
+    @apply block w-full overflow-x-auto border-collapse;
+  }
+
+  .rich-content th,
+  .rich-content td {
+    @apply border px-2 py-1 text-left;
+  }
+
+  .rich-content th {
+    @apply bg-secondary font-medium text-foreground;
+  }
+
+  .rich-content hr {
+    @apply my-4 border-border;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

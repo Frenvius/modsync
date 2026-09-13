@@ -25,8 +25,12 @@ export const formatRelative = (iso: null | string) => {
   return `${Math.round(months / 12)}y ago`;
 };
 
-export const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+export const formatDate = (iso: string) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? 'Date unavailable'
+    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
 
 export const formatPlaytime = (minutes: number) => {
   if (minutes === 0) return '0h';

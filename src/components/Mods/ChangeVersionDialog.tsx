@@ -8,6 +8,7 @@ import { Loader2, GitBranch, TriangleAlert } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import { useAppStore } from '~/usecase/store/appStore';
+import { formatDate } from '~/usecase/util/formatUtils';
 import { projectService } from '~/usecase/service/project';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Alert, AlertTitle, AlertDescription } from '~/components/ui/alert';
@@ -126,6 +127,9 @@ const ChangeVersionDialog = ({ mod, open, instance, onChanged, onOpenChange }: C
                 {versions.map((version) => (
                   <SelectItem key={version.id} value={version.id}>
                     <span className="font-mono">{version.number}</span>
+                    <time dateTime={version.publishedAt} className="text-xs text-muted-foreground">
+                      {formatDate(version.publishedAt)}
+                    </time>
                     {version.id === mod.versionId && <span className="text-xs text-muted-foreground">Current</span>}
                   </SelectItem>
                 ))}

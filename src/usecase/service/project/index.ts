@@ -31,6 +31,7 @@ export interface CategoryResult {
 
 class Service {
   private games = GAMES;
+  private projects = new Map<string, Project>();
   private versions = new Map<string, Array<ProjectVersion>>();
 
   setGames(games: Array<Game>): void {
@@ -92,10 +93,16 @@ class Service {
   }
 
   async getProject(projectId: string): Promise<Project> {
-    return providerService.getProject(projectId);
+    const cached = this.projects.get(projectId);
+    if (cached) return cached;
+    const project = await providerService.getProject(projectId);
+    this.projects.set(projectId, project);
+    return project;
   }
 
   async getVersions(projectId: string): Promise<Array<ProjectVersion>> {
+    const cached = this.versions.get(projectId);
+    if (cached) return cached;
     const versions = await providerService.getVersions(projectId);
     this.versions.set(projectId, versions);
     return versions;

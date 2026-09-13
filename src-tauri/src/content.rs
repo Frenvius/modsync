@@ -144,6 +144,13 @@ struct PreparedFile {
     sha512: String,
 }
 
+struct ThunderstorePackage<'a> {
+    project_id: &'a str,
+    slug: &'a str,
+    directory: String,
+    loader: bool,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TransactionJournal {
@@ -186,7 +193,7 @@ pub async fn refresh_content(
     instances::validate_id(&instance_id)?;
     let (metadata, mut manifest, root) = load_instance(&app, &instance_id)?;
     let before = manifest.mods.clone();
-    reconcile_at(&root, &mut manifest);
+    reconcile_at(&root, &mut manifest, true);
     if manifest.mods != before {
         manifest.updated_at = chrono::Utc::now().to_rfc3339();
         instances::write_manifest(&metadata, &manifest)?;
@@ -202,7 +209,7 @@ pub async fn check_content_updates(
     let _guard = mutation_lock().lock().await;
     instances::validate_id(&instance_id)?;
     let (metadata, mut manifest, root) = load_instance(&app, &instance_id)?;
-    reconcile_at(&root, &mut manifest);
+    reconcile_at(&root, &mut manifest, true);
     let (items, _) = check_updates_at(&app, &mut manifest, None).await;
     manifest.updated_at = chrono::Utc::now().to_rfc3339();
     instances::write_manifest(&metadata, &manifest)?;
@@ -290,7 +297,7 @@ async fn run_update_all(
     input: &UpdateAllInput,
 ) -> Result<UpdateCheckResult, CommandError> {
     let (metadata, mut manifest, root) = load_instance(app, &input.instance_id)?;
-    reconcile_at(&root, &mut manifest);
+    reconcile_at(&root, &mut manifest, true);
     let (mut items, updates) =
         check_updates_at(app, &mut manifest, Some(&input.operation_id)).await;
     manifest.updated_at = chrono::Utc::now().to_rfc3339();
@@ -403,7 +410,8 @@ async fn preview_plan(
             "Installation request is invalid",
         ));
     }
-    let metadata = instances::instances_root(app)?.join(&input.instance_id);
+    let instances_root = instances::instances_root(app)?;
+    let metadata = instances::metadata_directory(&instances_root, &input.instance_id)?;
     let mut manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
     let content_root = validate_content_root(&metadata, &manifest)?;
     recover_at(&content_root, &mut manifest, &metadata)?;
@@ -512,7 +520,7 @@ async fn run_install(
         ));
     }
     let root = instances::instances_root(app)?;
-    let metadata = root.join(&input.instance_id);
+    let metadata = instances::metadata_directory(&root, &input.instance_id)?;
     let mut manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
     let content_root = validate_content_root(&metadata, &manifest)?;
     recover_at(&content_root, &mut manifest, &metadata)?;
@@ -865,8 +873,13 @@ fn apply_update_candidate(installed: &mut InstalledMod, version: &ProjectVersion
             UpdateStatus::UpToDate
         };
     }
-    if installed.version_id.is_empty() && !has_update {
-        installed.version_id = version.id.clone();
+    if !has_update {
+        if installed.version_id.is_empty() {
+            installed.version_id = version.id.clone();
+        }
+        if installed.installed_version_published_at.is_none() {
+            installed.installed_version_published_at = Some(version.published_at.clone());
+        }
     }
     has_update
 }
@@ -1018,7 +1031,16 @@ fn prepare_artifact(
 ) -> Result<(), CommandError> {
     match item.project.provider.id {
         crate::catalog::ProviderId::Thunderstore => extract_thunderstore(
-            (&item.project.id, &item.project.slug),
+            ThunderstorePackage {
+                project_id: &item.project.id,
+                slug: &item.project.slug,
+                directory: format!("{}-{}", item.project.author, item.project.slug),
+                loader: item
+                    .project
+                    .slug
+                    .to_ascii_lowercase()
+                    .starts_with("bepinexpack"),
+            },
             archive,
             staging,
             output,
@@ -1066,11 +1088,12 @@ fn prepare_single(
 }
 
 fn extract_thunderstore(
-    project: (&str, &str),
+    package: ThunderstorePackage<'_>,
     archive: &Path,
     staging: &Path,
     output: &mut Vec<PreparedFile>,
 ) -> Result<(), CommandError> {
+    safe_file_name(&package.directory)?;
     let file = fs::File::open(archive)
         .map_err(|error| CommandError::io("Could not open the package archive", &error))?;
     let mut archive = zip::ZipArchive::new(file).map_err(archive_error)?;
@@ -1102,13 +1125,16 @@ fn extract_thunderstore(
                 "Package archive contains an unsafe path",
             )
         })?;
-        let relative = enclosed.strip_prefix(project.1).unwrap_or(&enclosed);
+        let relative = enclosed
+            .strip_prefix(package.slug)
+            .or_else(|_| enclosed.strip_prefix(&package.directory))
+            .unwrap_or(&enclosed);
         if relative.as_os_str().is_empty()
-            || relative
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(is_package_metadata)
-                && relative.components().count() == 1
+            || (relative.components().count() == 1
+                && relative
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(is_package_metadata))
         {
             continue;
         }
@@ -1119,7 +1145,9 @@ fn extract_thunderstore(
                 "Package archive exceeds the 2 GB extraction limit",
             ));
         }
-        let source = staging.join(relative);
+        let installed_path =
+            thunderstore_install_path(relative, &package.directory, package.loader);
+        let source = staging.join(&package.directory).join(relative);
         if let Some(parent) = source.parent() {
             fs::create_dir_all(parent).map_err(|error| {
                 CommandError::io("Could not create an extracted package directory", &error)
@@ -1133,8 +1161,8 @@ fn extract_thunderstore(
             CommandError::io("Could not flush an extracted package file", &error)
         })?;
         output.push(PreparedFile {
-            project_id: project.0.into(),
-            relative: relative.to_path_buf(),
+            project_id: package.project_id.into(),
+            relative: installed_path,
             sha512: downloads::sha512(&source)?,
             source,
         });
@@ -1146,6 +1174,40 @@ fn extract_thunderstore(
         ));
     }
     Ok(())
+}
+
+fn thunderstore_install_path(relative: &Path, package: &str, loader: bool) -> PathBuf {
+    if loader {
+        return relative.to_path_buf();
+    }
+    let routed = strip_first_component(relative, "BepInEx").unwrap_or(relative);
+    for (source, destination, grouped) in [
+        ("plugins", "plugins", true),
+        ("patchers", "patchers", true),
+        ("config", "config", false),
+        ("core", "core", false),
+    ] {
+        if let Some(rest) = strip_first_component(routed, source) {
+            let mut path = PathBuf::from("BepInEx").join(destination);
+            if grouped {
+                path.push(package);
+            }
+            return path.join(rest);
+        }
+    }
+    PathBuf::from("BepInEx")
+        .join("plugins")
+        .join(package)
+        .join(relative)
+}
+
+fn strip_first_component<'a>(path: &'a Path, expected: &str) -> Option<&'a Path> {
+    let mut components = path.components();
+    components
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+        .is_some_and(|component| component.eq_ignore_ascii_case(expected))
+        .then_some(components.as_path())
 }
 
 fn commit_files(
@@ -1380,6 +1442,7 @@ fn import_local_at(
         status: UpdateStatus::UpToDate,
         update_available: false,
         installed_version: "local".into(),
+        installed_version_published_at: None,
         version_id: String::new(),
         files: vec![InstalledFile {
             path: candidate.path,
@@ -1597,7 +1660,7 @@ fn set_enabled_at(
         rollback_moves(&moved);
         return Err(error);
     }
-    reconcile_at(&root, &mut manifest);
+    reconcile_at(&root, &mut manifest, true);
     instances::write_manifest(&metadata, &manifest)?;
     Ok(manifest)
 }
@@ -1647,10 +1710,11 @@ fn rollback_moves(moved: &[(PathBuf, PathBuf)]) {
 pub(crate) fn reconcile_instance(
     metadata: &Path,
     manifest: &mut InstanceManifest,
+    verify_hashes: bool,
 ) -> Result<(), CommandError> {
     let root = validate_content_root(metadata, manifest)?;
     let before = manifest.mods.clone();
-    reconcile_at(&root, manifest);
+    reconcile_at(&root, manifest, verify_hashes);
     if manifest.mods != before {
         manifest.updated_at = chrono::Utc::now().to_rfc3339();
         instances::write_manifest(metadata, manifest)?;
@@ -1658,7 +1722,7 @@ pub(crate) fn reconcile_instance(
     Ok(())
 }
 
-fn reconcile_at(root: &Path, manifest: &mut InstanceManifest) {
+fn reconcile_at(root: &Path, manifest: &mut InstanceManifest, verify_hashes: bool) {
     let enabled = manifest
         .mods
         .iter()
@@ -1672,10 +1736,13 @@ fn reconcile_at(root: &Path, manifest: &mut InstanceManifest) {
             }
             let relative = installed_file_path(installed, file);
             match safe_existing_file(root, &relative) {
-                Ok(Some(path)) => file
-                    .sha512
-                    .as_ref()
-                    .is_some_and(|expected| file_hash_mismatch(&path, expected)),
+                Ok(Some(path)) => {
+                    verify_hashes
+                        && file
+                            .sha512
+                            .as_ref()
+                            .is_some_and(|expected| file_hash_mismatch(&path, expected))
+                }
                 Ok(None) | Err(_) => true,
             }
         });
@@ -1707,7 +1774,8 @@ fn load_instance(
     app: &AppHandle,
     instance_id: &str,
 ) -> Result<(PathBuf, InstanceManifest, PathBuf), CommandError> {
-    let metadata = instances::instances_root(app)?.join(instance_id);
+    let instances_root = instances::instances_root(app)?;
+    let metadata = instances::metadata_directory(&instances_root, instance_id)?;
     let mut manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
     let root = validate_content_root(&metadata, &manifest)?;
     recover_at(&root, &mut manifest, &metadata)?;
@@ -1888,6 +1956,7 @@ fn installed_mod(item: PlanItem, files: &[PreparedFile]) -> InstalledMod {
         status: UpdateStatus::UpToDate,
         update_available: false,
         installed_version: item.version.number.clone(),
+        installed_version_published_at: Some(item.version.published_at),
         version_id: item.version.id,
         files: file_paths,
         missing_dependency: None,
@@ -2122,6 +2191,7 @@ mod tests {
             status: UpdateStatus::UpToDate,
             update_available: false,
             installed_version: "1.0".into(),
+            installed_version_published_at: None,
             version_id: "version".into(),
             files: Vec::new(),
             missing_dependency: None,
@@ -2143,7 +2213,7 @@ mod tests {
             downloads: 1,
             changelog: String::new(),
             project_id: item.project_id.clone(),
-            published_at: String::new(),
+            published_at: "2026-09-13T00:00:00Z".into(),
             loaders: vec![LoaderId::Fabric],
             game_versions: vec!["1.21.4".into()],
             dependencies: Vec::new(),
@@ -2160,6 +2230,10 @@ mod tests {
         assert!(!apply_update_candidate(&mut item, &version));
         assert!(!item.update_available);
         assert_eq!(item.status, UpdateStatus::UpToDate);
+        assert_eq!(
+            item.installed_version_published_at.as_deref(),
+            Some("2026-09-13T00:00:00Z")
+        );
     }
 
     #[test]
@@ -2170,13 +2244,36 @@ mod tests {
         item.dependencies.push("modrinth:missing".into());
         let mut manifest = manifest(&root, vec![item]);
 
-        reconcile_at(&root, &mut manifest);
+        reconcile_at(&root, &mut manifest, true);
 
         assert_eq!(manifest.mods[0].status, UpdateStatus::DependencyMissing);
         assert_eq!(
             manifest.mods[0].missing_dependency.as_deref(),
             Some("modrinth:missing")
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn startup_reconciliation_skips_hashes_but_detects_missing_files() {
+        let root = test_root("startup-reconciliation");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("mod.jar"), "changed").unwrap();
+        let mut item = installed("modrinth:test");
+        item.files.push(InstalledFile {
+            path: "mod.jar".into(),
+            mutable: false,
+            sha512: Some("invalid".into()),
+        });
+        let mut manifest = manifest(&root, vec![item]);
+
+        reconcile_at(&root, &mut manifest, false);
+        assert_eq!(manifest.mods[0].status, UpdateStatus::UpToDate);
+        reconcile_at(&root, &mut manifest, true);
+        assert_eq!(manifest.mods[0].status, UpdateStatus::Damaged);
+        fs::remove_file(root.join("mod.jar")).unwrap();
+        reconcile_at(&root, &mut manifest, false);
+        assert_eq!(manifest.mods[0].status, UpdateStatus::Damaged);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -2213,7 +2310,12 @@ mod tests {
         archive.finish().unwrap();
 
         let error = extract_thunderstore(
-            ("thunderstore:test", "test"),
+            ThunderstorePackage {
+                project_id: "thunderstore:test",
+                slug: "test",
+                directory: "Author-test".into(),
+                loader: false,
+            },
             &archive_path,
             &root.join("staging"),
             &mut Vec::new(),
@@ -2231,7 +2333,12 @@ mod tests {
         fs::write(&archive, b"not a zip archive").unwrap();
 
         let error = extract_thunderstore(
-            ("thunderstore:test", "test"),
+            ThunderstorePackage {
+                project_id: "thunderstore:test",
+                slug: "test",
+                directory: "Author-test".into(),
+                loader: false,
+            },
             &archive,
             &root.join("staging"),
             &mut Vec::new(),
@@ -2244,7 +2351,7 @@ mod tests {
     }
 
     #[test]
-    fn thunderstore_package_root_is_removed_before_installation() {
+    fn thunderstore_mods_are_grouped_under_bepinex_plugins() {
         let root = test_root("package-root");
         fs::create_dir_all(&root).unwrap();
         let archive_path = root.join("package.zip");
@@ -2261,15 +2368,48 @@ mod tests {
         let mut files = Vec::new();
 
         extract_thunderstore(
-            ("thunderstore:test", "TestPackage"),
+            ThunderstorePackage {
+                project_id: "thunderstore:test",
+                slug: "TestPackage",
+                directory: "Author-TestPackage".into(),
+                loader: false,
+            },
             &archive_path,
             &root.join("staging"),
             &mut files,
         )
         .unwrap();
 
-        assert_eq!(files[0].relative, PathBuf::from("BepInEx/plugins/mod.dll"));
+        assert_eq!(
+            files[0].relative,
+            PathBuf::from("BepInEx/plugins/Author-TestPackage/mod.dll")
+        );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn thunderstore_mod_files_use_bepinex_package_directories() {
+        let package = "Author-TestPackage";
+        assert_eq!(
+            thunderstore_install_path(Path::new("mod.dll"), package, false),
+            PathBuf::from("BepInEx/plugins/Author-TestPackage/mod.dll")
+        );
+        assert_eq!(
+            thunderstore_install_path(Path::new("Plugins/assets/data"), package, false),
+            PathBuf::from("BepInEx/plugins/Author-TestPackage/assets/data")
+        );
+        assert_eq!(
+            thunderstore_install_path(Path::new("config/mod.cfg"), package, false),
+            PathBuf::from("BepInEx/config/mod.cfg")
+        );
+        assert_eq!(
+            thunderstore_install_path(Path::new("BepInEx/patchers/mod.dll"), package, false),
+            PathBuf::from("BepInEx/patchers/Author-TestPackage/mod.dll")
+        );
+        assert_eq!(
+            thunderstore_install_path(Path::new("BepInEx/core/loader.dll"), package, true),
+            PathBuf::from("BepInEx/core/loader.dll")
+        );
     }
 
     #[test]

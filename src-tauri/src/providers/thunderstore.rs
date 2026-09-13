@@ -89,6 +89,11 @@ struct CommunityListing {
     categories: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct MarkdownResponse {
+    markdown: Option<String>,
+}
+
 pub async fn search(
     app: &AppHandle,
     query: ProviderSearchQuery,
@@ -163,15 +168,17 @@ pub async fn resolve(
     ))
 }
 
-pub async fn project(app: &AppHandle, external_id: &str) -> Result<Project, CommandError> {
+pub async fn project(_app: &AppHandle, external_id: &str) -> Result<Project, CommandError> {
     let (community, owner, name) = split_id(external_id)?;
-    let (items, _) = projects(app, community).await?;
-    items
-        .into_iter()
-        .find(|project| project.author == owner && project.slug == name)
-        .ok_or_else(|| {
-            CommandError::new(CommandErrorCode::NotFound, "Thunderstore package not found")
-        })
+    let details = http::get_json::<PackageDetails>(http::client()?.get(format!(
+        "{BASE_URL}/api/experimental/package/{owner}/{name}/"
+    )))
+    .await?;
+    let mut project = map_details(community, &details)?;
+    if let Some(readme) = package_markdown(&owner, &name, &project.latest_version, "readme").await {
+        project.description = readme;
+    }
+    Ok(project)
 }
 
 pub async fn versions(
@@ -190,9 +197,16 @@ pub async fn versions(
         })
     })
     .await?;
-    items.into_iter().next().ok_or_else(|| {
+    let mut versions = items.into_iter().next().ok_or_else(|| {
         CommandError::new(CommandErrorCode::NotFound, "Thunderstore package not found")
-    })
+    })?;
+    if let Some(version) = versions.first_mut() {
+        if let Some(changelog) = package_markdown(&owner, &name, &version.number, "changelog").await
+        {
+            version.changelog = changelog;
+        }
+    }
+    Ok(versions)
 }
 
 pub async fn categories(
@@ -462,6 +476,18 @@ fn map_version(
     }
 }
 
+async fn package_markdown(owner: &str, name: &str, version: &str, kind: &str) -> Option<String> {
+    if version.is_empty() {
+        return None;
+    }
+    http::get_json::<MarkdownResponse>(http::client().ok()?.get(format!(
+        "{BASE_URL}/api/experimental/package/{owner}/{name}/{version}/{kind}/"
+    )))
+    .await
+    .ok()?
+    .markdown
+}
+
 fn dependency_project(community: &str, value: &str) -> Option<Dependency> {
     let mut parts = value.splitn(3, '-');
     let owner = parts.next()?;
@@ -559,6 +585,17 @@ mod tests {
 
     #[test]
     #[ignore = "requires network access"]
+    fn live_thunderstore_markdown_contains_images() {
+        tauri::async_runtime::block_on(async {
+            let readme = package_markdown("blacks7ar", "CoreWoodPieces", "1.2.5", "readme")
+                .await
+                .unwrap();
+            assert!(readme.contains("![]("));
+        });
+    }
+
+    #[test]
+    #[ignore = "requires network access"]
     fn live_thunderstore_package_resolves_directly() {
         tauri::async_runtime::block_on(async {
             let (project, versions) = resolve("valheim:RandyKnapp:EpicLoot", None).await.unwrap();
@@ -594,6 +631,15 @@ mod tests {
         let version = map_version("valheim", &details.owner, &details.name, details.latest);
         assert_eq!(project.id, "thunderstore:valheim:RandyKnapp:EpicLoot");
         assert_eq!(version.dependencies.len(), 1);
+    }
+
+    #[test]
+    fn markdown_response_preserves_rich_content() {
+        let response: MarkdownResponse = serde_json::from_str(
+            r##"{"markdown":"# CoreWoodPieces\n\n![](https://example.com/image.png)"}"##,
+        )
+        .unwrap();
+        assert!(response.markdown.unwrap().contains("![]("));
     }
 
     #[test]

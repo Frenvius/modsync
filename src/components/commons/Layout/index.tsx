@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 
+import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -11,6 +12,7 @@ import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';
 import { DownloadStatus } from '~/domain/enums/provider.enum';
 import CreateInstanceDialog from '~/components/CreateInstance';
+import { browserService, getExternalWebUrl } from '~/usecase/service/browser';
 
 import Sidebar from './Sidebar';
 import Titlebar from './Titlebar';
@@ -23,6 +25,26 @@ const Layout = () => {
   React.useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  React.useEffect(() => {
+    const openWebLink = (event: MouseEvent) => {
+      if (event.defaultPrevented || ![0, 1].includes(event.button)) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest<HTMLAnchorElement>('a[href]');
+      if (!anchor) return;
+      const url = getExternalWebUrl(anchor.href, window.location.origin);
+      if (!url) return;
+      event.preventDefault();
+      void browserService.openExternal(url).catch(() => toast.error('Could not open link in your browser.'));
+    };
+    document.addEventListener('click', openWebLink);
+    document.addEventListener('auxclick', openWebLink);
+    return () => {
+      document.removeEventListener('click', openWebLink);
+      document.removeEventListener('auxclick', openWebLink);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!isTauri()) return;

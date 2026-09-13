@@ -41,6 +41,8 @@ pub struct InstalledMod {
     #[serde(default)]
     pub update_available: bool,
     pub installed_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_version_published_at: Option<String>,
     #[serde(default)]
     pub version_id: String,
     #[serde(default)]

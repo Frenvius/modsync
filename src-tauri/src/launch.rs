@@ -77,10 +77,12 @@ pub async fn launch_instance(
 
     let result = launch(&app, &instance_id).await;
     if let Err(error) = &result {
-        if let Ok(root) = instances::instances_root(&app) {
+        if let Ok(metadata) = instances::instances_root(&app)
+            .and_then(|root| instances::metadata_directory(&root, &instance_id))
+        {
             let _ = emit_log(
                 &app,
-                &root.join(&instance_id),
+                &metadata,
                 &instance_id,
                 LogLevel::Error,
                 &error.message,
@@ -101,9 +103,8 @@ pub fn list_java_runtimes() -> Vec<JavaRuntime> {
 #[tauri::command]
 pub fn logs_directory(app: AppHandle, instance_id: String) -> Result<String, CommandError> {
     instances::validate_id(&instance_id)?;
-    let directory = instances::instances_root(&app)?
-        .join(instance_id)
-        .join("logs");
+    let root = instances::instances_root(&app)?;
+    let directory = instances::metadata_directory(&root, &instance_id)?.join("logs");
     fs::create_dir_all(&directory)
         .map_err(|error| CommandError::io("Could not create the process log directory", &error))?;
     Ok(directory.to_string_lossy().into_owned())
@@ -115,7 +116,8 @@ pub fn list_process_logs(
     instance_id: String,
 ) -> Result<Vec<LogLine>, CommandError> {
     instances::validate_id(&instance_id)?;
-    let path = log_path(&instances::instances_root(&app)?.join(instance_id));
+    let root = instances::instances_root(&app)?;
+    let path = log_path(&instances::metadata_directory(&root, &instance_id)?);
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -135,7 +137,8 @@ pub fn list_process_logs(
 }
 
 async fn launch(app: &AppHandle, instance_id: &str) -> Result<InstanceManifest, CommandError> {
-    let metadata = instances::instances_root(app)?.join(instance_id);
+    let root = instances::instances_root(app)?;
+    let metadata = instances::metadata_directory(&root, instance_id)?;
     let mut manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
     let configured = settings::get_settings(app.clone())?
         .game_paths

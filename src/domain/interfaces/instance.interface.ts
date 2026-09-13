@@ -25,6 +25,7 @@ export interface InstalledMod {
   gameVersions: Array<string>;
   files?: Array<InstalledFile>;
   latestCompatibleVersion: string;
+  installedVersionPublishedAt?: string;
 }
 
 export interface ConfigFile {

@@ -1,4 +1,3 @@
-import type { MarkdownProps } from './types';
 import type { Project, ProjectVersion } from '~/domain/interfaces/project.interface';
 
 import React from 'react';
@@ -14,6 +13,7 @@ import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';
 import { projectService } from '~/usecase/service/project';
 import ProjectIcon from '~/components/commons/ProjectIcon';
+import RichContent from '~/components/commons/RichContent';
 import InstallDialog from '~/components/Mods/InstallDialog';
 import InstanceIcon from '~/components/commons/InstanceIcon';
 import { getProviderMeta } from '~/usecase/service/providers';
@@ -176,7 +176,7 @@ const ProjectPage = () => {
             </TabsList>
 
             <TabsContent className="pt-2" value="description">
-              <Markdown source={project.description} />
+              <RichContent className="max-w-3xl" content={project.description} emptyMessage="No description available." />
             </TabsContent>
 
             <TabsContent value="gallery" className="grid grid-cols-3 gap-3 pt-2">
@@ -248,13 +248,13 @@ const ProjectPage = () => {
 
             <TabsContent value="changelog" className="flex flex-col gap-5 pt-2">
               {versions.map((v) => (
-                <article key={v.id} className="flex flex-col gap-1">
+                <section key={v.id} className="flex flex-col gap-1">
                   <h3 className="flex items-center gap-2 font-mono text-sm font-semibold">
                     {v.number}
                     <span className="font-sans text-xs font-normal text-muted-foreground">{formatDate(v.publishedAt)}</span>
                   </h3>
-                  <p className="text-sm whitespace-pre-line text-muted-foreground">{v.changelog}</p>
-                </article>
+                  <RichContent content={v.changelog} emptyMessage="No changelog available." />
+                </section>
               ))}
             </TabsContent>
 
@@ -339,33 +339,5 @@ const ProjectPage = () => {
     </div>
   );
 };
-
-const Markdown = ({ source }: MarkdownProps) => (
-  <div className="flex max-w-3xl flex-col gap-3 text-sm leading-relaxed">
-    {source.split('\n\n').map((block, i) => {
-      if (block.startsWith('## ')) {
-        return (
-          <h2 key={i} className="pt-2 text-base font-semibold">
-            {block.slice(3)}
-          </h2>
-        );
-      }
-      if (block.startsWith('- ')) {
-        return (
-          <ul key={i} className="list-disc flex flex-col gap-1 pl-5 text-muted-foreground">
-            {block.split('\n').map((line) => (
-              <li key={line}>{line.slice(2)}</li>
-            ))}
-          </ul>
-        );
-      }
-      return (
-        <p key={i} className="text-muted-foreground">
-          {block}
-        </p>
-      );
-    })}
-  </div>
-);
 
 export default ProjectPage;

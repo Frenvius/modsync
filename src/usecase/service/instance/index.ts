@@ -9,7 +9,6 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 
 import { uid } from '~/usecase/util/formatUtils';
 import { launchService } from '~/usecase/service/launch';
-import { filesystemService } from '~/usecase/service/filesystem';
 
 const STORAGE_KEY = 'modsync.instances.v1';
 
@@ -90,7 +89,8 @@ class Service {
   }
 
   async openFolder(instance: Instance): Promise<void> {
-    await filesystemService.openDirectory(instance.location.path);
+    if (!isTauri()) throw new Error('Folders are available in the desktop app');
+    await invoke('open_instance_folder', { id: instance.id });
   }
 
   async play(instance: Instance): Promise<Instance> {

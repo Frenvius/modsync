@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use chrono::Utc;
 use serde::Deserialize;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::catalog::{supports_loader, GameId, LoaderId};
 use crate::contracts::{
@@ -47,8 +48,16 @@ pub struct UpdateInstanceInput {
 }
 
 #[tauri::command]
-pub fn list_instances(app: AppHandle) -> Result<Vec<InstanceManifest>, CommandError> {
-    list_from(&instances_root(&app)?)
+pub async fn list_instances(app: AppHandle) -> Result<Vec<InstanceManifest>, CommandError> {
+    let root = instances_root(&app)?;
+    tauri::async_runtime::spawn_blocking(move || list_from(&root))
+        .await
+        .map_err(|error| CommandError {
+            code: CommandErrorCode::Io,
+            message: "Could not load instances".into(),
+            retryable: false,
+            details: Some(error.to_string()),
+        })?
 }
 
 #[tauri::command]
@@ -85,6 +94,34 @@ pub fn delete_instance(app: AppHandle, id: String) -> Result<(), CommandError> {
     delete_at(&instances_root(&app)?, &id)
 }
 
+#[tauri::command]
+pub fn open_instance_folder(app: AppHandle, id: String) -> Result<(), CommandError> {
+    validate_id(&id)?;
+    let root = instances_root(&app)?;
+    let manifest = read_manifest(&metadata_directory(&root, &id)?.join(MANIFEST_FILE))?;
+    if manifest.id != id {
+        return Err(CommandError::new(
+            CommandErrorCode::CorruptedData,
+            "Instance identifier does not match its directory",
+        ));
+    }
+    let path = PathBuf::from(manifest.location.path);
+    if !path.is_dir() {
+        return Err(CommandError::new(
+            CommandErrorCode::NotFound,
+            "Instance folder no longer exists",
+        ));
+    }
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<&str>)
+        .map_err(|error| {
+            CommandError::new(
+                CommandErrorCode::Io,
+                format!("Could not open the instance folder: {error}"),
+            )
+        })
+}
+
 pub(crate) fn instances_root(app: &AppHandle) -> Result<PathBuf, CommandError> {
     app.path()
         .app_data_dir()
@@ -95,6 +132,73 @@ pub(crate) fn instances_root(app: &AppHandle) -> Result<PathBuf, CommandError> {
                 format!("Could not resolve application data directory: {error}"),
             )
         })
+}
+
+pub(crate) fn metadata_directory(root: &Path, id: &str) -> Result<PathBuf, CommandError> {
+    validate_id(id)?;
+    let legacy = root.join(id);
+    if legacy.join(MANIFEST_FILE).is_file() {
+        return Ok(legacy);
+    }
+    let entries =
+        fs::read_dir(root).map_err(|error| CommandError::io("Could not read instances", &error))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir()
+            && read_manifest(&path.join(MANIFEST_FILE)).is_ok_and(|manifest| manifest.id == id)
+        {
+            return Ok(path);
+        }
+    }
+    Err(CommandError::new(
+        CommandErrorCode::NotFound,
+        "Instance not found",
+    ))
+}
+
+fn available_instance_directory(root: &Path, name: &str) -> PathBuf {
+    let name = safe_instance_directory_name(name);
+    let mut suffix = 1_u32;
+    loop {
+        let candidate = if suffix == 1 {
+            root.join(&name)
+        } else {
+            root.join(format!("{name} ({suffix})"))
+        };
+        if !candidate.exists() {
+            return candidate;
+        }
+        suffix = suffix.saturating_add(1);
+    }
+}
+
+fn safe_instance_directory_name(name: &str) -> String {
+    let mut result = String::with_capacity(name.len());
+    for character in name.trim().chars() {
+        let invalid = character.is_control() || r#"<>:"/\|?*"#.contains(character);
+        if invalid {
+            if !result.ends_with('-') {
+                result.push('-');
+            }
+        } else {
+            result.push(character);
+        }
+    }
+    let result = result.trim_end_matches([' ', '.', '-']);
+    let stem = result.split('.').next().unwrap_or_default();
+    let reserved = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ]
+    .iter()
+    .any(|reserved| stem.eq_ignore_ascii_case(reserved));
+    if result.is_empty() {
+        "Instance".into()
+    } else if reserved {
+        format!("Instance - {result}")
+    } else {
+        result.into()
+    }
 }
 
 fn list_from(root: &Path) -> Result<Vec<InstanceManifest>, CommandError> {
@@ -118,13 +222,29 @@ fn list_from(root: &Path) -> Result<Vec<InstanceManifest>, CommandError> {
         let manifest_path = entry.path().join(MANIFEST_FILE);
         if manifest_path.exists() {
             let mut manifest = read_manifest(&manifest_path)?;
+            restore_managed_content_directory(&entry.path(), &manifest)?;
             crate::content::recover_instance(&entry.path(), &mut manifest)?;
-            crate::content::reconcile_instance(&entry.path(), &mut manifest)?;
+            crate::content::reconcile_instance(&entry.path(), &mut manifest, false)?;
             instances.push(manifest);
         }
     }
     instances.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
     Ok(instances)
+}
+
+fn restore_managed_content_directory(
+    metadata: &Path,
+    manifest: &InstanceManifest,
+) -> Result<(), CommandError> {
+    if manifest.location.kind != InstanceLocationKind::Managed {
+        return Ok(());
+    }
+    let location = Path::new(&manifest.location.path);
+    if location.exists() || location != metadata.join(CONTENT_DIRECTORY) {
+        return Ok(());
+    }
+    fs::create_dir_all(location)
+        .map_err(|error| CommandError::io("Could not restore the instance directory", &error))
 }
 
 fn create_managed(
@@ -133,7 +253,7 @@ fn create_managed(
 ) -> Result<InstanceManifest, CommandError> {
     validate_input(&input)?;
     let id = new_id();
-    let metadata_directory = root.join(&id);
+    let metadata_directory = available_instance_directory(root, &input.name);
     let content_directory = metadata_directory.join(CONTENT_DIRECTORY);
     fs::create_dir_all(&content_directory)
         .map_err(|error| CommandError::io("Could not create the instance directory", &error))?;
@@ -168,7 +288,7 @@ fn import_external(
     }
 
     let id = new_id();
-    let metadata_directory = root.join(&id);
+    let metadata_directory = available_instance_directory(root, &input.instance.name);
     let manifest = new_manifest(
         id,
         input.instance,
@@ -197,7 +317,7 @@ fn update_at(root: &Path, input: UpdateInstanceInput) -> Result<InstanceManifest
         ));
     }
 
-    let metadata_directory = root.join(&input.id);
+    let metadata_directory = metadata_directory(root, &input.id)?;
     let mut manifest = read_manifest(&metadata_directory.join(MANIFEST_FILE))?;
     manifest.name = name.into();
     manifest.memory_mb = input.memory_mb;
@@ -209,12 +329,13 @@ fn update_at(root: &Path, input: UpdateInstanceInput) -> Result<InstanceManifest
 
 fn duplicate_at(root: &Path, id: &str) -> Result<InstanceManifest, CommandError> {
     validate_id(id)?;
-    let source_directory = root.join(id);
+    let source_directory = metadata_directory(root, id)?;
     let mut source = read_manifest(&source_directory.join(MANIFEST_FILE))?;
     crate::content::recover_instance(&source_directory, &mut source)?;
-    crate::content::reconcile_instance(&source_directory, &mut source)?;
+    crate::content::reconcile_instance(&source_directory, &mut source, true)?;
     let copy_id = new_id();
-    let copy_directory = root.join(&copy_id);
+    let copy_name = format!("{} (copy)", source.name);
+    let copy_directory = available_instance_directory(root, &copy_name);
     let location = match source.location.kind {
         InstanceLocationKind::Managed => {
             let destination = copy_directory.join(CONTENT_DIRECTORY);
@@ -229,7 +350,7 @@ fn duplicate_at(root: &Path, id: &str) -> Result<InstanceManifest, CommandError>
     let timestamp = now();
     let mut copy = source;
     copy.id = copy_id;
-    copy.name = format!("{} (copy)", copy.name);
+    copy.name = copy_name;
     copy.created_at = timestamp.clone();
     copy.updated_at = timestamp;
     copy.last_played = None;
@@ -244,7 +365,7 @@ fn duplicate_at(root: &Path, id: &str) -> Result<InstanceManifest, CommandError>
 
 fn delete_at(root: &Path, id: &str) -> Result<(), CommandError> {
     validate_id(id)?;
-    let metadata_directory = root.join(id);
+    let metadata_directory = metadata_directory(root, id)?;
     let manifest = read_manifest(&metadata_directory.join(MANIFEST_FILE))?;
     if manifest.id != id {
         return Err(CommandError::new(
@@ -432,7 +553,71 @@ mod tests {
         let created = create_managed(&root, input("Vanilla+")).unwrap();
         let listed = list_from(&root).unwrap();
 
-        assert_eq!(listed, vec![created]);
+        assert_eq!(listed, vec![created.clone()]);
+        assert_eq!(
+            Path::new(&created.location.path)
+                .parent()
+                .and_then(Path::file_name)
+                .and_then(|name| name.to_str()),
+            Some("Vanilla+")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn missing_managed_content_directory_is_restored_during_listing() {
+        let root = test_root("missing-content");
+        let created = create_managed(&root, input("Recoverable")).unwrap();
+        fs::remove_dir_all(&created.location.path).unwrap();
+
+        assert_eq!(list_from(&root).unwrap().len(), 1);
+        assert!(Path::new(&created.location.path).is_dir());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_identifier_directories_remain_addressable() {
+        let root = test_root("legacy-directory");
+        let id = "inst-legacy";
+        let directory = root.join(id);
+        let content = directory.join(CONTENT_DIRECTORY);
+        fs::create_dir_all(&content).unwrap();
+        let manifest = new_manifest(
+            id.into(),
+            input("Legacy"),
+            InstanceLocation {
+                path: content.to_string_lossy().into_owned(),
+                kind: InstanceLocationKind::Managed,
+            },
+        );
+        write_manifest(&directory, &manifest).unwrap();
+
+        assert_eq!(metadata_directory(&root, id).unwrap(), directory);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn duplicate_names_receive_distinct_readable_directories() {
+        let root = test_root("duplicate-names");
+        let first = create_managed(&root, input("Valheim Mods")).unwrap();
+        let second = create_managed(&root, input("Valheim Mods")).unwrap();
+
+        assert_eq!(
+            Path::new(&first.location.path)
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap(),
+            "Valheim Mods"
+        );
+        assert_eq!(
+            Path::new(&second.location.path)
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap(),
+            "Valheim Mods (2)"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

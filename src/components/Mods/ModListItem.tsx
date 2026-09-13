@@ -6,6 +6,7 @@ import { Trash2, ArrowUp, GitBranch, RotateCcw, ExternalLink, MoreHorizontal } f
 
 import { Button } from '~/components/ui/button';
 import { Switch } from '~/components/ui/switch';
+import { formatDate } from '~/usecase/util/formatUtils';
 import ProjectIcon from '~/components/commons/ProjectIcon';
 import { TableRow, TableCell } from '~/components/ui/table';
 import { ProviderId, UpdateStatus } from '~/domain/enums/provider.enum';
@@ -53,6 +54,13 @@ const ModListItem = ({ mod, onRemove, onRepair, onUpdate, onToggle, onChangeVers
         </div>
       </TableCell>
       <TableCell className="font-mono text-xs tabular-nums">{mod.installedVersion}</TableCell>
+      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+        {mod.installedVersionPublishedAt ? (
+          <time dateTime={mod.installedVersionPublishedAt}>{formatDate(mod.installedVersionPublishedAt)}</time>
+        ) : (
+          <span aria-label="Release date unavailable">-</span>
+        )}
+      </TableCell>
       <TableCell>
         <ProviderBadge providerId={mod.provider} />
       </TableCell>

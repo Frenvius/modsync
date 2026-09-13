@@ -177,7 +177,7 @@ pub async fn project(external_id: &str) -> Result<Project, CommandError> {
         pagination: None,
     });
     let mut project = map_project(response.data);
-    project.description = strip_html(&description.data);
+    project.description = description.data;
     Ok(project)
 }
 
@@ -397,20 +397,6 @@ fn api_key() -> Result<String, CommandError> {
                 "CurseForge requires a CURSEFORGE_API_KEY build or runtime setting",
             )
         })
-}
-
-fn strip_html(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut in_tag = false;
-    for character in value.chars() {
-        match character {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => output.push(character),
-            _ => {}
-        }
-    }
-    output
 }
 
 #[cfg(test)]

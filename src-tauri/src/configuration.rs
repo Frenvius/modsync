@@ -115,7 +115,8 @@ fn instance_root(
     instance_id: &str,
 ) -> Result<(PathBuf, PathBuf, GameId), CommandError> {
     instances::validate_id(instance_id)?;
-    let metadata = instances::instances_root(app)?.join(instance_id);
+    let root = instances::instances_root(app)?;
+    let metadata = instances::metadata_directory(&root, instance_id)?;
     let manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
     let root = fs::canonicalize(&manifest.location.path)
         .map_err(|error| CommandError::io("Could not open the instance directory", &error))?;

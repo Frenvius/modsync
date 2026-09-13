@@ -218,13 +218,7 @@ pub async fn project(external_id: &str) -> Result<Project, CommandError> {
         downloads: detail.downloads.unwrap_or(0),
         followers: detail.follows.unwrap_or(0),
         r#type: ProjectType::Mod,
-        description: strip_html(
-            detail
-                .text
-                .as_deref()
-                .or(detail.summary.as_deref())
-                .unwrap_or_default(),
-        ),
+        description: detail.text.or(detail.summary).unwrap_or_default(),
         latest_version,
         gallery: detail
             .screenshots
@@ -255,7 +249,7 @@ pub async fn versions(external_id: &str) -> Result<Vec<ProjectVersion>, CommandE
             number: release.modversion.unwrap_or_default(),
             file_size: 0,
             downloads: release.downloads.unwrap_or(0),
-            changelog: strip_html(release.changelog.as_deref().unwrap_or_default()),
+            changelog: release.changelog.unwrap_or_default(),
             project_id: project.clone(),
             published_at: normalize_date(release.created.as_deref().unwrap_or_default()),
             loaders: vec![LoaderId::Vanilla],
@@ -429,20 +423,6 @@ fn unique(mut values: Vec<String>) -> Vec<String> {
     values.sort();
     values.dedup();
     values
-}
-
-fn strip_html(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut in_tag = false;
-    for character in value.chars() {
-        match character {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => output.push(character),
-            _ => {}
-        }
-    }
-    output
 }
 
 #[cfg(test)]

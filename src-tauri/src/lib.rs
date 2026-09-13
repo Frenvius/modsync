@@ -32,6 +32,7 @@ pub fn run() {
             instances::update_instance,
             instances::duplicate_instance,
             instances::delete_instance,
+            instances::open_instance_folder,
             launch::launch_instance,
             launch::list_java_runtimes,
             launch::list_process_logs,

@@ -267,15 +267,16 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
         </EmptyState>
       ) : (
         <div className="overflow-hidden rounded-lg border bg-card">
-          <Table className="min-w-[680px] table-fixed">
+          <Table className="min-w-[800px] table-fixed">
             <TableHeader className="bg-secondary/60 text-[11px] text-muted-foreground [&_th]:h-8">
               <TableRow className="hover:bg-transparent">
                 <TableHead>Name</TableHead>
                 <TableHead className="w-32">Version</TableHead>
+                <TableHead className="w-36">Released</TableHead>
                 <TableHead className="w-40">Source</TableHead>
-                <TableHead className="w-44">Status</TableHead>
-                <TableHead className="w-20 text-center">Enabled</TableHead>
-                <TableHead className="w-20">
+                <TableHead className="w-32">Status</TableHead>
+                <TableHead className="w-16 text-center">Enabled</TableHead>
+                <TableHead className="w-10">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
