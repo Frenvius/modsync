@@ -12,6 +12,17 @@ pub enum UpdateStatus {
     Incompatible,
     UpdateAvailable,
     DependencyMissing,
+    Damaged,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledFile {
+    pub path: String,
+    #[serde(default)]
+    pub mutable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha512: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -26,9 +37,19 @@ pub struct InstalledMod {
     pub provider: ProviderId,
     pub status: UpdateStatus,
     pub installed_version: String,
+    #[serde(default)]
+    pub version_id: String,
+    #[serde(default)]
+    pub files: Vec<InstalledFile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing_dependency: Option<String>,
     pub latest_compatible_version: String,
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+    #[serde(default)]
+    pub loaders: Vec<LoaderId>,
+    #[serde(default)]
+    pub game_versions: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -67,6 +88,8 @@ pub struct InstanceManifest {
     pub last_played: Option<String>,
     pub playtime_minutes: u64,
     pub mods: Vec<InstalledMod>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_operation_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -161,7 +184,7 @@ pub enum OperationStatus {
     Cancelled,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationProgress {
     pub message: String,
@@ -201,6 +224,7 @@ mod tests {
             last_played: None,
             playtime_minutes: 0,
             mods: Vec::new(),
+            last_operation_id: None,
         };
         let json = serde_json::to_string(&manifest).unwrap();
         let decoded = serde_json::from_str::<InstanceManifest>(&json).unwrap();

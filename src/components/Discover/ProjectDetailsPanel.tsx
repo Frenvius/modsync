@@ -11,7 +11,7 @@ import ProjectIcon from '~/components/commons/ProjectIcon';
 import { ProviderBadge } from '~/components/commons/Badges';
 import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
 
-const ProjectDetailsPanel = ({ project, onClose }: ProjectDetailsPanelProps) => {
+const ProjectDetailsPanel = ({ project, onClose, instanceId }: ProjectDetailsPanelProps) => {
   const panelRef = React.useRef<HTMLElement>(null);
   const resizing = React.useRef(false);
   const [width, setWidth] = React.useState(448);
@@ -163,7 +163,9 @@ const ProjectDetailsPanel = ({ project, onClose }: ProjectDetailsPanelProps) => 
 
         <div className="flex gap-2 border-t border-border/50 p-3">
           <Button asChild className="flex-1">
-            <Link to={`/project/${encodeURIComponent(project.id)}`}>Full details</Link>
+            <Link to={`/project/${encodeURIComponent(project.id)}${instanceId ? `?instance=${instanceId}` : ''}`}>
+              Full details
+            </Link>
           </Button>
           <Button asChild variant="outline">
             <a target="_blank" rel="noreferrer" href={project.provider.url}>

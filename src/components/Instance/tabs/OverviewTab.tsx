@@ -1,34 +1,22 @@
-import type { Instance, InstalledMod } from '~/domain/interfaces/instance.interface';
-import type { StatProps, UpdateListProps, InstanceTabProps } from '~/components/Instance/types';
+import type { StatProps, InstanceTabProps } from '~/components/Instance/types';
 
 import { useNavigate } from 'react-router-dom';
 
-import { Clock, ArrowUp, Compass, Package, HardDrive, ShieldAlert, ShieldCheck, CalendarDays } from 'lucide-react';
+import { Clock, Compass, Package, HardDrive, ShieldAlert, CalendarDays } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
-import { PROJECTS } from '~/usecase/mock/projects';
-import { useAppStore } from '~/usecase/store/appStore';
 import { UpdateBadge } from '~/components/commons/Badges';
 import ProjectIcon from '~/components/commons/ProjectIcon';
 import { UpdateStatus } from '~/domain/enums/provider.enum';
 import { formatDate, formatRelative, formatPlaytime } from '~/usecase/util/formatUtils';
 
-const majorMinor = (v: string) => v.split(/[.+-]/).slice(0, 2).join('.');
-
-const isRisky = (mod: InstalledMod, instance: Instance) => {
-  const project = PROJECTS.find((p) => p.id === mod.projectId);
-  const supportsVersion = project?.gameVersions.includes(instance.gameVersion) ?? true;
-  return !supportsVersion || majorMinor(mod.installedVersion) !== majorMinor(mod.latestCompatibleVersion);
-};
-
 const OverviewTab = ({ instance }: InstanceTabProps) => {
   const navigate = useNavigate();
-  const updateMods = useAppStore((s) => s.updateMods);
-  const updates = instance.mods.filter((m) => m.status === UpdateStatus.UpdateAvailable);
-  const safe = updates.filter((m) => !isRisky(m, instance));
-  const risky = updates.filter((m) => isRisky(m, instance));
   const problems = instance.mods.filter(
-    (m) => m.status === UpdateStatus.Incompatible || m.status === UpdateStatus.DependencyMissing
+    (mod) =>
+      mod.status === UpdateStatus.Incompatible ||
+      mod.status === UpdateStatus.DependencyMissing ||
+      mod.status === UpdateStatus.Damaged
   );
 
   return (
@@ -41,30 +29,23 @@ const OverviewTab = ({ instance }: InstanceTabProps) => {
               Needs attention
             </h2>
             <div className="rounded-lg border border-destructive/30 bg-destructive/5">
-              {problems.map((m) => (
+              {problems.map((mod) => (
                 <div
-                  key={m.projectId}
+                  key={mod.projectId}
                   className="flex items-center gap-3 border-b border-destructive/20 px-3 py-2 text-sm last:border-b-0"
                 >
-                  <ProjectIcon size="sm" name={m.name} color={m.iconColor} />
+                  <ProjectIcon size="sm" name={mod.name} color={mod.iconColor} />
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-medium">{m.name}</span>
+                    <span className="truncate font-medium">{mod.name}</span>
                     <span className="text-xs text-muted-foreground">
-                      {m.status === UpdateStatus.DependencyMissing
-                        ? `Requires ${m.missingDependency}, which is not installed.`
-                        : 'Not compatible with this loader or game version.'}
+                      {mod.status === UpdateStatus.DependencyMissing
+                        ? `Requires ${mod.missingDependency}, which is not installed.`
+                        : mod.status === UpdateStatus.Damaged
+                          ? 'One or more tracked files are missing or modified.'
+                          : 'Not compatible with this loader or game version.'}
                     </span>
                   </span>
-                  <UpdateBadge status={m.status} />
-                  {m.status === UpdateStatus.DependencyMissing ? (
-                    <Button size="xs" variant="secondary" onClick={() => navigate(`/discover?instance=${instance.id}`)}>
-                      Install {m.missingDependency}
-                    </Button>
-                  ) : (
-                    <Button size="xs" variant="secondary" onClick={() => navigate(`/instance/${instance.id}?tab=mod`)}>
-                      Review
-                    </Button>
-                  )}
+                  <UpdateBadge status={mod.status} />
                 </div>
               ))}
             </div>
@@ -72,46 +53,7 @@ const OverviewTab = ({ instance }: InstanceTabProps) => {
         )}
 
         <section className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <ShieldCheck className="size-4 text-primary" />
-              Safe updates ({safe.length})
-            </h2>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={safe.length === 0}
-              onClick={() =>
-                updateMods(
-                  instance.id,
-                  safe.map((m) => m.projectId)
-                )
-              }
-            >
-              <ArrowUp data-icon="inline-start" />
-              Update all safe
-            </Button>
-          </div>
-          <UpdateList mods={safe} instanceId={instance.id} empty="Nothing to update." />
-        </section>
-
-        {risky.length > 0 && (
-          <section className="flex flex-col gap-2">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <ShieldAlert className="size-4 text-warning" />
-              Potentially breaking ({risky.length})
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Major version jumps or releases not tested against {instance.gameVersion}. Review the changelog before updating.
-            </p>
-            <UpdateList risky empty="" mods={risky} instanceId={instance.id} />
-          </section>
-        )}
-
-        <section className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Description</h2>
-          </div>
+          <h2 className="text-sm font-semibold">Description</h2>
           <p className="text-sm leading-relaxed text-muted-foreground">{instance.description}</p>
         </section>
       </div>
@@ -125,7 +67,7 @@ const OverviewTab = ({ instance }: InstanceTabProps) => {
             <Stat
               label="Mods"
               icon={Package}
-              value={`${instance.mods.filter((m) => m.enabled).length} enabled / ${instance.mods.length}`}
+              value={`${instance.mods.filter((mod) => mod.enabled).length} enabled / ${instance.mods.length}`}
             />
             <Stat label="Created" icon={HardDrive} value={formatDate(instance.createdAt)} />
           </dl>
@@ -146,34 +88,5 @@ const Stat = ({ label, value, icon: Icon }: StatProps) => (
     <dd className="font-medium tabular-nums">{value}</dd>
   </div>
 );
-
-const UpdateList = ({ mods, empty, risky, instanceId }: UpdateListProps) => {
-  const updateMods = useAppStore((s) => s.updateMods);
-  if (mods.length === 0)
-    return empty ? <p className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">{empty}</p> : null;
-  return (
-    <div className={risky ? 'rounded-lg border border-warning/30 bg-warning/5' : 'rounded-lg border bg-card'}>
-      {mods.map((m) => (
-        <div key={m.projectId} className="flex items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0">
-          <ProjectIcon size="sm" name={m.name} color={m.iconColor} />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate font-medium">{m.name}</span>
-            <span className="truncate text-xs text-muted-foreground">
-              Fixed a crash when loading worlds created on older versions. Improved compatibility.
-            </span>
-          </span>
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            {m.installedVersion} <span className="mx-1">to</span>{' '}
-            <span className={risky ? 'text-warning' : 'text-info'}>{m.latestCompatibleVersion}</span>
-          </span>
-          <Button size="xs" variant={risky ? 'outline' : 'secondary'} onClick={() => updateMods(instanceId, [m.projectId])}>
-            <ArrowUp data-icon="inline-start" />
-            Update
-          </Button>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 export default OverviewTab;

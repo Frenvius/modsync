@@ -1,7 +1,5 @@
-import type { Project } from '~/domain/interfaces/project.interface';
 import type {
   Instance,
-  InstalledMod,
   InstanceManifest,
   CreateInstanceInput,
   UpdateInstanceInput
@@ -10,7 +8,6 @@ import type {
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
 import { uid, wait } from '~/usecase/util/formatUtils';
-import { UpdateStatus } from '~/domain/enums/provider.enum';
 import { filesystemService } from '~/usecase/service/filesystem';
 
 const STORAGE_KEY = 'modsync.instances.v1';
@@ -19,6 +16,10 @@ const toInstance = (manifest: InstanceManifest): Instance => ({ ...manifest, log
 const toManifest = ({ logs: _logs, configs: _configs, ...manifest }: Instance): InstanceManifest => manifest;
 
 class Service {
+  fromManifest(manifest: InstanceManifest): Instance {
+    return toInstance(manifest);
+  }
+
   async list(): Promise<Array<Instance>> {
     if (!isTauri()) return this.readBrowserInstances();
     return (await invoke<Array<InstanceManifest>>('list_instances')).map(toInstance);
@@ -89,21 +90,6 @@ class Service {
 
   async openFolder(instance: Instance): Promise<void> {
     await filesystemService.openDirectory(instance.location.path);
-  }
-
-  toInstalledMod(project: Project, version = project.latestVersion): InstalledMod {
-    return {
-      enabled: true,
-      name: project.name,
-      type: project.type,
-      projectId: project.id,
-      author: project.author,
-      installedVersion: version,
-      iconColor: project.iconColor,
-      provider: project.provider.id,
-      status: UpdateStatus.UpToDate,
-      latestCompatibleVersion: project.latestVersion
-    };
   }
 
   async play(instance: Instance): Promise<void> {

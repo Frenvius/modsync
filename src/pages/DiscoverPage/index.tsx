@@ -308,7 +308,9 @@ const DiscoverPage = () => {
         </>
       )}
 
-      {selectedProject && <ProjectDetailsPanel project={selectedProject} onClose={() => setSelectedProject(null)} />}
+      {selectedProject && (
+        <ProjectDetailsPanel project={selectedProject} instanceId={targetInstance?.id} onClose={() => setSelectedProject(null)} />
+      )}
     </div>
   );
 };

@@ -85,7 +85,7 @@ pub fn delete_instance(app: AppHandle, id: String) -> Result<(), CommandError> {
     delete_at(&instances_root(&app)?, &id)
 }
 
-fn instances_root(app: &AppHandle) -> Result<PathBuf, CommandError> {
+pub(crate) fn instances_root(app: &AppHandle) -> Result<PathBuf, CommandError> {
     app.path()
         .app_data_dir()
         .map(|path| path.join("instances"))
@@ -117,7 +117,10 @@ fn list_from(root: &Path) -> Result<Vec<InstanceManifest>, CommandError> {
         }
         let manifest_path = entry.path().join(MANIFEST_FILE);
         if manifest_path.exists() {
-            instances.push(read_manifest(&manifest_path)?);
+            let mut manifest = read_manifest(&manifest_path)?;
+            crate::content::recover_instance(&entry.path(), &mut manifest)?;
+            crate::content::reconcile_instance(&entry.path(), &mut manifest)?;
+            instances.push(manifest);
         }
     }
     instances.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
@@ -206,7 +209,10 @@ fn update_at(root: &Path, input: UpdateInstanceInput) -> Result<InstanceManifest
 
 fn duplicate_at(root: &Path, id: &str) -> Result<InstanceManifest, CommandError> {
     validate_id(id)?;
-    let source = read_manifest(&root.join(id).join(MANIFEST_FILE))?;
+    let source_directory = root.join(id);
+    let mut source = read_manifest(&source_directory.join(MANIFEST_FILE))?;
+    crate::content::recover_instance(&source_directory, &mut source)?;
+    crate::content::reconcile_instance(&source_directory, &mut source)?;
     let copy_id = new_id();
     let copy_directory = root.join(&copy_id);
     let location = match source.location.kind {
@@ -275,6 +281,7 @@ fn new_manifest(
         last_played: None,
         playtime_minutes: 0,
         mods: Vec::new(),
+        last_operation_id: None,
     }
 }
 
@@ -300,7 +307,7 @@ fn validate_input(input: &CreateInstanceInput) -> Result<(), CommandError> {
     Ok(())
 }
 
-fn validate_id(id: &str) -> Result<(), CommandError> {
+pub(crate) fn validate_id(id: &str) -> Result<(), CommandError> {
     if id.is_empty()
         || !id
             .bytes()
@@ -314,7 +321,7 @@ fn validate_id(id: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
-fn read_manifest(path: &Path) -> Result<InstanceManifest, CommandError> {
+pub(crate) fn read_manifest(path: &Path) -> Result<InstanceManifest, CommandError> {
     let contents = fs::read(path)
         .map_err(|error| CommandError::io("Could not read the instance manifest", &error))?;
     let manifest: InstanceManifest =
@@ -336,7 +343,10 @@ fn read_manifest(path: &Path) -> Result<InstanceManifest, CommandError> {
     Ok(manifest)
 }
 
-fn write_manifest(directory: &Path, manifest: &InstanceManifest) -> Result<(), CommandError> {
+pub(crate) fn write_manifest(
+    directory: &Path,
+    manifest: &InstanceManifest,
+) -> Result<(), CommandError> {
     let json = serde_json::to_vec_pretty(manifest).map_err(|error| CommandError {
         code: CommandErrorCode::CorruptedData,
         message: "Could not serialize the instance manifest".into(),

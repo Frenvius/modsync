@@ -5,50 +5,69 @@ import type { DownloadItem } from '~/domain/interfaces/download.interface';
 import { create } from 'zustand';
 
 import { GAMES } from '~/usecase/mock/games';
-import { PROJECTS } from '~/usecase/mock/projects';
-import { DOWNLOADS } from '~/usecase/mock/downloads';
-import { uid, wait } from '~/usecase/util/formatUtils';
+import { uid } from '~/usecase/util/formatUtils';
 import { catalogService } from '~/usecase/service/catalog';
 import { projectService } from '~/usecase/service/project';
 import { instanceService } from '~/usecase/service/instance';
 import { providerService } from '~/usecase/service/providers';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { settingsService, DEFAULT_SETTINGS } from '~/usecase/service/settings';
-import { GameId, DownloadKind, UpdateStatus, DownloadStatus } from '~/domain/enums/provider.enum';
+import { contentService, type OperationProgress } from '~/usecase/service/content';
+import { GameId, DownloadKind, DownloadStatus } from '~/domain/enums/provider.enum';
 
 const patchInstance = (instances: Array<Instance>, id: string, fn: (i: Instance) => Instance) =>
   instances.map((i) => (i.id === id ? fn({ ...i, updatedAt: new Date().toISOString() }) : i));
 
-const newDownload = (partial: Pick<DownloadItem, 'kind' | 'title' | 'gameId' | 'subtitle' | 'instanceId'>): DownloadItem => ({
+const newDownload = (
+  id: string,
+  partial: Pick<DownloadItem, 'kind' | 'title' | 'gameId' | 'subtitle' | 'instanceId'>
+): DownloadItem => ({
   ...partial,
+  id,
   progress: 0,
-  id: uid('dl'),
-  etaSeconds: 2,
-  step: 'Downloading file',
-  status: DownloadStatus.Active,
-  startedAt: new Date().toISOString(),
-  totalBytes: 800_000 + Math.round(Math.random() * 6_000_000),
-  bytesPerSecond: 4_000_000 + Math.round(Math.random() * 6_000_000)
+  etaSeconds: 0,
+  totalBytes: 0,
+  bytesPerSecond: 0,
+  step: 'Waiting to install',
+  status: DownloadStatus.Queued,
+  startedAt: new Date().toISOString()
 });
 
-const finishDownload = (d: DownloadItem): DownloadItem => ({
-  ...d,
-  step: 'Done',
-  progress: 100,
-  etaSeconds: 0,
-  bytesPerSecond: 0,
-  status: DownloadStatus.Completed
-});
+const applyProgress = (download: DownloadItem, progress: OperationProgress): DownloadItem => {
+  const status =
+    progress.status === 'completed'
+      ? DownloadStatus.Completed
+      : progress.status === 'failed'
+        ? DownloadStatus.Failed
+        : progress.status === 'cancelled'
+          ? DownloadStatus.Cancelled
+          : progress.status === 'pending'
+            ? DownloadStatus.Queued
+            : DownloadStatus.Active;
+  const totalBytes = progress.totalBytes || download.totalBytes;
+  return {
+    ...download,
+    status,
+    totalBytes,
+    etaSeconds: 0,
+    bytesPerSecond: 0,
+    step: progress.message,
+    progress:
+      progress.status === 'completed' ? 100 : totalBytes > 0 ? Math.min(99, (progress.downloadedBytes / totalBytes) * 100) : 0
+  };
+};
 
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
   games: GAMES,
   instances: [],
+  downloads: [],
   loadError: null,
-  downloads: DOWNLOADS,
   createInstanceOpen: false,
   settings: DEFAULT_SETTINGS,
   selectedGameId: GameId.Minecraft,
+
+  cancelDownload: async (id) => contentService.cancel(id),
 
   setSelectedGame: (selectedGameId) => set({ selectedGameId }),
 
@@ -58,11 +77,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     await instanceService.delete(instanceId);
     set((s) => ({ instances: s.instances.filter((i) => i.id !== instanceId) }));
   },
-
-  cancelDownload: (id) =>
-    set((s) => ({
-      downloads: s.downloads.map((d) => (d.id === id ? { ...d, bytesPerSecond: 0, status: DownloadStatus.Cancelled } : d))
-    })),
 
   createInstance: async (input) => {
     const instance = await instanceService.create(input);
@@ -82,28 +96,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     return instance;
   },
 
-  pauseDownload: (id) =>
-    set((s) => ({
-      downloads: s.downloads.map((d) =>
-        d.id === id ? { ...d, etaSeconds: 0, bytesPerSecond: 0, status: DownloadStatus.Paused } : d
-      )
-    })),
-
-  resumeDownload: (id) =>
-    set((s) => ({
-      downloads: s.downloads.map((d) =>
-        d.id === id ? { ...d, etaSeconds: 3, bytesPerSecond: 6_000_000, status: DownloadStatus.Active } : d
-      )
-    })),
-
-  removeMods: (instanceId, projectIds) =>
-    set((s) => ({
-      instances: patchInstance(s.instances, instanceId, (i) => ({
-        ...i,
-        mods: i.mods.filter((m) => !projectIds.includes(m.projectId))
-      }))
-    })),
-
   clearCompleted: (gameId) =>
     set((s) => ({
       downloads: s.downloads.filter(
@@ -115,6 +107,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     const instance = await instanceService.update(input);
     set((s) => ({ instances: s.instances.map((current) => (current.id === instance.id ? instance : current)) }));
     return instance;
+  },
+
+  refreshContent: async (instanceId) => {
+    const manifest = await contentService.refresh(instanceId);
+    const instance = instanceService.fromManifest(manifest);
+    set((state) => ({
+      instances: state.instances.map((current) => (current.id === instance.id ? instance : current))
+    }));
+  },
+
+  importLocalMod: async (instanceId, path) => {
+    const manifest = await contentService.importLocal(instanceId, path);
+    const instance = instanceService.fromManifest(manifest);
+    set((state) => ({
+      instances: state.instances.map((current) => (current.id === instance.id ? instance : current))
+    }));
   },
 
   updateSettings: async (patch) => {
@@ -129,21 +137,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  changeModVersion: (instanceId, projectId, version) =>
-    set((s) => ({
-      instances: patchInstance(s.instances, instanceId, (i) => ({
-        ...i,
-        mods: i.mods.map((m) =>
-          m.projectId === projectId
-            ? {
-                ...m,
-                installedVersion: version,
-                status: version === m.latestCompatibleVersion ? UpdateStatus.UpToDate : UpdateStatus.UpdateAvailable
-              }
-            : m
-        )
-      }))
-    })),
+  toggleMod: async (instanceId, projectId, enabled) => {
+    const manifest = await contentService.setEnabled(instanceId, projectId, enabled);
+    const instance = instanceService.fromManifest(manifest);
+    set((state) => ({
+      instances: state.instances.map((current) => (current.id === instance.id ? instance : current))
+    }));
+  },
+
+  removeMods: async (instanceId, projectIds) => {
+    const result = await contentService.remove(instanceId, projectIds);
+    const instance = instanceService.fromManifest(result.instance);
+    set((state) => ({
+      instances: state.instances.map((current) => (current.id === instance.id ? instance : current))
+    }));
+    return result.warnings;
+  },
 
   playInstance: async (instanceId) => {
     const instance = get().instances.find((i) => i.id === instanceId);
@@ -175,81 +184,90 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  toggleMod: (instanceId, projectId, enabled) =>
-    set((s) => ({
-      instances: patchInstance(s.instances, instanceId, (i) => ({
-        ...i,
-        mods: i.mods.map((m) => {
-          if (m.projectId !== projectId) return m;
-          const healthy = m.status === UpdateStatus.UpToDate || m.status === UpdateStatus.UpdateAvailable;
-          const enabledStatus =
-            m.installedVersion === m.latestCompatibleVersion ? UpdateStatus.UpToDate : UpdateStatus.UpdateAvailable;
-          if (!enabled) return { ...m, enabled, status: healthy ? UpdateStatus.Disabled : m.status };
-          return { ...m, enabled, status: m.status === UpdateStatus.Disabled ? enabledStatus : m.status };
-        })
-      }))
-    })),
-
-  updateMods: async (instanceId, projectIds) => {
-    const instance = get().instances.find((i) => i.id === instanceId);
-    if (!instance) return;
-    const mods = instance.mods.filter((m) => projectIds.includes(m.projectId) && m.status === UpdateStatus.UpdateAvailable);
-    if (mods.length === 0) return;
-    const downloads = mods.map((m) =>
-      newDownload({
-        instanceId,
-        gameId: instance.gameId,
-        subtitle: instance.name,
-        kind: DownloadKind.UpdateMod,
-        title: `${m.name} ${m.latestCompatibleVersion}`
-      })
-    );
-    set((s) => ({ downloads: [...downloads, ...s.downloads] }));
-    await wait(900);
-    set((s) => ({
-      downloads: s.downloads.map((d) => (downloads.some((n) => n.id === d.id) ? finishDownload(d) : d)),
-      instances: patchInstance(s.instances, instanceId, (i) => ({
-        ...i,
-        mods: i.mods.map((m) =>
-          projectIds.includes(m.projectId) && m.status === UpdateStatus.UpdateAvailable
-            ? { ...m, status: UpdateStatus.UpToDate, installedVersion: m.latestCompatibleVersion }
-            : m
+  installMod: async (instanceId, project, options = {}) => {
+    const instance = get().instances.find((candidate) => candidate.id === instanceId);
+    if (!instance) throw new Error('Instance not found');
+    const operationId = uid('install');
+    const download = newDownload(operationId, {
+      instanceId,
+      gameId: instance.gameId,
+      subtitle: instance.name,
+      kind: DownloadKind.InstallMod,
+      title: `${project.name} ${options.version ?? project.latestVersion}`
+    });
+    set((state) => ({ downloads: [download, ...state.downloads] }));
+    let manifest: Awaited<ReturnType<typeof contentService.install>>;
+    try {
+      manifest = await contentService.install(
+        {
+          instanceId,
+          operationId,
+          projectId: project.id,
+          versionId: options.version,
+          optionalDependencies: options.dependencies ?? []
+        },
+        (progress) =>
+          set((state) => ({
+            downloads: state.downloads.map((current) => (current.id === operationId ? applyProgress(current, progress) : current))
+          }))
+      );
+    } catch (error) {
+      set((state) => ({
+        downloads: state.downloads.map((current) =>
+          current.id === operationId
+            ? { ...current, status: DownloadStatus.Failed, step: getErrorMessage(error, 'Installation failed') }
+            : current
         )
-      }))
+      }));
+      throw error;
+    }
+    const installed = instanceService.fromManifest(manifest);
+    set((state) => ({
+      instances: state.instances.map((current) => (current.id === installed.id ? installed : current))
     }));
   },
 
-  installMod: async (instanceId, project, options = {}) => {
-    const instance = get().instances.find((i) => i.id === instanceId);
-    if (!instance) return;
-    const depProjects = (options.dependencies ?? [])
-      .map((id) => PROJECTS.find((p) => p.id === id))
-      .filter((p) => p !== undefined);
-    const targets = [...depProjects, project].filter((p) => !instance.mods.some((m) => m.projectId === p.id));
-    const downloads = targets.map((p) =>
-      newDownload({
-        instanceId,
-        gameId: instance.gameId,
-        subtitle: instance.name,
-        kind: DownloadKind.InstallMod,
-        title: `${p.name} ${p.latestVersion}`
-      })
-    );
-    set((s) => ({ downloads: [...downloads, ...s.downloads] }));
-    await wait(900);
-    set((s) => ({
-      downloads: s.downloads.map((d) => (downloads.some((n) => n.id === d.id) ? finishDownload(d) : d)),
-      instances: patchInstance(s.instances, instanceId, (i) => ({
-        ...i,
-        mods: [
-          ...i.mods.map((m) =>
-            m.status === UpdateStatus.DependencyMissing && targets.some((t) => t.name === m.missingDependency)
-              ? { ...m, missingDependency: undefined, status: UpdateStatus.UpToDate }
-              : m
-          ),
-          ...targets.map((p) => instanceService.toInstalledMod(p, p.id === project.id ? options.version : undefined))
-        ]
-      }))
+  repairMod: async (instanceId, projectId) => {
+    const instance = get().instances.find((candidate) => candidate.id === instanceId);
+    const mod = instance?.mods.find((candidate) => candidate.projectId === projectId);
+    if (!instance || !mod || !mod.versionId) throw new Error('Installed content cannot be repaired');
+    const operationId = uid('repair');
+    const download = newDownload(operationId, {
+      instanceId,
+      gameId: instance.gameId,
+      subtitle: instance.name,
+      kind: DownloadKind.InstallMod,
+      title: `Repair ${mod.name} ${mod.installedVersion}`
+    });
+    set((state) => ({ downloads: [download, ...state.downloads] }));
+    let manifest: Awaited<ReturnType<typeof contentService.repair>>;
+    try {
+      manifest = await contentService.repair(
+        {
+          projectId,
+          instanceId,
+          operationId,
+          versionId: mod.versionId,
+          optionalDependencies: []
+        },
+        (progress) =>
+          set((state) => ({
+            downloads: state.downloads.map((current) => (current.id === operationId ? applyProgress(current, progress) : current))
+          }))
+      );
+    } catch (error) {
+      set((state) => ({
+        downloads: state.downloads.map((current) =>
+          current.id === operationId
+            ? { ...current, status: DownloadStatus.Failed, step: getErrorMessage(error, 'Repair failed') }
+            : current
+        )
+      }));
+      throw error;
+    }
+    const repaired = instanceService.fromManifest(manifest);
+    set((state) => ({
+      instances: state.instances.map((current) => (current.id === repaired.id ? repaired : current))
     }));
   }
 }));

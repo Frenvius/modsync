@@ -86,6 +86,10 @@ struct ModDetail {
 struct Release {
     releaseid: i64,
     #[serde(default)]
+    mainfile: Option<String>,
+    #[serde(default)]
+    filename: Option<String>,
+    #[serde(default)]
     modversion: Option<String>,
     #[serde(default)]
     downloads: Option<i64>,
@@ -258,6 +262,9 @@ pub async fn versions(external_id: &str) -> Result<Vec<ProjectVersion>, CommandE
                 .map(|tag| tag.trim_start_matches('v').to_string())
                 .collect(),
             dependencies: Vec::new(),
+            download_url: release.mainfile.unwrap_or_default(),
+            file_name: release.filename.unwrap_or_default(),
+            hashes: Vec::new(),
         })
         .collect())
 }
@@ -435,7 +442,11 @@ mod tests {
     fn live_vintage_story_details_and_versions() {
         tauri::async_runtime::block_on(async {
             assert!(!project("11672").await.unwrap().description.is_empty());
-            assert!(!versions("11672").await.unwrap().is_empty());
+            assert!(versions("11672")
+                .await
+                .unwrap()
+                .first()
+                .is_some_and(|version| !version.download_url.is_empty()));
             assert!(!summaries_for_version("1.20.4").await.unwrap().is_empty());
         });
     }

@@ -25,5 +25,6 @@ export interface FilterSelectProps {
 
 export interface ProjectDetailsPanelProps {
   project: Project;
+  instanceId?: string;
   onClose: () => void;
 }

@@ -6,9 +6,9 @@ use crate::{
 };
 
 use super::{
-    http, icon_color, project_id, safe_url, Dependency, DependencyType, Project,
-    ProjectProviderInfo, ProjectVersion, ProviderCategories, ProviderSearchQuery,
-    ProviderSearchResult, SearchSort, PAGE_SIZE,
+    http, icon_color, project_id, safe_url, ArtifactHash, Dependency, DependencyType,
+    HashAlgorithm, Project, ProjectProviderInfo, ProjectVersion, ProviderCategories,
+    ProviderSearchQuery, ProviderSearchResult, SearchSort, PAGE_SIZE,
 };
 
 const BASE_URL: &str = "https://api.curseforge.com/v1";
@@ -83,6 +83,16 @@ struct ApiFile {
     game_versions: Vec<String>,
     #[serde(default)]
     dependencies: Vec<ApiDependency>,
+    #[serde(default)]
+    download_url: Option<String>,
+    #[serde(default)]
+    hashes: Vec<ApiHash>,
+}
+
+#[derive(Deserialize)]
+struct ApiHash {
+    value: String,
+    algo: u8,
 }
 
 #[derive(Deserialize)]
@@ -273,13 +283,28 @@ fn map_project(project: ApiMod) -> Project {
 }
 
 fn map_version(file: ApiFile) -> ProjectVersion {
+    let hashes = file
+        .hashes
+        .into_iter()
+        .filter_map(|hash| {
+            let algorithm = match hash.algo {
+                1 => HashAlgorithm::Sha1,
+                2 => HashAlgorithm::Md5,
+                _ => return None,
+            };
+            Some(ArtifactHash {
+                algorithm,
+                value: hash.value,
+            })
+        })
+        .collect();
     ProjectVersion {
         id: file.id.to_string(),
         name: file.display_name.clone(),
         number: file.display_name,
         file_size: file.file_length,
         downloads: file.download_count,
-        changelog: file.file_name,
+        changelog: String::new(),
         project_id: project_id(ProviderId::CurseForge, file.mod_id),
         published_at: file.file_date,
         loaders: loaders(&file.game_versions),
@@ -302,7 +327,22 @@ fn map_version(file: ApiFile) -> ProjectVersion {
                 })
             })
             .collect(),
+        download_url: file.download_url.unwrap_or_default(),
+        file_name: file.file_name,
+        hashes,
     }
+}
+
+pub async fn download_url(project_id: &str, version_id: &str) -> Result<String, CommandError> {
+    let response: ApiResponse<String> = http::get_json(
+        http::client()?
+            .get(format!(
+                "{BASE_URL}/mods/{project_id}/files/{version_id}/download-url"
+            ))
+            .header("x-api-key", api_key()?),
+    )
+    .await?;
+    Ok(response.data)
 }
 
 fn loaders(values: &[String]) -> Vec<LoaderId> {

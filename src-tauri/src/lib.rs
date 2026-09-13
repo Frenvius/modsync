@@ -1,5 +1,7 @@
 pub mod catalog;
+mod content;
 pub mod contracts;
+mod downloads;
 mod instances;
 mod persistence;
 mod providers;
@@ -28,6 +30,15 @@ pub fn run() {
             instances::update_instance,
             instances::duplicate_instance,
             instances::delete_instance,
+            content::preview_install,
+            content::install_content,
+            content::repair_content,
+            content::refresh_content,
+            content::remove_content,
+            content::set_content_enabled,
+            content::list_unmanaged_content,
+            content::import_local_content,
+            downloads::cancel_operation,
             providers::search_provider,
             providers::get_provider_project,
             providers::get_provider_versions,

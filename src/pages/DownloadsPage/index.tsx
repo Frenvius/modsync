@@ -29,7 +29,9 @@ const DownloadsPage = () => {
     <div className="flex flex-col gap-4 p-4">
       <PageHeader
         title="Downloads"
-        description={running.length ? `${running.length} in progress · ${formatSpeed(speed)}` : 'Nothing in progress.'}
+        description={
+          running.length ? `${running.length} in progress${speed > 0 ? ` · ${formatSpeed(speed)}` : ''}` : 'Nothing in progress.'
+        }
       >
         <Select value={gameId} onValueChange={(value) => setGameId(value as GameId | typeof ALL_GAMES)}>
           <SelectTrigger className="w-44" aria-label="Filter downloads by game">

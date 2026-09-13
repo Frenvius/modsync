@@ -5,6 +5,7 @@ import { UpdateStatus } from '~/domain/enums/provider.enum';
 
 export const MOD_STATUS_LABELS: Record<ModStatusFilter, string> = {
   all: 'All statuses',
+  [UpdateStatus.Damaged]: 'Damaged',
   [UpdateStatus.Disabled]: 'Disabled',
   [UpdateStatus.UpToDate]: 'Up to date',
   [UpdateStatus.Incompatible]: 'Incompatible',

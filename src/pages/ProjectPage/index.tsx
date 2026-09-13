@@ -2,7 +2,7 @@ import type { MarkdownProps } from './types';
 import type { Project, ProjectVersion } from '~/domain/interfaces/project.interface';
 
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { Heart, Clock, Loader2, Package, Download, ExternalLink, AlertTriangle } from 'lucide-react';
 
@@ -14,6 +14,7 @@ import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';
 import { projectService } from '~/usecase/service/project';
 import ProjectIcon from '~/components/commons/ProjectIcon';
+import InstallDialog from '~/components/Mods/InstallDialog';
 import InstanceIcon from '~/components/commons/InstanceIcon';
 import { getProviderMeta } from '~/usecase/service/providers';
 import DependencyList from '~/components/Mods/DependencyList';
@@ -26,7 +27,10 @@ import { Table, TableRow, TableBody, TableCell, TableHead, TableHeader } from '~
 const ProjectPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const instances = useAppStore((s) => s.instances);
+  const [installOpen, setInstallOpen] = React.useState(false);
+  const [installVersion, setInstallVersion] = React.useState<string>();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string>();
   const [project, setProject] = React.useState<Project | undefined>();
@@ -114,6 +118,15 @@ const ProjectPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 pb-1">
+            <Button
+              onClick={() => {
+                setInstallVersion(undefined);
+                setInstallOpen(true);
+              }}
+            >
+              <Download data-icon="inline-start" />
+              Install
+            </Button>
             <Button asChild variant="outline">
               <a target="_blank" rel="noreferrer" href={project.provider.url}>
                 <ExternalLink data-icon="inline-start" />
@@ -183,6 +196,9 @@ const ProjectPage = () => {
                       <TableHead className="text-right">Downloads</TableHead>
                       <TableHead className="text-right">Size</TableHead>
                       <TableHead>Published</TableHead>
+                      <TableHead>
+                        <span className="sr-only">Install</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -201,6 +217,18 @@ const ProjectPage = () => {
                         <TableCell className="text-right tabular-nums">{formatCompact(v.downloads)}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatBytes(v.fileSize)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{formatDate(v.publishedAt)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => {
+                              setInstallVersion(v.number);
+                              setInstallOpen(true);
+                            }}
+                          >
+                            Install
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -295,6 +323,13 @@ const ProjectPage = () => {
           </aside>
         </div>
       </div>
+      <InstallDialog
+        project={project}
+        open={installOpen}
+        version={installVersion}
+        onOpenChange={setInstallOpen}
+        instanceId={searchParams.get('instance') ?? undefined}
+      />
     </div>
   );
 };

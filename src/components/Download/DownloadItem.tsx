@@ -1,6 +1,6 @@
 import type { DownloadItemProps } from './types';
 
-import { X, Play, Check, Pause, RotateCcw, TriangleAlert } from 'lucide-react';
+import { X, Check, TriangleAlert } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Button } from '~/components/ui/button';
@@ -12,8 +12,6 @@ import { formatEta, formatBytes, formatSpeed } from '~/usecase/util/formatUtils'
 import { DOWNLOAD_KIND_ICONS } from './constants';
 
 const DownloadItem = ({ item }: DownloadItemProps) => {
-  const pause = useAppStore((s) => s.pauseDownload);
-  const resume = useAppStore((s) => s.resumeDownload);
   const cancel = useAppStore((s) => s.cancelDownload);
   const Icon = DOWNLOAD_KIND_ICONS[item.kind];
   const active = item.status === DownloadStatus.Active;
@@ -41,7 +39,7 @@ const DownloadItem = ({ item }: DownloadItemProps) => {
           </span>
         </div>
         <span className="text-right text-xs text-muted-foreground tabular-nums">
-          {active && (
+          {active && item.bytesPerSecond > 0 && (
             <>
               {formatSpeed(item.bytesPerSecond)}
               {item.etaSeconds > 0 && <span className="ml-2">{formatEta(item.etaSeconds)} left</span>}
@@ -50,23 +48,8 @@ const DownloadItem = ({ item }: DownloadItemProps) => {
           {!active && `${formatBytes(transferred)} / ${formatBytes(item.totalBytes)}`}
         </span>
         <span className="flex items-center gap-1">
-          {active && (
-            <Button size="icon-sm" variant="ghost" aria-label="Pause" onClick={() => pause(item.id)}>
-              <Pause />
-            </Button>
-          )}
-          {item.status === DownloadStatus.Paused && (
-            <Button size="icon-sm" variant="ghost" aria-label="Resume" onClick={() => resume(item.id)}>
-              <Play />
-            </Button>
-          )}
-          {failed && (
-            <Button size="icon-sm" variant="ghost" aria-label="Retry" onClick={() => resume(item.id)}>
-              <RotateCcw />
-            </Button>
-          )}
-          {(active || item.status === DownloadStatus.Paused || item.status === DownloadStatus.Queued) && (
-            <Button size="icon-sm" variant="ghost" aria-label="Cancel" onClick={() => cancel(item.id)}>
+          {(active || item.status === DownloadStatus.Queued) && (
+            <Button size="icon-sm" variant="ghost" aria-label="Cancel" onClick={() => void cancel(item.id)}>
               <X />
             </Button>
           )}

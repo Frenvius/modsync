@@ -1,5 +1,5 @@
 mod curseforge;
-mod http;
+pub(crate) mod http;
 mod modrinth;
 mod thunderstore;
 mod vintage_story;
@@ -87,6 +87,21 @@ pub struct Dependency {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HashAlgorithm {
+    Md5,
+    Sha1,
+    Sha512,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactHash {
+    pub algorithm: HashAlgorithm,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectVersion {
     pub id: String,
@@ -100,6 +115,9 @@ pub struct ProjectVersion {
     pub loaders: Vec<LoaderId>,
     pub game_versions: Vec<String>,
     pub dependencies: Vec<Dependency>,
+    pub download_url: String,
+    pub file_name: String,
+    pub hashes: Vec<ArtifactHash>,
 }
 
 #[derive(Debug, Serialize)]
@@ -129,6 +147,7 @@ pub async fn search_provider(
         ProviderId::CurseForge => curseforge::search(query).await,
         ProviderId::Thunderstore => thunderstore::search(&app, query).await,
         ProviderId::VintageStoryDb => vintage_story::search(&app, query).await,
+        ProviderId::Local => Err(local_provider_error()),
     }
 }
 
@@ -144,6 +163,7 @@ pub async fn get_provider_project(
         ProviderId::CurseForge => curseforge::project(external_id).await,
         ProviderId::Thunderstore => thunderstore::project(&app, external_id).await,
         ProviderId::VintageStoryDb => vintage_story::project(external_id).await,
+        ProviderId::Local => Err(local_provider_error()),
     }
 }
 
@@ -159,7 +179,60 @@ pub async fn get_provider_versions(
         ProviderId::CurseForge => curseforge::versions(external_id).await,
         ProviderId::Thunderstore => thunderstore::versions(&app, external_id).await,
         ProviderId::VintageStoryDb => vintage_story::versions(external_id).await,
+        ProviderId::Local => Err(local_provider_error()),
     }
+}
+
+pub(crate) async fn resolve_project(
+    app: &AppHandle,
+    project_id: &str,
+) -> Result<Project, CommandError> {
+    let provider_id = project_provider(project_id)?;
+    let external_id = external_id(provider_id, project_id)?;
+    match provider_id {
+        ProviderId::Modrinth => modrinth::project(external_id).await,
+        ProviderId::CurseForge => curseforge::project(external_id).await,
+        ProviderId::Thunderstore => thunderstore::project(app, external_id).await,
+        ProviderId::VintageStoryDb => vintage_story::project(external_id).await,
+        ProviderId::Local => Err(local_provider_error()),
+    }
+}
+
+pub(crate) async fn resolve_versions(
+    app: &AppHandle,
+    project_id: &str,
+) -> Result<Vec<ProjectVersion>, CommandError> {
+    let provider_id = project_provider(project_id)?;
+    let external_id = external_id(provider_id, project_id)?;
+    let versions = match provider_id {
+        ProviderId::Modrinth => modrinth::versions(external_id).await?,
+        ProviderId::CurseForge => curseforge::versions(external_id).await?,
+        ProviderId::Thunderstore => thunderstore::versions(app, external_id).await?,
+        ProviderId::VintageStoryDb => vintage_story::versions(external_id).await?,
+        ProviderId::Local => return Err(local_provider_error()),
+    };
+    Ok(versions)
+}
+
+pub(crate) async fn resolve_download_url(
+    project_id: &str,
+    version: &mut ProjectVersion,
+) -> Result<(), CommandError> {
+    if !version.download_url.is_empty() {
+        return Ok(());
+    }
+    let provider = project_provider(project_id)?;
+    let external_id = external_id(provider, project_id)?;
+    if provider == ProviderId::CurseForge {
+        version.download_url = curseforge::download_url(external_id, &version.id).await?;
+    }
+    if version.download_url.is_empty() {
+        return Err(CommandError::new(
+            CommandErrorCode::ProviderUnavailable,
+            "Provider did not supply a download URL",
+        ));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -174,6 +247,7 @@ pub async fn get_provider_categories(
         ProviderId::CurseForge => curseforge::categories().await,
         ProviderId::Thunderstore => thunderstore::categories(&app, game_id).await,
         ProviderId::VintageStoryDb => vintage_story::categories(&app).await,
+        ProviderId::Local => Err(local_provider_error()),
     }
 }
 
@@ -240,13 +314,33 @@ fn external_id(provider_id: ProviderId, project_id: &str) -> Result<&str, Comman
     Ok(external_id)
 }
 
+fn project_provider(project_id: &str) -> Result<ProviderId, CommandError> {
+    [
+        ProviderId::Modrinth,
+        ProviderId::CurseForge,
+        ProviderId::Thunderstore,
+        ProviderId::VintageStoryDb,
+    ]
+    .into_iter()
+    .find(|provider| project_id.starts_with(&format!("{}:", provider_name(*provider))))
+    .ok_or_else(|| CommandError::new(CommandErrorCode::InvalidInput, "Unknown project provider"))
+}
+
 fn provider_name(provider_id: ProviderId) -> &'static str {
     match provider_id {
         ProviderId::Modrinth => "modrinth",
         ProviderId::CurseForge => "curseforge",
         ProviderId::Thunderstore => "thunderstore",
         ProviderId::VintageStoryDb => "vintagestory",
+        ProviderId::Local => "local",
     }
+}
+
+fn local_provider_error() -> CommandError {
+    CommandError::new(
+        CommandErrorCode::InvalidInput,
+        "Local content is not available through provider discovery",
+    )
 }
 
 fn project_id(provider_id: ProviderId, external_id: impl std::fmt::Display) -> String {

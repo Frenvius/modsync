@@ -32,6 +32,8 @@ pub enum ProviderId {
     Thunderstore,
     #[serde(rename = "vintagestory")]
     VintageStoryDb,
+    #[serde(rename = "local")]
+    Local,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -240,6 +242,19 @@ pub fn get_catalog() -> Catalog {
                 color: "#d0a45a".into(),
                 website: "https://mods.vintagestory.at".into(),
                 games: vec![GameId::VintageStory],
+                requires_api_key: false,
+            },
+            ProviderMeta {
+                id: ProviderId::Local,
+                name: "Local file".into(),
+                color: "#8b8f98".into(),
+                website: String::new(),
+                games: vec![
+                    GameId::Minecraft,
+                    GameId::Valheim,
+                    GameId::VintageStory,
+                    GameId::LethalCompany,
+                ],
                 requires_api_key: false,
             },
         ],

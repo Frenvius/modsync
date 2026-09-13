@@ -340,7 +340,7 @@ fn map_version(
     ProjectVersion {
         id: version.full_name,
         name: format!("{name} {}", version.version_number),
-        number: version.version_number,
+        number: version.version_number.clone(),
         file_size: version.file_size.unwrap_or(0),
         downloads: version.downloads,
         changelog: String::new(),
@@ -356,13 +356,17 @@ fn map_version(
             .into_iter()
             .filter_map(|dependency| dependency_project(community, &dependency))
             .collect(),
+        file_name: format!("{name}-{}.zip", version.version_number),
+        download_url: version.download_url,
+        hashes: Vec::new(),
     }
 }
 
 fn dependency_project(community: &str, value: &str) -> Option<Dependency> {
-    let mut parts = value.split('-');
+    let mut parts = value.splitn(3, '-');
     let owner = parts.next()?;
     let name = parts.next()?;
+    let version = parts.next().map(str::to_owned);
     Some(Dependency {
         name: name.into(),
         project_id: project_id(
@@ -370,7 +374,7 @@ fn dependency_project(community: &str, value: &str) -> Option<Dependency> {
             format!("{community}:{owner}:{name}"),
         ),
         r#type: DependencyType::Required,
-        version_range: None,
+        version_range: version,
     })
 }
 
@@ -443,6 +447,9 @@ mod tests {
                 .await
                 .unwrap();
             let packages: Vec<Package> = decode_gzip_json(&chunk).unwrap();
+            assert!(packages.iter().any(|package| package
+                .latest()
+                .is_some_and(|version| !version.download_url.is_empty())));
             assert!(packages
                 .into_iter()
                 .any(|package| map_project("valheim", package).is_some()));

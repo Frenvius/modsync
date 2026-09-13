@@ -1,5 +1,11 @@
 import type { GameId, LoaderId, ProviderId, ProjectType, UpdateStatus } from '~/domain/enums/provider.enum';
 
+export interface InstalledFile {
+  path: string;
+  sha512?: string;
+  mutable: boolean;
+}
+
 export interface InstalledMod {
   name: string;
   author: string;
@@ -7,10 +13,15 @@ export interface InstalledMod {
   type: ProjectType;
   projectId: string;
   iconColor: string;
+  versionId?: string;
   provider: ProviderId;
   status: UpdateStatus;
   installedVersion: string;
+  loaders: Array<LoaderId>;
   missingDependency?: string;
+  dependencies: Array<string>;
+  gameVersions: Array<string>;
+  files?: Array<InstalledFile>;
   latestCompatibleVersion: string;
 }
 
@@ -71,6 +82,7 @@ export interface InstanceManifest {
   gameVersion: string;
   loaderVersion: string;
   playtimeMinutes: number;
+  lastOperationId?: string;
   lastPlayed: null | string;
   mods: Array<InstalledMod>;
   location: InstanceLocation;

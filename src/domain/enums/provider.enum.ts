@@ -1,4 +1,5 @@
 export enum ProviderId {
+  Local = 'local',
   Modrinth = 'modrinth',
   CurseForge = 'curseforge',
   Thunderstore = 'thunderstore',
@@ -28,6 +29,7 @@ export enum ProjectType {
 }
 
 export enum UpdateStatus {
+  Damaged = 'damaged',
   Disabled = 'disabled',
   UpToDate = 'up-to-date',
   Incompatible = 'incompatible',

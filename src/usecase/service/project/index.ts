@@ -12,8 +12,8 @@ import type {
 } from '~/domain/interfaces/project.interface';
 
 import { GAMES, LOADER_NAMES } from '~/usecase/mock/games';
-import { DependencyType } from '~/domain/enums/provider.enum';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
+import { ProjectType, DependencyType } from '~/domain/enums/provider.enum';
 import { getProviderMeta, providerService } from '~/usecase/service/providers';
 
 export interface DependencyResolution {
@@ -111,6 +111,13 @@ class Service {
       });
       return { issues, compatible: false };
     }
+    if (project.type === ProjectType.DataPack) {
+      issues.push({
+        kind: 'version',
+        severity: 'error',
+        message: 'Data packs require a world selection and cannot be installed yet.'
+      });
+    }
     if (project.loaders.length > 0 && !project.loaders.includes(instance.loader)) {
       issues.push({
         kind: 'loader',
@@ -122,8 +129,8 @@ class Service {
     if (project.gameVersions.length > 0 && !project.gameVersions.includes(instance.gameVersion)) {
       issues.push({
         kind: 'version',
-        severity: 'warning',
-        remediation: 'Install anyway at your own risk, or change the instance version',
+        severity: 'error',
+        remediation: 'Choose an instance with a supported game version',
         message: `No release for ${instance.gameVersion}. Latest supports ${project.gameVersions[0]}.`
       });
     }
@@ -143,8 +150,8 @@ class Service {
     return { issues, compatible: issues.every((issue) => issue.severity !== 'error') };
   }
 
-  resolveDependencies(project: Project, instance: Instance): DependencyResolution {
-    const dependencies = this.latestDependencies(project);
+  resolveDependencies(project: Project, instance: Instance, version?: string): DependencyResolution {
+    const dependencies = this.dependencies(project, version);
     const installed = new Set(instance.mods.map((mod) => mod.projectId));
     return {
       optional: dependencies.filter(
@@ -163,7 +170,15 @@ class Service {
   }
 
   private latestDependencies(project: Project): Array<Dependency> {
-    return this.versions.get(project.id)?.[0]?.dependencies ?? [];
+    return this.dependencies(project);
+  }
+
+  private dependencies(project: Project, version?: string): Array<Dependency> {
+    const versions = this.versions.get(project.id) ?? [];
+    return (
+      (version ? versions.find((candidate) => candidate.id === version || candidate.number === version) : versions[0])
+        ?.dependencies ?? []
+    );
   }
 }
 

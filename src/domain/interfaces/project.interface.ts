@@ -7,6 +7,11 @@ export interface Dependency {
   versionRange?: string;
 }
 
+export interface ArtifactHash {
+  value: string;
+  algorithm: 'md5' | 'sha1' | 'sha512';
+}
+
 export interface ProjectVersion {
   id: string;
   name: string;
@@ -15,9 +20,12 @@ export interface ProjectVersion {
   downloads: number;
   changelog: string;
   projectId: string;
+  fileName?: string;
   publishedAt: string;
+  downloadUrl?: string;
   loaders: Array<LoaderId>;
   gameVersions: Array<string>;
+  hashes?: Array<ArtifactHash>;
   dependencies: Array<Dependency>;
 }
 

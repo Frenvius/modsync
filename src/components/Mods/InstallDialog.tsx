@@ -12,48 +12,90 @@ import { useAppStore } from '~/usecase/store/appStore';
 import { projectService } from '~/usecase/service/project';
 import ProjectIcon from '~/components/commons/ProjectIcon';
 import InstanceIcon from '~/components/commons/InstanceIcon';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Alert, AlertTitle, AlertDescription } from '~/components/ui/alert';
+import { contentService, type InstallPlanItem } from '~/usecase/service/content';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 import { Dialog, DialogTitle, DialogFooter, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
-
-import DependencyList from './DependencyList';
 
 const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: InstallDialogProps) => {
   const instances = useAppStore((s) => s.instances);
   const installMod = useAppStore((s) => s.installMod);
   const [busy, setBusy] = React.useState(false);
   const [target, setTarget] = React.useState<string | undefined>(instanceId);
+  const [plan, setPlan] = React.useState<Array<InstallPlanItem>>([]);
+  const [planError, setPlanError] = React.useState<string>();
+  const [planLoading, setPlanLoading] = React.useState(false);
   const [optionalPicked, setOptionalPicked] = React.useState<Array<string>>([]);
 
   const candidates = instances.filter((i) => i.gameId === project?.gameId);
   const instance = candidates.find((i) => i.id === target) ?? candidates[0];
 
   React.useEffect(() => {
-    if (open) setTarget(instanceId ?? candidates[0]?.id);
-  }, [open, instanceId]);
+    if (open) {
+      setTarget(instanceId ?? candidates[0]?.id);
+      setOptionalPicked([]);
+    }
+  }, [open, instanceId, project?.id]);
+
+  React.useEffect(() => {
+    if (!open || !project || !instance) {
+      setPlan([]);
+      return;
+    }
+    let cancelled = false;
+    setPlan([]);
+    setPlanLoading(true);
+    setPlanError(undefined);
+    void contentService
+      .preview({
+        versionId: version,
+        projectId: project.id,
+        instanceId: instance.id,
+        optionalDependencies: optionalPicked
+      })
+      .then((items) => {
+        if (!cancelled) setPlan(items);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setPlanError(getErrorMessage(error, 'Could not resolve the installation plan'));
+      })
+      .finally(() => {
+        if (!cancelled) setPlanLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [instance, open, optionalPicked, project, version]);
 
   if (!project) return null;
 
   const report = instance ? projectService.checkCompatibility(project, instance) : { issues: [], compatible: false };
   const deps = instance
-    ? projectService.resolveDependencies(project, instance)
+    ? projectService.resolveDependencies(project, instance, version)
     : { optional: [], toInstall: [], conflicts: [], alreadyInstalled: [] };
   const alreadyInstalled = instance?.mods.some((m) => m.projectId === project.id) ?? false;
-  const blocked = !instance || !report.compatible || alreadyInstalled;
+  const blocked = !instance || !report.compatible || alreadyInstalled || planLoading || Boolean(planError);
+  const dependencies = plan.filter((item) => item.projectId !== project.id);
 
   const toggleOptional = (id: string, on: boolean) => setOptionalPicked((p) => (on ? [...p, id] : p.filter((x) => x !== id)));
 
   const install = async () => {
     if (!instance) return;
     setBusy(true);
-    await installMod(instance.id, project, {
-      version,
-      dependencies: [...deps.toInstall.map((d) => d.projectId), ...optionalPicked]
-    });
-    setBusy(false);
-    onOpenChange(false);
-    const extra = deps.toInstall.length + optionalPicked.length;
-    toast.success(`${project.name} installed to ${instance.name}${extra ? ` with ${extra} dependencies` : ''}`);
+    try {
+      await installMod(instance.id, project, {
+        version,
+        dependencies: optionalPicked
+      });
+      onOpenChange(false);
+      const extra = dependencies.length;
+      toast.success(`${project.name} installed to ${instance.name}${extra ? ` with ${extra} dependencies` : ''}`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, `Could not install ${project.name}`));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -65,7 +107,7 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
             <div className="flex flex-col">
               <DialogTitle>Install {project.name}</DialogTitle>
               <DialogDescription>
-                Version {version ?? project.latestVersion} by {project.author}
+                Version {(version ?? project.latestVersion) || 'latest compatible'} by {project.author}
               </DialogDescription>
             </div>
           </div>
@@ -121,12 +163,37 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
             </Alert>
           ))}
 
-          {deps.toInstall.length > 0 && (
+          {planLoading && (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Resolving the installation plan
+            </p>
+          )}
+
+          {planError && (
+            <Alert variant="destructive">
+              <TriangleAlert />
+              <AlertTitle>Installation plan unavailable</AlertTitle>
+              <AlertDescription>{planError}</AlertDescription>
+            </Alert>
+          )}
+
+          {dependencies.length > 0 && (
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium text-muted-foreground">
-                {deps.toInstall.length} {deps.toInstall.length === 1 ? 'dependency' : 'dependencies'} will also be installed
+                {dependencies.length} {dependencies.length === 1 ? 'dependency' : 'dependencies'} will also be installed
               </span>
-              <DependencyList dependencies={deps.toInstall} />
+              <ul className="flex flex-col gap-1.5">
+                {dependencies.map((dependency) => (
+                  <li
+                    key={dependency.projectId}
+                    className="flex items-center justify-between rounded-md border px-2.5 py-2 text-sm"
+                  >
+                    <span>{dependency.name}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{dependency.version}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

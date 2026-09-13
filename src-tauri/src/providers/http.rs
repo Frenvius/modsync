@@ -40,6 +40,27 @@ pub async fn get_json<T: DeserializeOwned>(request: RequestBuilder) -> Result<T,
 }
 
 pub async fn get_bytes(request: RequestBuilder) -> Result<Vec<u8>, CommandError> {
+    let response = send(request).await?;
+    if response
+        .content_length()
+        .is_some_and(|size| size > MAX_RESPONSE_BYTES)
+    {
+        return Err(CommandError::new(
+            CommandErrorCode::ProviderUnavailable,
+            "Provider response exceeded the safe size limit",
+        ));
+    }
+    let bytes = response.bytes().await.map_err(network_error)?;
+    if bytes.len() as u64 > MAX_RESPONSE_BYTES {
+        return Err(CommandError::new(
+            CommandErrorCode::ProviderUnavailable,
+            "Provider response exceeded the safe size limit",
+        ));
+    }
+    Ok(bytes.to_vec())
+}
+
+pub async fn send(request: RequestBuilder) -> Result<reqwest::Response, CommandError> {
     for attempt in 0..=RETRIES {
         let Some(next_request) = request.try_clone() else {
             return Err(CommandError::new(
@@ -48,25 +69,7 @@ pub async fn get_bytes(request: RequestBuilder) -> Result<Vec<u8>, CommandError>
             ));
         };
         match next_request.send().await {
-            Ok(response) if response.status().is_success() => {
-                if response
-                    .content_length()
-                    .is_some_and(|size| size > MAX_RESPONSE_BYTES)
-                {
-                    return Err(CommandError::new(
-                        CommandErrorCode::ProviderUnavailable,
-                        "Provider response exceeded the safe size limit",
-                    ));
-                }
-                let bytes = response.bytes().await.map_err(network_error)?;
-                if bytes.len() as u64 > MAX_RESPONSE_BYTES {
-                    return Err(CommandError::new(
-                        CommandErrorCode::ProviderUnavailable,
-                        "Provider response exceeded the safe size limit",
-                    ));
-                }
-                return Ok(bytes.to_vec());
-            }
+            Ok(response) if response.status().is_success() => return Ok(response),
             Ok(response) if retryable_status(response.status()) && attempt < RETRIES => {
                 tokio::time::sleep(Duration::from_millis(300 * (attempt as u64 + 1))).await;
             }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
 use crate::{
@@ -6,9 +8,9 @@ use crate::{
 };
 
 use super::{
-    http, icon_color, project_id, Dependency, DependencyType, Project, ProjectProviderInfo,
-    ProjectVersion, ProviderCategories, ProviderSearchQuery, ProviderSearchResult, SearchSort,
-    PAGE_SIZE,
+    http, icon_color, project_id, ArtifactHash, Dependency, DependencyType, HashAlgorithm, Project,
+    ProjectProviderInfo, ProjectVersion, ProviderCategories, ProviderSearchQuery,
+    ProviderSearchResult, SearchSort, PAGE_SIZE,
 };
 
 const BASE_URL: &str = "https://api.modrinth.com/v2";
@@ -98,6 +100,7 @@ struct ApiVersion {
 #[derive(Deserialize)]
 struct ApiDependency {
     project_id: Option<String>,
+    version_id: Option<String>,
     dependency_type: String,
 }
 
@@ -105,6 +108,10 @@ struct ApiDependency {
 struct ApiFile {
     size: u64,
     primary: bool,
+    url: String,
+    filename: String,
+    #[serde(default)]
+    hashes: HashMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -297,12 +304,29 @@ fn search_project(hit: SearchHit, latest_version: String) -> Project {
 }
 
 fn map_version(version: ApiVersion) -> ProjectVersion {
-    let file_size = version
+    let file = version
         .files
         .iter()
         .find(|file| file.primary)
-        .or_else(|| version.files.first())
-        .map_or(0, |file| file.size);
+        .or_else(|| version.files.first());
+    let file_size = file.map_or(0, |file| file.size);
+    let download_url = file.map_or_else(String::new, |file| file.url.clone());
+    let file_name = file.map_or_else(String::new, |file| file.filename.clone());
+    let hashes = file
+        .into_iter()
+        .flat_map(|file| &file.hashes)
+        .filter_map(|(algorithm, value)| {
+            let algorithm = match algorithm.as_str() {
+                "sha512" => HashAlgorithm::Sha512,
+                "sha1" => HashAlgorithm::Sha1,
+                _ => return None,
+            };
+            Some(ArtifactHash {
+                algorithm,
+                value: value.clone(),
+            })
+        })
+        .collect();
     ProjectVersion {
         id: version.id,
         name: version.name,
@@ -327,10 +351,13 @@ fn map_version(version: ApiVersion) -> ProjectVersion {
                         "incompatible" => DependencyType::Incompatible,
                         _ => DependencyType::Required,
                     },
-                    version_range: None,
+                    version_range: dependency.version_id,
                 })
             })
             .collect(),
+        download_url,
+        file_name,
+        hashes,
     }
 }
 
@@ -402,10 +429,10 @@ mod tests {
             .await
             .unwrap();
             let item = result.items.first().unwrap();
-            assert!(!versions(&item.provider.external_id)
-                .await
-                .unwrap()
-                .is_empty());
+            let versions = versions(&item.provider.external_id).await.unwrap();
+            assert!(versions.first().is_some_and(
+                |version| !version.download_url.is_empty() && !version.hashes.is_empty()
+            ));
             assert!(!project(&item.provider.external_id)
                 .await
                 .unwrap()
@@ -417,7 +444,7 @@ mod tests {
     #[test]
     fn modrinth_version_maps_supported_loaders_and_dependencies() {
         let version: ApiVersion = serde_json::from_str(
-            r#"{"id":"v1","project_id":"p1","name":"Release","version_number":"1.0","date_published":"2026-01-01T00:00:00Z","downloads":4,"game_versions":["1.21.4"],"loaders":["fabric","quilt"],"dependencies":[{"project_id":"dep","dependency_type":"required"}],"files":[{"size":12,"primary":true}],"changelog":"Fixed"}"#,
+            r#"{"id":"v1","project_id":"p1","name":"Release","version_number":"1.0","date_published":"2026-01-01T00:00:00Z","downloads":4,"game_versions":["1.21.4"],"loaders":["fabric","quilt"],"dependencies":[{"project_id":"dep","dependency_type":"required"}],"files":[{"size":12,"primary":true,"url":"https://example.com/mod.jar","filename":"mod.jar","hashes":{"sha512":"abc"}}],"changelog":"Fixed"}"#,
         )
         .unwrap();
         let mapped = map_version(version);
