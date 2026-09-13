@@ -24,7 +24,6 @@ export enum LoaderId {
 
 export enum ProjectType {
   Mod = 'mod',
-  Modpack = 'modpack',
   ShaderPack = 'shader',
   DataPack = 'datapack',
   ResourcePack = 'resourcepack'
@@ -47,7 +46,6 @@ export enum DependencyType {
 export enum DownloadKind {
   UpdateMod = 'update-mod',
   InstallMod = 'install-mod',
-  InstallModpack = 'install-modpack',
   DownloadGameVersion = 'download-game'
 }
 

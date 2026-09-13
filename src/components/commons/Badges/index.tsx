@@ -16,7 +16,11 @@ export const ProviderBadge = ({ compact, className, providerId }: ProviderBadgeP
     <Badge
       variant="outline"
       title={meta.name}
-      className={cn('gap-1.5 border-border/60 bg-muted/40 text-muted-foreground', className)}
+      className={cn('gap-1.5 text-foreground', className)}
+      style={{
+        background: `color-mix(in oklch, ${meta.color} 14%, var(--muted))`,
+        borderColor: `color-mix(in oklch, ${meta.color} 40%, var(--border))`
+      }}
     >
       <span className="size-1.5 rounded-full" style={{ background: meta.color }} />
       {!compact && meta.name}

@@ -16,7 +16,7 @@ export interface InstanceListItemProps {
 export interface InstanceMenuProps {
   instance: Instance;
   variant?: 'ghost' | 'outline';
-  size?: 'icon' | 'icon-xs' | 'icon-sm';
+  size?: 'icon' | 'icon-lg' | 'icon-xs' | 'icon-sm';
 }
 
 export interface InstanceTabProps {

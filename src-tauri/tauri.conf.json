@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Mod Manager",
+  "productName": "ModSync",
   "version": "0.1.0",
-  "identifier": "com.modmanager.desktop",
+  "identifier": "com.modsync.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Forge Hub",
+        "title": "ModSync",
         "width": 1280,
         "height": 800,
         "minWidth": 960,

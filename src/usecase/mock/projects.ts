@@ -287,11 +287,11 @@ const SEEDS: Array<ProjectSeed> = [
     version: '5.4.2202',
     downloads: 28_770_000,
     gameId: GameId.Valheim,
+    categories: ['Libraries'],
     id: 'bepinex-pack-valheim',
     name: 'BepInExPack Valheim',
     provider: ProviderId.Thunderstore,
     updatedAt: '2026-08-01T10:00:00Z',
-    categories: ['Libraries', 'Modpacks'],
     gameVersions: ['0.219.16', '0.219.13', '0.218.21'],
     summary: 'Unified BepInEx modding framework pack for Valheim.'
   },

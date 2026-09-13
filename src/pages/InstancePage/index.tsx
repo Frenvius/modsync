@@ -22,6 +22,9 @@ import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
 
 import { CONTENT_TAB_LABELS } from './constants';
 
+const instanceTabClassName =
+  'flex-none px-3 data-active:border-primary data-active:bg-primary data-active:text-primary-foreground dark:data-active:border-primary dark:data-active:bg-primary dark:data-active:text-primary-foreground';
+
 const InstancePage = () => {
   const { instanceId } = useParams();
   const navigate = useNavigate();
@@ -84,22 +87,32 @@ const InstancePage = () => {
           <Button size="icon-lg" variant="outline" aria-label="Instance settings" onClick={() => setParams({ tab: 'settings' })}>
             <Settings2 />
           </Button>
-          <InstanceMenu size="icon" variant="outline" instance={instance} />
+          <InstanceMenu size="icon-lg" variant="outline" instance={instance} />
         </div>
       </header>
 
       <Tabs value={tab} className="gap-0" onValueChange={(v) => setParams(v === 'overview' ? {} : { tab: v })}>
-        <TabsList variant="line" className="h-9 w-full justify-start rounded-none border-b border-border/50 px-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsList className="h-10 w-full justify-start gap-1 overflow-x-auto rounded-none border-b border-border bg-toolbar px-4 py-1.5">
+          <TabsTrigger value="overview" className={instanceTabClassName}>
+            Overview
+          </TabsTrigger>
           {contentTypes.map((t) => (
-            <TabsTrigger key={t} value={t}>
+            <TabsTrigger key={t} value={t} className={instanceTabClassName}>
               {CONTENT_TAB_LABELS[t]}
             </TabsTrigger>
           ))}
-          <TabsTrigger value="versions">Versions</TabsTrigger>
-          <TabsTrigger value="config">Config</TabsTrigger>
-          <TabsTrigger value="logs">Logs</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="versions" className={instanceTabClassName}>
+            Versions
+          </TabsTrigger>
+          <TabsTrigger value="config" className={instanceTabClassName}>
+            Config
+          </TabsTrigger>
+          <TabsTrigger value="logs" className={instanceTabClassName}>
+            Logs
+          </TabsTrigger>
+          <TabsTrigger value="settings" className={instanceTabClassName}>
+            Settings
+          </TabsTrigger>
         </TabsList>
         <div className="p-4">
           <TabsContent value="overview">

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { X, User, Boxes, Minus, LogOut, Square, Settings, ChevronDown } from 'lucide-react';
+import { X, User, Minus, LogOut, Square, Settings, ChevronDown } from 'lucide-react';
 
 import { GAMES } from '~/usecase/mock/games';
 import { USER } from '~/usecase/mock/settings';
@@ -64,10 +64,8 @@ const Titlebar = () => {
       className="flex h-8 shrink-0 select-none items-center border-b border-border/50 bg-toolbar text-foreground"
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
-        <span className="flex size-5 items-center justify-center rounded bg-primary text-primary-foreground">
-          <Boxes strokeWidth={2} aria-hidden="true" className="size-3.5" />
-        </span>
-        <span className="truncate text-xs font-semibold">Forge Hub</span>
+        <img alt="" src="/modsync.png" className="size-5 rounded" />
+        <span className="truncate text-xs font-semibold">ModSync</span>
       </div>
 
       <DropdownMenu>
@@ -102,7 +100,7 @@ const Titlebar = () => {
             <button
               type="button"
               aria-label="Minecraft account"
-              className="mr-1 flex size-6 items-center justify-center rounded transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              className="mx-1 flex size-6 items-center justify-center rounded transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               <Avatar className="size-5">
                 <AvatarFallback

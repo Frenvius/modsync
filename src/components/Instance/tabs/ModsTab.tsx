@@ -17,6 +17,7 @@ import { projectService } from '~/usecase/service/project';
 import ConfirmDialog from '~/components/commons/ConfirmDialog';
 import { MOD_STATUS_LABELS } from '~/components/Instance/constants';
 import { ProjectType, UpdateStatus } from '~/domain/enums/provider.enum';
+import { Table, TableRow, TableBody, TableHead, TableHeader } from '~/components/ui/table';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 import { Dialog, DialogTitle, DialogFooter, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
 
@@ -151,26 +152,35 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
           </Button>
         </EmptyState>
       ) : (
-        <div className="rounded-lg border bg-card">
-          <div className="grid grid-cols-[auto_auto_minmax(0,2fr)_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-3 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase">
-            <Checkbox checked={allSelected} aria-label="Select all" onCheckedChange={(v) => toggleAll(v === true)} />
-            <span className="w-9" />
-            <span>Name</span>
-            <span>Version</span>
-            <span>Source</span>
-            <span className="w-40">Status</span>
-            <span>On</span>
-            <span />
-          </div>
-          {mods.map((m) => (
-            <ModListItem
-              mod={m}
-              key={m.projectId}
-              onSelect={select}
-              handlers={handlers}
-              selected={selected.includes(m.projectId)}
-            />
-          ))}
+        <div className="overflow-hidden rounded-lg border bg-card">
+          <Table className="min-w-[800px] table-fixed">
+            <TableHeader className="bg-secondary/60 text-[11px] text-muted-foreground [&_th]:h-8">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-10 pl-3">
+                  <Checkbox checked={allSelected} aria-label="Select all" onCheckedChange={(v) => toggleAll(v === true)} />
+                </TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead className="w-32">Version</TableHead>
+                <TableHead className="w-40">Source</TableHead>
+                <TableHead className="w-44">Status</TableHead>
+                <TableHead className="w-16 text-center">Enabled</TableHead>
+                <TableHead className="w-28">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="[&_tr:nth-child(even)]:bg-muted/20">
+              {mods.map((m) => (
+                <ModListItem
+                  mod={m}
+                  key={m.projectId}
+                  onSelect={select}
+                  handlers={handlers}
+                  selected={selected.includes(m.projectId)}
+                />
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 

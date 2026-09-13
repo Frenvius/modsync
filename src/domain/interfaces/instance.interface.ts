@@ -27,11 +27,6 @@ export interface LogLine {
   level: 'info' | 'warn' | 'error' | 'debug';
 }
 
-export interface InstanceModpackRef {
-  version: string;
-  modpackId: string;
-}
-
 export interface Instance {
   id: string;
   name: string;
@@ -51,7 +46,6 @@ export interface Instance {
   lastPlayed: null | string;
   mods: Array<InstalledMod>;
   configs: Array<ConfigFile>;
-  modpack?: InstanceModpackRef;
 }
 
 export interface CreateInstanceInput {

@@ -3,9 +3,8 @@ import type { StatProps, UpdateListProps, InstanceTabProps } from '~/components/
 
 import { useNavigate } from 'react-router-dom';
 
-import { Clock, Boxes, ArrowUp, Compass, Package, HardDrive, ShieldAlert, ShieldCheck, CalendarDays } from 'lucide-react';
+import { Clock, ArrowUp, Compass, Package, HardDrive, ShieldAlert, ShieldCheck, CalendarDays } from 'lucide-react';
 
-import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { PROJECTS } from '~/usecase/mock/projects';
 import { useAppStore } from '~/usecase/store/appStore';
@@ -24,7 +23,6 @@ const isRisky = (mod: InstalledMod, instance: Instance) => {
 
 const OverviewTab = ({ instance }: InstanceTabProps) => {
   const navigate = useNavigate();
-  const modpack = useAppStore((s) => s.modpacks.find((m) => m.id === instance.modpack?.modpackId));
   const updateMods = useAppStore((s) => s.updateMods);
   const updates = instance.mods.filter((m) => m.status === UpdateStatus.UpdateAvailable);
   const safe = updates.filter((m) => !isRisky(m, instance));
@@ -132,24 +130,6 @@ const OverviewTab = ({ instance }: InstanceTabProps) => {
             <Stat label="Created" icon={HardDrive} value={formatDate(instance.createdAt)} />
           </dl>
         </div>
-        {modpack && (
-          <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
-            <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <Boxes className="size-4" />
-              Modpack
-            </h3>
-            <span className="text-sm">{modpack.name}</span>
-            <span className="flex items-center gap-2 text-xs text-muted-foreground">
-              Installed v{instance.modpack?.version}
-              {modpack.version !== instance.modpack?.version && (
-                <Badge className="bg-info/15 text-info">v{modpack.version} available</Badge>
-              )}
-            </span>
-            <Button size="sm" variant="outline" onClick={() => navigate(`/modpack/${modpack.id}`)}>
-              Open modpack
-            </Button>
-          </div>
-        )}
         <Button variant="outline" onClick={() => navigate(`/discover?instance=${instance.id}`)}>
           <Compass data-icon="inline-start" />
           Discover mods for this instance

@@ -4,7 +4,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { toast } from 'sonner';
-import { Copy, Trash2, Share2, Settings2, FolderOpen, MoreHorizontal } from 'lucide-react';
+import { Copy, Trash2, Settings2, FolderOpen, MoreHorizontal } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import { useAppStore } from '~/usecase/store/appStore';
@@ -23,17 +23,10 @@ const InstanceMenu = ({ instance, size = 'icon-sm', variant = 'ghost' }: Instanc
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const deleteInstance = useAppStore((s) => s.deleteInstance);
   const duplicateInstance = useAppStore((s) => s.duplicateInstance);
-  const createModpack = useAppStore((s) => s.createModpackFromInstance);
 
   const duplicate = async () => {
     const copy = await duplicateInstance(instance.id);
     toast.success(`Duplicated as "${copy.name}"`);
-  };
-
-  const share = async () => {
-    const pack = await createModpack(instance.id);
-    toast.success('Modpack created from instance');
-    navigate(`/modpack/${pack.id}`);
   };
 
   const remove = () => {
@@ -66,10 +59,6 @@ const InstanceMenu = ({ instance, size = 'icon-sm', variant = 'ghost' }: Instanc
             <DropdownMenuItem onClick={duplicate}>
               <Copy />
               Duplicate
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={share}>
-              <Share2 />
-              Share as modpack
             </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />

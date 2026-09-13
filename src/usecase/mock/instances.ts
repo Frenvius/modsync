@@ -146,7 +146,6 @@ export const INSTANCES: Array<Instance> = [
     createdAt: '2026-02-03T10:00:00Z',
     updatedAt: '2026-08-20T10:00:00Z',
     lastPlayed: '2026-09-03T19:30:00Z',
-    modpack: { version: '1.4.0', modpackId: 'pack-create-survival' },
     description: 'Create-centered survival. Trains, factories and a lot of andesite.',
     configs: [
       { size: 3_120, format: 'toml', path: 'config/create-common.toml', modifiedAt: '2026-08-20T10:00:00Z' },
@@ -184,7 +183,6 @@ export const INSTANCES: Array<Instance> = [
     createdAt: '2026-04-01T10:00:00Z',
     updatedAt: '2026-09-02T10:00:00Z',
     lastPlayed: '2026-09-04T22:10:00Z',
-    modpack: { version: '2.1.0', modpackId: 'pack-valheim-friends' },
     description: 'Shared setup for the Thursday server. Everyone needs the exact same mod list.',
     configs: [
       { size: 2_200, format: 'cfg', path: 'BepInEx/config/BepInEx.cfg', modifiedAt: '2026-04-01T10:00:00Z' },

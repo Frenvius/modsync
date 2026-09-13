@@ -1871,7 +1871,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mod-manager"
+name = "modsync"
 version = "0.1.0"
 dependencies = [
  "tauri",

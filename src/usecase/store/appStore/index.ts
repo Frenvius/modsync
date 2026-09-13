@@ -5,10 +5,9 @@ import type { DownloadItem } from '~/domain/interfaces/download.interface';
 import { create } from 'zustand';
 
 import { PROJECTS } from '~/usecase/mock/projects';
+import { SETTINGS } from '~/usecase/mock/settings';
 import { DOWNLOADS } from '~/usecase/mock/downloads';
 import { uid, wait } from '~/usecase/util/formatUtils';
-import { USER, SETTINGS } from '~/usecase/mock/settings';
-import { modpackService } from '~/usecase/service/modpack';
 import { instanceService } from '~/usecase/service/instance';
 import { GameId, DownloadKind, UpdateStatus, DownloadStatus } from '~/domain/enums/provider.enum';
 
@@ -38,7 +37,6 @@ const finishDownload = (d: DownloadItem): DownloadItem => ({
 
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
-  modpacks: [],
   instances: [],
   settings: SETTINGS,
   downloads: DOWNLOADS,
@@ -51,41 +49,25 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
 
-  deleteModpack: (modpackId) => set((s) => ({ modpacks: s.modpacks.filter((m) => m.id !== modpackId) })),
-
   deleteInstance: (instanceId) => set((s) => ({ instances: s.instances.filter((i) => i.id !== instanceId) })),
+
+  hydrate: async () => {
+    const instances = await instanceService.list();
+    set({ instances, ready: true });
+  },
 
   renameInstance: (instanceId, name) =>
     set((s) => ({ instances: patchInstance(s.instances, instanceId, (i) => ({ ...i, name })) })),
-
-  importModpack: (modpack) =>
-    set((s) => (s.modpacks.some((m) => m.id === modpack.id) ? s : { modpacks: [modpack, ...s.modpacks] })),
 
   cancelDownload: (id) =>
     set((s) => ({
       downloads: s.downloads.map((d) => (d.id === id ? { ...d, bytesPerSecond: 0, status: DownloadStatus.Cancelled } : d))
     })),
 
-  hydrate: async () => {
-    const [instances, modpacks] = await Promise.all([instanceService.list(), modpackService.list()]);
-    set({ modpacks, instances, ready: true });
-  },
-
   createInstance: async (input) => {
     const instance = await instanceService.create(input);
     set((s) => ({ instances: [instance, ...s.instances] }));
     return instance;
-  },
-
-  updateModpack: (modpackId, patch) =>
-    set((s) => ({
-      modpacks: s.modpacks.map((m) => (m.id === modpackId ? { ...m, ...patch, updatedAt: new Date().toISOString() } : m))
-    })),
-
-  createEmptyModpack: async (input) => {
-    const modpack = await modpackService.createEmpty(input, USER.handle);
-    set((s) => ({ modpacks: [modpack, ...s.modpacks] }));
-    return modpack;
   },
 
   pauseDownload: (id) =>
@@ -117,28 +99,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       )
     })),
 
-  cloneModpack: async (modpackId) => {
-    const source = get().modpacks.find((m) => m.id === modpackId);
-    if (!source) throw new Error('Modpack not found');
-    const copy = await modpackService.clone(source, USER.handle);
-    set((s) => ({ modpacks: [copy, ...s.modpacks] }));
-    return copy;
-  },
-
   duplicateInstance: async (instanceId) => {
     const source = get().instances.find((i) => i.id === instanceId);
     if (!source) throw new Error('Instance not found');
     const copy = await instanceService.duplicate(source);
     set((s) => ({ instances: [copy, ...s.instances] }));
     return copy;
-  },
-
-  createModpackFromInstance: async (instanceId) => {
-    const instance = get().instances.find((i) => i.id === instanceId);
-    if (!instance) throw new Error('Instance not found');
-    const modpack = await modpackService.fromInstance(instance, USER.handle);
-    set((s) => ({ modpacks: [modpack, ...s.modpacks] }));
-    return modpack;
   },
 
   changeModVersion: (instanceId, projectId, version) =>
@@ -215,41 +181,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  installModpack: async (modpackId) => {
-    const modpack = get().modpacks.find((m) => m.id === modpackId) ?? (await modpackService.resolveShared(modpackId));
-    if (!modpack) throw new Error('Modpack not found');
-    const download = newDownload({
-      gameId: modpack.gameId,
-      subtitle: 'Creating instance',
-      kind: DownloadKind.InstallModpack,
-      title: `${modpack.name} ${modpack.version}`
-    });
-    set((s) => ({ downloads: [{ ...download, step: 'Resolving mods' }, ...s.downloads] }));
-    const instance = await instanceService.create({
-      icon: 'package',
-      name: modpack.name,
-      gameId: modpack.gameId,
-      loader: modpack.loader,
-      iconColor: modpack.coverColor,
-      gameVersion: modpack.gameVersion
-    });
-    const mods = modpack.mods
-      .map((m) => PROJECTS.find((p) => p.id === m.projectId))
-      .filter((p) => p !== undefined)
-      .map((p) => instanceService.toInstalledMod(p, modpack.mods.find((m) => m.projectId === p.id)?.version));
-    const created = {
-      ...instance,
-      mods,
-      description: modpack.description,
-      modpack: { modpackId: modpack.id, version: modpack.version }
-    };
-    set((s) => ({
-      instances: [created, ...s.instances],
-      downloads: s.downloads.map((d) => (d.id === download.id ? finishDownload(d) : d))
-    }));
-    return created;
-  },
-
   installMod: async (instanceId, project, options = {}) => {
     const instance = get().instances.find((i) => i.id === instanceId);
     if (!instance) return;
@@ -286,5 +217,3 @@ export const useAppStore = create<AppState>((set, get) => ({
 }));
 
 export const useInstance = (instanceId: string | undefined) => useAppStore((s) => s.instances.find((i) => i.id === instanceId));
-
-export const useModpack = (modpackId: string | undefined) => useAppStore((s) => s.modpacks.find((m) => m.id === modpackId));

@@ -7,7 +7,7 @@ import { Button } from '~/components/ui/button';
 import { useAppStore } from '~/usecase/store/appStore';
 import { DownloadStatus } from '~/domain/enums/provider.enum';
 
-import { NAV_ITEMS } from './constants';
+import { NAV_ITEMS, SETTINGS_NAV_ITEM } from './constants';
 
 const Sidebar = () => {
   const openCreate = useAppStore((s) => s.setCreateInstanceOpen);
@@ -51,6 +51,22 @@ const Sidebar = () => {
           </NavLink>
         ))}
       </nav>
+
+      <div className="border-t border-sidebar-border p-2">
+        <NavLink
+          to={SETTINGS_NAV_ITEM.to}
+          className={({ isActive }) =>
+            cn(
+              'group flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium text-sidebar-foreground transition-colors',
+              'hover:bg-item-hover hover:text-foreground',
+              isActive && 'bg-primary/15 text-primary ring-1 ring-primary/30'
+            )
+          }
+        >
+          <SETTINGS_NAV_ITEM.icon className="size-4 shrink-0 opacity-80 transition-colors group-hover:opacity-100" />
+          <span>{SETTINGS_NAV_ITEM.label}</span>
+        </NavLink>
+      </div>
     </aside>
   );
 };

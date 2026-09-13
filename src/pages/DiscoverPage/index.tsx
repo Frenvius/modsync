@@ -17,12 +17,18 @@ import { projectService } from '~/usecase/service/project';
 import ProjectIcon from '~/components/commons/ProjectIcon';
 import InstallDialog from '~/components/Mods/InstallDialog';
 import { ProviderBadge } from '~/components/commons/Badges';
-import { getProviderMeta } from '~/usecase/service/providers';
 import FilterPopover from '~/components/Discover/FilterPopover';
 import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
 import ProjectDetailsPanel from '~/components/Discover/ProjectDetailsPanel';
 import { Table, TableRow, TableBody, TableCell, TableHead, TableHeader } from '~/components/ui/table';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuItem,
+  DropdownMenuGroup,
+  DropdownMenuContent,
+  DropdownMenuTrigger
+} from '~/components/ui/dropdown-menu';
 
 import { DISCOVER_SORTS } from './constants';
 
@@ -39,6 +45,8 @@ const DiscoverPage = () => {
   const [results, setResults] = React.useState<Array<Project>>([]);
   const [installTarget, setInstallTarget] = React.useState<null | Project>(null);
   const [selectedProject, setSelectedProject] = React.useState<null | Project>(null);
+  const [openCategoryProjectId, setOpenCategoryProjectId] = React.useState<null | string>(null);
+  const categoryMenuCloseTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
   const [filters, setFilters] = React.useState<DiscoverFilters>({
     providers: [],
     loader: targetInstance?.loader,
@@ -46,6 +54,16 @@ const DiscoverPage = () => {
   });
   const game = projectService.getGame(gameId);
   const categories = projectService.getCategories(gameId);
+  const cancelCategoryMenuClose = () => clearTimeout(categoryMenuCloseTimer.current);
+  const scheduleCategoryMenuClose = () => {
+    categoryMenuCloseTimer.current = setTimeout(() => setOpenCategoryProjectId(null), 100);
+  };
+  const openCategoryMenu = (projectId: string) => {
+    cancelCategoryMenuClose();
+    setOpenCategoryProjectId(projectId);
+  };
+
+  React.useEffect(() => () => clearTimeout(categoryMenuCloseTimer.current), []);
 
   React.useEffect(() => {
     if (targetInstance && targetInstance.gameId !== gameId) setSelectedGame(targetInstance.gameId);
@@ -95,11 +113,8 @@ const DiscoverPage = () => {
         <FilterPopover game={game} filters={filters} onChange={setFilters} categories={categories} />
         <span className="flex-1" />
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          {game.providers.map((p) => (
-            <Badge key={p} variant="outline" className="gap-1.5 text-muted-foreground">
-              <span className="size-1.5 rounded-full" style={{ background: getProviderMeta(p).color }} />
-              {getProviderMeta(p).name}
-            </Badge>
+          {game.providers.map((providerId) => (
+            <ProviderBadge key={providerId} providerId={providerId} />
           ))}
         </span>
       </div>
@@ -133,9 +148,9 @@ const DiscoverPage = () => {
       ) : (
         <>
           <span className="text-xs text-muted-foreground">{results.length} results</span>
-          <div className="rounded-lg border bg-card/40">
+          <div className="overflow-hidden rounded-lg border bg-card">
             <Table className="min-w-[900px]">
-              <TableHeader>
+              <TableHeader className="bg-secondary/70">
                 <TableRow>
                   <TableHead>Project</TableHead>
                   <TableHead>Provider</TableHead>
@@ -148,7 +163,7 @@ const DiscoverPage = () => {
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className="[&_tr:nth-child(even)]:bg-muted/25">
                 {results.map((project) => {
                   const installed = targetInstance?.mods.some((mod) => mod.projectId === project.id);
 
@@ -156,7 +171,8 @@ const DiscoverPage = () => {
                     <TableRow
                       key={project.id}
                       data-project-row
-                      className="cursor-pointer"
+                      data-state={selectedProject?.id === project.id ? 'selected' : undefined}
+                      className="cursor-pointer hover:bg-accent/60 data-[state=selected]:bg-primary/15"
                       onClick={(event) => {
                         event.stopPropagation();
                         setSelectedProject(project);
@@ -166,14 +182,18 @@ const DiscoverPage = () => {
                         <div className="flex items-start gap-3">
                           <ProjectIcon size="md" name={project.name} color={project.iconColor} />
                           <div className="min-w-0">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedProject(project)}
-                              className="block max-w-full truncate text-left font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
-                            >
-                              {project.name}
-                            </button>
-                            <span className="block truncate text-xs text-muted-foreground">by {project.author}</span>
+                            <div className="flex min-w-0 items-baseline gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedProject(project)}
+                                className="min-w-0 truncate text-left font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+                              >
+                                {project.name}
+                              </button>
+                              <span className="max-w-40 shrink-0 truncate text-xs text-muted-foreground">
+                                by {project.author}
+                              </span>
+                            </div>
                             <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{project.summary}</p>
                           </div>
                         </div>
@@ -182,12 +202,45 @@ const DiscoverPage = () => {
                         <ProviderBadge providerId={project.provider.id} />
                       </TableCell>
                       <TableCell>
-                        <div className="flex max-w-48 flex-wrap gap-1">
-                          {project.categories.slice(0, 2).map((category) => (
-                            <Badge key={category} variant="outline" className="text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          {project.categories.slice(0, 1).map((category) => (
+                            <Badge key={category} variant="outline" className="bg-secondary/70 text-secondary-foreground">
                               {category}
                             </Badge>
                           ))}
+                          {project.categories.length > 1 && (
+                            <DropdownMenu
+                              modal={false}
+                              open={openCategoryProjectId === project.id}
+                              onOpenChange={(open) => setOpenCategoryProjectId(open ? project.id : null)}
+                            >
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="icon-xs"
+                                  variant="outline"
+                                  onPointerLeave={scheduleCategoryMenuClose}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onPointerEnter={() => openCategoryMenu(project.id)}
+                                  aria-label={`${project.categories.length - 1} more categories`}
+                                  className="rounded-md bg-secondary/70 text-[10px] text-secondary-foreground"
+                                >
+                                  +{project.categories.length - 1}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="start"
+                                onPointerEnter={cancelCategoryMenuClose}
+                                onPointerLeave={scheduleCategoryMenuClose}
+                              >
+                                <DropdownMenuGroup>
+                                  {project.categories.slice(1).map((category) => (
+                                    <DropdownMenuItem key={category}>{category}</DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuGroup>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs tabular-nums">

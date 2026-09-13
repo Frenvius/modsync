@@ -19,20 +19,6 @@ export const DOWNLOADS: Array<DownloadItem> = [
     title: 'Fabric API 0.115.2+1.21.4'
   },
   {
-    id: 'dl-2',
-    progress: 34,
-    etaSeconds: 4,
-    totalBytes: 18_900_000,
-    gameId: GameId.Minecraft,
-    bytesPerSecond: 5_200_000,
-    subtitle: 'Creating instance',
-    status: DownloadStatus.Active,
-    kind: DownloadKind.InstallModpack,
-    title: 'Fabric Performance 3.0.1',
-    startedAt: '2026-09-05T21:09:30Z',
-    step: 'Resolving dependencies (3/5)'
-  },
-  {
     id: 'dl-3',
     progress: 81,
     etaSeconds: 0,
