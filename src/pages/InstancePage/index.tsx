@@ -15,7 +15,6 @@ import { projectService } from '~/usecase/service/project';
 import InstanceIcon from '~/components/commons/InstanceIcon';
 import ConfigTab from '~/components/Instance/tabs/ConfigTab';
 import InstanceMenu from '~/components/Instance/InstanceMenu';
-import OverviewTab from '~/components/Instance/tabs/OverviewTab';
 import VersionsTab from '~/components/Instance/tabs/VersionsTab';
 import SettingsTab from '~/components/Instance/tabs/SettingsTab';
 import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
@@ -31,7 +30,7 @@ const InstancePage = () => {
   const [params, setParams] = useSearchParams();
   const instance = useInstance(instanceId);
   const { play, playing } = usePlay(instanceId ?? '');
-  const tab = params.get('tab') ?? 'overview';
+  const requestedTab = params.get('tab');
 
   if (!instance) {
     return (
@@ -47,6 +46,11 @@ const InstancePage = () => {
 
   const game = projectService.getGame(instance.gameId);
   const contentTypes = game.contentTypes;
+  const defaultTab = contentTypes[0] ?? 'versions';
+  const tab =
+    requestedTab && [...contentTypes, 'logs', 'config', 'settings', 'versions'].includes(requestedTab)
+      ? requestedTab
+      : defaultTab;
 
   return (
     <div className="flex flex-col">
@@ -91,11 +95,8 @@ const InstancePage = () => {
         </div>
       </header>
 
-      <Tabs value={tab} className="gap-0" onValueChange={(v) => setParams(v === 'overview' ? {} : { tab: v })}>
+      <Tabs value={tab} className="gap-0" onValueChange={(value) => setParams(value === defaultTab ? {} : { tab: value })}>
         <TabsList className="h-10 w-full justify-start gap-1 overflow-x-auto rounded-none border-b border-border bg-toolbar px-4 py-1.5">
-          <TabsTrigger value="overview" className={instanceTabClassName}>
-            Overview
-          </TabsTrigger>
           {contentTypes.map((t) => (
             <TabsTrigger key={t} value={t} className={instanceTabClassName}>
               {CONTENT_TAB_LABELS[t]}
@@ -115,9 +116,6 @@ const InstancePage = () => {
           </TabsTrigger>
         </TabsList>
         <div className="p-4">
-          <TabsContent value="overview">
-            <OverviewTab instance={instance} />
-          </TabsContent>
           {contentTypes.map((t) => (
             <TabsContent key={t} value={t}>
               <ModsTab contentType={t} instance={instance} />

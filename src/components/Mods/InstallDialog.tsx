@@ -29,7 +29,8 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
   const [optionalPicked, setOptionalPicked] = React.useState<Array<string>>([]);
 
   const candidates = instances.filter((i) => i.gameId === project?.gameId);
-  const instance = candidates.find((i) => i.id === target) ?? candidates[0];
+  const linkedInstance = candidates.find((i) => i.id === instanceId);
+  const instance = linkedInstance ?? candidates.find((i) => i.id === target) ?? candidates[0];
 
   React.useEffect(() => {
     if (open) {
@@ -105,7 +106,10 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
           <div className="flex items-center gap-3">
             <ProjectIcon size="lg" name={project.name} color={project.iconColor} imageUrl={project.iconUrl} />
             <div className="flex flex-col">
-              <DialogTitle>Install {project.name}</DialogTitle>
+              <DialogTitle>
+                Install {project.name}
+                {linkedInstance ? ` to ${linkedInstance.name}` : ''}
+              </DialogTitle>
               <DialogDescription>
                 Version {(version ?? project.latestVersion) || 'latest compatible'} by {project.author}
               </DialogDescription>
@@ -114,33 +118,40 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Install to</span>
-            {candidates.length === 0 ? (
-              <Alert>
-                <TriangleAlert />
-                <AlertTitle>No compatible instance</AlertTitle>
-                <AlertDescription>Create a {projectService.getGame(project.gameId).name} instance first.</AlertDescription>
-              </Alert>
-            ) : (
-              <Select value={instance?.id} onValueChange={setTarget}>
-                <SelectTrigger className="w-full" aria-label="Target instance">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {candidates.map((i) => (
-                      <SelectItem key={i.id} value={i.id}>
-                        <InstanceIcon size="sm" icon={i.icon} color={i.iconColor} className="size-5 rounded-sm [&>svg]:size-3" />
-                        {i.name}
-                        <span className="font-mono text-xs text-muted-foreground">{i.gameVersion}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+          {!linkedInstance ? (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Install to</span>
+              {candidates.length === 0 ? (
+                <Alert>
+                  <TriangleAlert />
+                  <AlertTitle>No compatible instance</AlertTitle>
+                  <AlertDescription>Create a {projectService.getGame(project.gameId).name} instance first.</AlertDescription>
+                </Alert>
+              ) : (
+                <Select value={instance?.id} onValueChange={setTarget}>
+                  <SelectTrigger className="w-full" aria-label="Target instance">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {candidates.map((i) => (
+                        <SelectItem key={i.id} value={i.id}>
+                          <InstanceIcon
+                            size="sm"
+                            icon={i.icon}
+                            color={i.iconColor}
+                            className="size-5 rounded-sm [&>svg]:size-3"
+                          />
+                          {i.name}
+                          <span className="font-mono text-xs text-muted-foreground">{i.gameVersion}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          ) : null}
 
           {alreadyInstalled && (
             <Alert>
@@ -166,7 +177,7 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
           {planLoading && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
-              Resolving the installation plan
+              Checking dependencies
             </p>
           )}
 

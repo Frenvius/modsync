@@ -4,7 +4,8 @@ import type { Project, SearchSort } from '~/domain/interfaces/project.interface'
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { X, Clock, Compass, Download, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
+import { X, Check, Clock, Compass, Download, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -15,9 +16,11 @@ import EmptyState from '~/components/commons/EmptyState';
 import PageHeader from '~/components/commons/PageHeader';
 import { projectService } from '~/usecase/service/project';
 import ProjectIcon from '~/components/commons/ProjectIcon';
+import InstallDialog from '~/components/Mods/InstallDialog';
 import { ProviderBadge } from '~/components/commons/Badges';
 import { getProviderMeta } from '~/usecase/service/providers';
 import FilterPopover from '~/components/Discover/FilterPopover';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
 import { Alert, AlertTitle, AlertDescription } from '~/components/ui/alert';
 import ProjectDetailsPanel from '~/components/Discover/ProjectDetailsPanel';
@@ -36,10 +39,12 @@ import { DISCOVER_SORTS } from './constants';
 const DiscoverPage = () => {
   const [params] = useSearchParams();
   const instances = useAppStore((s) => s.instances);
-  const gameId = useAppStore((s) => s.selectedGameId);
+  const installMod = useAppStore((s) => s.installMod);
+  const selectedGameId = useAppStore((s) => s.selectedGameId);
   const setSelectedGame = useAppStore((s) => s.setSelectedGame);
   const instanceId = params.get('instance') ?? undefined;
   const targetInstance = instances.find((i) => i.id === instanceId);
+  const gameId = targetInstance?.gameId ?? selectedGameId;
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState<SearchSort>('relevance');
   const [page, setPage] = React.useState(0);
@@ -49,6 +54,8 @@ const DiscoverPage = () => {
   const [errors, setErrors] = React.useState<Array<string>>([]);
   const [results, setResults] = React.useState<Array<Project>>([]);
   const [categories, setCategories] = React.useState<Array<string>>([]);
+  const [dialogProject, setDialogProject] = React.useState<null | Project>(null);
+  const [installingProjectId, setInstallingProjectId] = React.useState<string>();
   const [selectedProject, setSelectedProject] = React.useState<null | Project>(null);
   const [openCategoryProjectId, setOpenCategoryProjectId] = React.useState<null | string>(null);
   const categoryMenuCloseTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -59,6 +66,7 @@ const DiscoverPage = () => {
     gameVersion: targetInstance?.gameVersion
   });
   const game = projectService.getGame(gameId);
+  const installedProjectIds = new Set(targetInstance?.mods.map((mod) => mod.projectId));
   const cancelCategoryMenuClose = () => clearTimeout(categoryMenuCloseTimer.current);
   const scheduleCategoryMenuClose = () => {
     categoryMenuCloseTimer.current = setTimeout(() => setOpenCategoryProjectId(null), 100);
@@ -71,8 +79,16 @@ const DiscoverPage = () => {
   React.useEffect(() => () => clearTimeout(categoryMenuCloseTimer.current), []);
 
   React.useEffect(() => {
-    if (targetInstance && targetInstance.gameId !== gameId) setSelectedGame(targetInstance.gameId);
-  }, [gameId, setSelectedGame, targetInstance]);
+    if (targetInstance && targetInstance.gameId !== selectedGameId) setSelectedGame(targetInstance.gameId);
+  }, [selectedGameId, setSelectedGame, targetInstance]);
+
+  React.useEffect(() => {
+    setFilters((current) => ({
+      ...current,
+      loader: targetInstance?.loader,
+      gameVersion: targetInstance?.gameVersion
+    }));
+  }, [instanceId, targetInstance?.gameVersion, targetInstance?.loader]);
 
   React.useEffect(() => {
     categoriesGame.current = undefined;
@@ -108,6 +124,21 @@ const DiscoverPage = () => {
     };
   }, [page, gameId, query, sort, filters]);
 
+  const installFromPanel = async (project: Project) => {
+    if (!targetInstance) {
+      setDialogProject(project);
+      return;
+    }
+    setInstallingProjectId(project.id);
+    try {
+      await installMod(targetInstance.id, project);
+      toast.success(`${project.name} installed to ${targetInstance.name}`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, `Could not install ${project.name}`));
+    } finally {
+      setInstallingProjectId(undefined);
+    }
+  };
   const clearFilters = () => setFilters({ providers: [] });
   const clearFilter = (key: keyof DiscoverFilters) =>
     setFilters((current) => ({ ...current, [key]: key === 'providers' ? [] : undefined }));
@@ -250,6 +281,7 @@ const DiscoverPage = () => {
               </TableHeader>
               <TableBody className="[&_tr:nth-child(even)]:bg-muted/25">
                 {results.map((project) => {
+                  const installed = installedProjectIds.has(project.id);
                   return (
                     <TableRow
                       key={project.id}
@@ -273,6 +305,12 @@ const DiscoverPage = () => {
                               >
                                 {project.name}
                               </button>
+                              {installed ? (
+                                <Badge variant="secondary" className="shrink-0 gap-1 text-[10px]">
+                                  <Check aria-hidden="true" className="size-3" />
+                                  Installed
+                                </Badge>
+                              ) : null}
                               <span className="max-w-40 shrink-0 truncate text-xs text-muted-foreground">
                                 by {project.author}
                               </span>
@@ -359,9 +397,21 @@ const DiscoverPage = () => {
         </>
       )}
 
-      {selectedProject && (
-        <ProjectDetailsPanel project={selectedProject} instanceId={targetInstance?.id} onClose={() => setSelectedProject(null)} />
-      )}
+      {selectedProject ? (
+        <ProjectDetailsPanel
+          project={selectedProject}
+          instance={targetInstance}
+          onClose={() => setSelectedProject(null)}
+          installed={installedProjectIds.has(selectedProject.id)}
+          installing={installingProjectId === selectedProject.id}
+          onInstall={() => void installFromPanel(selectedProject)}
+        />
+      ) : null}
+      <InstallDialog
+        project={dialogProject}
+        open={Boolean(dialogProject)}
+        onOpenChange={(open) => setDialogProject(open ? dialogProject : null)}
+      />
     </div>
   );
 };

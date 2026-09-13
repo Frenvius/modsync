@@ -1,5 +1,6 @@
 import type { Game } from '~/domain/interfaces/game.interface';
 import type { Project } from '~/domain/interfaces/project.interface';
+import type { Instance } from '~/domain/interfaces/instance.interface';
 import type { LoaderId, ProviderId } from '~/domain/enums/provider.enum';
 
 export interface DiscoverFilters {
@@ -25,6 +26,9 @@ export interface FilterSelectProps {
 
 export interface ProjectDetailsPanelProps {
   project: Project;
-  instanceId?: string;
+  installed: boolean;
+  installing: boolean;
+  instance?: Instance;
   onClose: () => void;
+  onInstall: () => void;
 }

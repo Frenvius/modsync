@@ -1,17 +1,22 @@
 import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { X, Minus, Square, ChevronDown } from 'lucide-react';
+import { X, Minus, Square, ArrowLeft, ArrowRight, ChevronDown } from 'lucide-react';
 
 import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuContent, DropdownMenuTrigger } from '~/components/ui/dropdown-menu';
 
 const Titlebar = () => {
+  useLocation();
+  const navigate = useNavigate();
   const games = useAppStore((state) => state.games);
   const selectedGameId = useAppStore((state) => state.selectedGameId);
   const desktop = isTauri();
+  const canGoBack = window.navigation?.canGoBack ?? Number(window.history.state?.idx) > 0;
+  const canGoForward = window.navigation?.canGoForward ?? false;
 
   const closeWindow = () => void getCurrentWindow().close();
   const minimizeWindow = () => void getCurrentWindow().minimize();
@@ -50,10 +55,35 @@ const Titlebar = () => {
       onMouseDown={startDragging}
       className="flex h-8 shrink-0 select-none items-center border-b border-border/50 bg-toolbar text-foreground"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
+      <div className="flex w-56 min-w-0 shrink-0 items-center gap-2 px-2">
         <img alt="" src="/modsync.png" className="size-5 rounded" />
         <span className="truncate text-xs font-semibold">ModSync</span>
       </div>
+
+      <div role="group" aria-label="Navigation history" className="flex h-full items-center border-l border-border/50 px-1">
+        <button
+          title="Back"
+          type="button"
+          aria-label="Back"
+          disabled={!canGoBack}
+          onClick={() => navigate(-1)}
+          className="flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+        >
+          <ArrowLeft strokeWidth={1.5} aria-hidden="true" className="size-4" />
+        </button>
+        <button
+          type="button"
+          title="Forward"
+          aria-label="Forward"
+          disabled={!canGoForward}
+          onClick={() => navigate(1)}
+          className="flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+        >
+          <ArrowRight strokeWidth={1.5} aria-hidden="true" className="size-4" />
+        </button>
+      </div>
+
+      <div className="flex-1" />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

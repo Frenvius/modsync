@@ -69,6 +69,26 @@ struct ProjectCache {
     items: Vec<Project>,
 }
 
+#[derive(Deserialize)]
+struct PackageDetails {
+    name: String,
+    owner: String,
+    package_url: String,
+    date_updated: String,
+    #[serde(default)]
+    rating_score: i64,
+    latest: PackageVersion,
+    #[serde(default)]
+    community_listings: Vec<CommunityListing>,
+}
+
+#[derive(Deserialize)]
+struct CommunityListing {
+    community: String,
+    #[serde(default)]
+    categories: Vec<String>,
+}
+
 pub async fn search(
     app: &AppHandle,
     query: ProviderSearchQuery,
@@ -105,6 +125,42 @@ pub async fn search(
         total,
         stale,
     })
+}
+
+pub async fn resolve(
+    external_id: &str,
+    version_hint: Option<&str>,
+) -> Result<(Project, Vec<ProjectVersion>), CommandError> {
+    let (community, owner, name) = split_id(external_id)?;
+    let details = http::get_json::<PackageDetails>(http::client()?.get(format!(
+        "{BASE_URL}/api/experimental/package/{owner}/{name}/"
+    )))
+    .await?;
+    let project = map_details(community, &details)?;
+    let version = match version_hint {
+        None => details.latest,
+        Some(hint) if hint == details.latest.version_number || hint == details.latest.full_name => {
+            details.latest
+        }
+        Some(hint) => {
+            let prefix = format!("{owner}-{name}-");
+            let number = hint.strip_prefix(&prefix).unwrap_or(hint);
+            http::get_json::<PackageVersion>(http::client()?.get(format!(
+                "{BASE_URL}/api/experimental/package/{owner}/{name}/{number}/"
+            )))
+            .await?
+        }
+    };
+    if !version.is_active {
+        return Err(CommandError::new(
+            CommandErrorCode::Incompatible,
+            "Thunderstore package version is inactive",
+        ));
+    }
+    Ok((
+        project,
+        vec![map_version(community, &owner, &name, version)],
+    ))
 }
 
 pub async fn project(app: &AppHandle, external_id: &str) -> Result<Project, CommandError> {
@@ -295,6 +351,48 @@ fn cache_serialization_error(error: serde_json::Error) -> CommandError {
     }
 }
 
+fn map_details(community: &str, details: &PackageDetails) -> Result<Project, CommandError> {
+    let listing = details
+        .community_listings
+        .iter()
+        .find(|listing| listing.community == community)
+        .ok_or_else(|| {
+            CommandError::new(
+                CommandErrorCode::NotFound,
+                "Thunderstore package is not listed for this game",
+            )
+        })?;
+    let latest = &details.latest;
+    Ok(Project {
+        id: project_id(
+            ProviderId::Thunderstore,
+            format!("{community}:{}:{}", details.owner, details.name),
+        ),
+        slug: details.name.clone(),
+        name: details.name.clone(),
+        author: details.owner.clone(),
+        game_id: game(community),
+        summary: latest.description.clone(),
+        icon_color: icon_color(latest.icon.as_deref().unwrap_or(&latest.full_name)),
+        icon_url: safe_image_url(latest.icon.as_deref()),
+        updated_at: details.date_updated.clone(),
+        downloads: latest.downloads,
+        followers: details.rating_score,
+        r#type: ProjectType::Mod,
+        description: latest.description.clone(),
+        latest_version: latest.version_number.clone(),
+        gallery: Vec::new(),
+        loaders: vec![LoaderId::BepInEx],
+        categories: listing.categories.clone(),
+        game_versions: Vec::new(),
+        provider: ProjectProviderInfo {
+            id: ProviderId::Thunderstore,
+            url: safe_url(Some(&details.package_url), details.package_url.clone()),
+            external_id: format!("{community}:{}:{}", details.owner, details.name),
+        },
+    })
+}
+
 fn map_project(community: &str, package: Package) -> Option<Project> {
     let latest = package.latest()?.clone();
     let downloads = package.downloads();
@@ -457,6 +555,45 @@ mod tests {
                 .filter_map(|package| map_project("valheim", package))
                 .any(|project| project.icon_url.is_some()));
         });
+    }
+
+    #[test]
+    #[ignore = "requires network access"]
+    fn live_thunderstore_package_resolves_directly() {
+        tauri::async_runtime::block_on(async {
+            let (project, versions) = resolve("valheim:RandyKnapp:EpicLoot", None).await.unwrap();
+            assert_eq!(project.id, "thunderstore:valheim:RandyKnapp:EpicLoot");
+            assert!(!versions[0].dependencies.is_empty());
+        });
+    }
+
+    #[test]
+    fn experimental_package_maps_community_project() {
+        let details: PackageDetails = serde_json::from_str(
+            r#"{
+                "name":"EpicLoot",
+                "owner":"RandyKnapp",
+                "package_url":"https://thunderstore.io/package/RandyKnapp/EpicLoot/",
+                "date_updated":"2026-09-13T07:12:07Z",
+                "rating_score":12,
+                "latest":{
+                    "full_name":"RandyKnapp-EpicLoot-0.14.5",
+                    "description":"Loot",
+                    "version_number":"0.14.5",
+                    "dependencies":["denikson-BepInExPack_Valheim-5.4.2333"],
+                    "downloads":42,
+                    "download_url":"https://example.com/EpicLoot.zip",
+                    "is_active":true,
+                    "date_created":"2026-09-13T07:12:05Z"
+                },
+                "community_listings":[{"categories":["Gear"],"community":"valheim"}]
+            }"#,
+        )
+        .unwrap();
+        let project = map_details("valheim", &details).unwrap();
+        let version = map_version("valheim", &details.owner, &details.name, details.latest);
+        assert_eq!(project.id, "thunderstore:valheim:RandyKnapp:EpicLoot");
+        assert_eq!(version.dependencies.len(), 1);
     }
 
     #[test]

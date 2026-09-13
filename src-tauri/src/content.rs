@@ -914,9 +914,9 @@ async fn resolve_plan(
                 "Dependency graph exceeds 100 projects",
             ));
         }
-        let project = providers::resolve_project(app, &project_id).await?;
+        let (project, versions) =
+            providers::resolve_project_versions(app, &project_id, version_hint.as_deref()).await?;
         validate_project(instance, &project)?;
-        let versions = providers::resolve_versions(app, &project_id).await?;
         let mut version = select_version(instance, versions, version_hint.as_deref())?;
         providers::resolve_download_url(&project_id, &mut version).await?;
         if project_id == input.project_id {

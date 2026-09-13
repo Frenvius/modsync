@@ -200,6 +200,21 @@ pub(crate) async fn resolve_project(
     }
 }
 
+pub(crate) async fn resolve_project_versions(
+    app: &AppHandle,
+    project_id: &str,
+    version_hint: Option<&str>,
+) -> Result<(Project, Vec<ProjectVersion>), CommandError> {
+    let provider_id = project_provider(project_id)?;
+    let external_id = external_id(provider_id, project_id)?;
+    if provider_id == ProviderId::Thunderstore {
+        return thunderstore::resolve(external_id, version_hint).await;
+    }
+    let project = resolve_project(app, project_id).await?;
+    let versions = resolve_versions(app, project_id).await?;
+    Ok((project, versions))
+}
+
 pub(crate) async fn resolve_versions(
     app: &AppHandle,
     project_id: &str,

@@ -3,7 +3,7 @@ import type { ProjectDetailsPanelProps } from './types';
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-import { X, Clock, Heart, Download, ExternalLink } from 'lucide-react';
+import { X, Check, Clock, Heart, Loader2, Download, ExternalLink } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -11,7 +11,7 @@ import ProjectIcon from '~/components/commons/ProjectIcon';
 import { ProviderBadge } from '~/components/commons/Badges';
 import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
 
-const ProjectDetailsPanel = ({ project, onClose, instanceId }: ProjectDetailsPanelProps) => {
+const ProjectDetailsPanel = ({ project, onClose, instance, installed, onInstall, installing }: ProjectDetailsPanelProps) => {
   const panelRef = React.useRef<HTMLElement>(null);
   const resizing = React.useRef(false);
   const [width, setWidth] = React.useState(448);
@@ -162,15 +162,43 @@ const ProjectDetailsPanel = ({ project, onClose, instanceId }: ProjectDetailsPan
         </div>
 
         <div className="flex gap-2 border-t border-border/50 p-3">
-          <Button asChild className="flex-1">
-            <Link to={`/project/${encodeURIComponent(project.id)}${instanceId ? `?instance=${instanceId}` : ''}`}>
+          <Button
+            onClick={onInstall}
+            className="min-w-0 flex-1"
+            disabled={installed || installing}
+            variant={installed ? 'secondary' : 'default'}
+          >
+            {installing ? (
+              <Loader2 data-icon="inline-start" className="animate-spin" />
+            ) : installed ? (
+              <Check data-icon="inline-start" />
+            ) : (
+              <Download data-icon="inline-start" />
+            )}
+            <span className="truncate">
+              {installing
+                ? `Installing to ${instance?.name}`
+                : installed
+                  ? `Installed in ${instance?.name}`
+                  : instance
+                    ? `Install to ${instance.name}`
+                    : 'Install'}
+            </span>
+          </Button>
+          <Button asChild variant="outline">
+            <Link to={`/project/${encodeURIComponent(project.id)}${instance ? `?instance=${instance.id}` : ''}`}>
               Full details
             </Link>
           </Button>
-          <Button asChild variant="outline">
-            <a target="_blank" rel="noreferrer" href={project.provider.url}>
-              <ExternalLink data-icon="inline-start" />
-              Provider
+          <Button asChild variant="outline" size={instance ? 'icon' : 'default'}>
+            <a
+              target="_blank"
+              rel="noreferrer"
+              href={project.provider.url}
+              aria-label={instance ? `Open ${project.name} on its provider` : undefined}
+            >
+              <ExternalLink data-icon={instance ? undefined : 'inline-start'} />
+              {instance ? <span className="sr-only">Provider</span> : 'Provider'}
             </a>
           </Button>
         </div>

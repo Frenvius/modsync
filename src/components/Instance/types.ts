@@ -1,7 +1,5 @@
 import type { Instance, InstalledMod } from '~/domain/interfaces/instance.interface';
 
-import React from 'react';
-
 import { ProjectType, UpdateStatus } from '~/domain/enums/provider.enum';
 
 export interface InstanceCardProps {
@@ -21,12 +19,6 @@ export interface InstanceMenuProps {
 
 export interface InstanceTabProps {
   instance: Instance;
-}
-
-export interface StatProps {
-  label: string;
-  value: string;
-  icon: React.ComponentType<{ className?: string }>;
 }
 
 export interface UpdateListProps {
