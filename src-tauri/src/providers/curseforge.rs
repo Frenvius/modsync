@@ -6,9 +6,9 @@ use crate::{
 };
 
 use super::{
-    http, icon_color, project_id, safe_url, ArtifactHash, Dependency, DependencyType,
-    HashAlgorithm, Project, ProjectProviderInfo, ProjectVersion, ProviderCategories,
-    ProviderSearchQuery, ProviderSearchResult, SearchSort, PAGE_SIZE,
+    http, icon_color, project_id, safe_image_url, safe_url, ArtifactHash, Dependency,
+    DependencyType, HashAlgorithm, Project, ProjectProviderInfo, ProjectVersion,
+    ProviderCategories, ProviderSearchQuery, ProviderSearchResult, SearchSort, PAGE_SIZE,
 };
 
 const BASE_URL: &str = "https://api.curseforge.com/v1";
@@ -241,6 +241,12 @@ fn map_project(project: ApiMod) -> Project {
     let loaders = latest
         .map(|file| loaders(&file.game_versions))
         .unwrap_or_default();
+    let icon_url = safe_image_url(
+        project
+            .logo
+            .as_ref()
+            .map(|logo| logo.thumbnail_url.as_str()),
+    );
     Project {
         id: project_id(ProviderId::CurseForge, project.id),
         slug: project.slug,
@@ -258,6 +264,7 @@ fn map_project(project: ApiMod) -> Project {
                 .as_ref()
                 .map_or(&project.summary, |logo| &logo.thumbnail_url),
         ),
+        icon_url,
         updated_at: project.date_modified,
         downloads: project.download_count,
         followers: 0,

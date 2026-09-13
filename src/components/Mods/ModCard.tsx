@@ -28,7 +28,7 @@ const ModCard = ({ project, installed, onInstall }: ModCardProps) => {
       onKeyDown={(e) => e.key === 'Enter' && open()}
       className="group flex cursor-pointer gap-3 rounded-lg border bg-card p-3 transition-all hover:border-border hover:bg-card/80 hover:shadow-[0_8px_24px_-12px_oklch(0_0_0/70%)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
-      <ProjectIcon size="lg" name={project.name} color={project.iconColor} />
+      <ProjectIcon size="lg" name={project.name} color={project.iconColor} imageUrl={project.iconUrl} />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex items-start gap-2">
           <div className="flex min-w-0 flex-1 flex-col">

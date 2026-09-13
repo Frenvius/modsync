@@ -56,6 +56,8 @@ pub struct Project {
     pub game_id: GameId,
     pub summary: String,
     pub icon_color: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
     pub updated_at: String,
     pub downloads: i64,
     pub followers: i64,
@@ -354,6 +356,14 @@ fn safe_url(value: Option<&str>, fallback: String) -> String {
         .map_or(fallback, |url| url.into())
 }
 
+fn safe_image_url(value: Option<&str>) -> Option<String> {
+    value
+        .filter(|candidate| !candidate.is_empty())
+        .and_then(|candidate| reqwest::Url::parse(candidate).ok())
+        .filter(|url| url.scheme() == "https")
+        .map(Into::into)
+}
+
 fn icon_color(value: &str) -> String {
     let hash = value.bytes().fold(2_166_136_261_u32, |hash, byte| {
         (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
@@ -382,5 +392,16 @@ mod tests {
         let id = project_id(ProviderId::Modrinth, "abc");
         assert_eq!(external_id(ProviderId::Modrinth, &id).unwrap(), "abc");
         assert!(external_id(ProviderId::CurseForge, &id).is_err());
+    }
+
+    #[test]
+    fn image_urls_only_accept_https() {
+        assert_eq!(
+            (
+                safe_image_url(Some("https://cdn.example.com/icon.png")),
+                safe_image_url(Some("javascript:alert(1)"))
+            ),
+            (Some("https://cdn.example.com/icon.png".into()), None)
+        );
     }
 }

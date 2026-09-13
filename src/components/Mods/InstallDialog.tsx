@@ -103,7 +103,7 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <ProjectIcon size="lg" name={project.name} color={project.iconColor} />
+            <ProjectIcon size="lg" name={project.name} color={project.iconColor} imageUrl={project.iconUrl} />
             <div className="flex flex-col">
               <DialogTitle>Install {project.name}</DialogTitle>
               <DialogDescription>

@@ -10,11 +10,6 @@ export interface WizardDraft {
   gameVersion?: string;
 }
 
-export interface GameStepProps {
-  selected?: GameId;
-  onSelect: (gameId: GameId) => void;
-}
-
 export interface IdentityStepProps {
   draft: WizardDraft;
   onChange: (patch: Partial<WizardDraft>) => void;

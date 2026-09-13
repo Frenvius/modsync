@@ -4,7 +4,7 @@ import type { Project, SearchSort } from '~/domain/interfaces/project.interface'
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { Clock, Compass, Download, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { X, Clock, Compass, Download, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -16,6 +16,7 @@ import PageHeader from '~/components/commons/PageHeader';
 import { projectService } from '~/usecase/service/project';
 import ProjectIcon from '~/components/commons/ProjectIcon';
 import { ProviderBadge } from '~/components/commons/Badges';
+import { getProviderMeta } from '~/usecase/service/providers';
 import FilterPopover from '~/components/Discover/FilterPopover';
 import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
 import { Alert, AlertTitle, AlertDescription } from '~/components/ui/alert';
@@ -107,7 +108,9 @@ const DiscoverPage = () => {
     };
   }, [page, gameId, query, sort, filters]);
 
-  const toggleCategory = (c: string) => setFilters((f) => ({ ...f, category: f.category === c ? undefined : c }));
+  const clearFilters = () => setFilters({ providers: [] });
+  const clearFilter = (key: keyof DiscoverFilters) =>
+    setFilters((current) => ({ ...current, [key]: key === 'providers' ? [] : undefined }));
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -117,7 +120,12 @@ const DiscoverPage = () => {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <SearchBar value={query} className="w-80" onChange={setQuery} placeholder={`Search ${game.name} mods`} />
+        <SearchBar
+          value={query}
+          onChange={setQuery}
+          className="min-w-64 flex-1 sm:max-w-md"
+          placeholder={`Search ${game.name} mods`}
+        />
         <Select value={sort} onValueChange={(v) => setSort(v as SearchSort)}>
           <SelectTrigger className="w-44" aria-label="Sort discovered projects">
             <SelectValue />
@@ -133,27 +141,45 @@ const DiscoverPage = () => {
           </SelectContent>
         </Select>
         <FilterPopover game={game} filters={filters} onChange={setFilters} categories={categories} />
-        <span className="flex-1" />
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <div className="ml-auto flex items-center gap-1">
           {game.providers.map((providerId) => (
             <ProviderBadge key={providerId} providerId={providerId} />
           ))}
-        </span>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {categories.map((c) => (
-          <Button
-            key={c}
-            size="xs"
-            className="rounded-full"
-            onClick={() => toggleCategory(c)}
-            variant={filters.category === c ? 'default' : 'outline'}
-          >
-            {c}
+      {(filters.gameVersion || filters.loader || filters.category || filters.providers.length > 0) && (
+        <div role="group" aria-label="Active filters" className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Filtered by</span>
+          {filters.gameVersion && (
+            <Button size="xs" variant="secondary" onClick={() => clearFilter('gameVersion')}>
+              Version: {filters.gameVersion}
+              <X data-icon="inline-end" />
+            </Button>
+          )}
+          {filters.loader && (
+            <Button size="xs" variant="secondary" className="capitalize" onClick={() => clearFilter('loader')}>
+              Loader: {filters.loader}
+              <X data-icon="inline-end" />
+            </Button>
+          )}
+          {filters.category && (
+            <Button size="xs" variant="secondary" onClick={() => clearFilter('category')}>
+              Category: {filters.category}
+              <X data-icon="inline-end" />
+            </Button>
+          )}
+          {filters.providers.length > 0 && (
+            <Button size="xs" variant="secondary" onClick={() => clearFilter('providers')}>
+              Providers: {filters.providers.map((providerId) => getProviderMeta(providerId).name).join(', ')}
+              <X data-icon="inline-end" />
+            </Button>
+          )}
+          <Button size="xs" variant="ghost" onClick={clearFilters}>
+            Clear all
           </Button>
-        ))}
-      </div>
+        </div>
+      )}
 
       {errors.length > 0 ? (
         <Alert variant="destructive">
@@ -170,22 +196,47 @@ const DiscoverPage = () => {
         </Alert>
       ) : null}
 
-      {loading ? (
-        <div className="rounded-lg border bg-card/40 p-1">
-          {Array.from({ length: 6 }, (_, i) => (
-            <Skeleton key={i} className="h-16" />
-          ))}
-        </div>
+      {loading && results.length === 0 ? (
+        <>
+          <Skeleton className="h-4 w-20" />
+          <div className="overflow-hidden rounded-lg border bg-card">
+            <Table className="min-w-[900px]">
+              <TableHeader className="bg-secondary/70">
+                <TableRow>
+                  <TableHead>Project</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Categories</TableHead>
+                  <TableHead className="text-right">Downloads</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead>Versions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.from({ length: 6 }, (_, index) => (
+                  <TableRow key={index}>
+                    <TableCell colSpan={6}>
+                      <Skeleton className="h-10 w-full" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       ) : results.length === 0 ? (
         <EmptyState icon={Compass} title="No results" description="Try another search or loosen the filters.">
-          <Button variant="outline" onClick={() => setFilters({ providers: [] })}>
+          <Button variant="outline" onClick={clearFilters}>
             Clear filters
           </Button>
         </EmptyState>
       ) : (
         <>
           <span className="text-xs text-muted-foreground">{total} results</span>
-          <div className="overflow-hidden rounded-lg border bg-card">
+          <div
+            aria-busy={loading}
+            data-loading={loading}
+            className="overflow-hidden rounded-lg border bg-card data-[loading=true]:opacity-60"
+          >
             <Table className="min-w-[900px]">
               <TableHeader className="bg-secondary/70">
                 <TableRow>
@@ -212,7 +263,7 @@ const DiscoverPage = () => {
                     >
                       <TableCell className="min-w-96 whitespace-normal">
                         <div className="flex items-start gap-3">
-                          <ProjectIcon size="md" name={project.name} color={project.iconColor} />
+                          <ProjectIcon size="md" name={project.name} color={project.iconColor} imageUrl={project.iconUrl} />
                           <div className="min-w-0">
                             <div className="flex min-w-0 items-baseline gap-1.5">
                               <button

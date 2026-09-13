@@ -42,6 +42,7 @@ export interface Project {
   author: string;
   gameId: GameId;
   summary: string;
+  iconUrl?: string;
   iconColor: string;
   updatedAt: string;
   downloads: number;

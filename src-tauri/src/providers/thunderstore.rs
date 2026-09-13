@@ -11,9 +11,9 @@ use crate::{
 };
 
 use super::{
-    cache_directory, http, icon_color, project_id, safe_url, Dependency, DependencyType, Project,
-    ProjectProviderInfo, ProjectVersion, ProviderCategories, ProviderSearchQuery,
-    ProviderSearchResult, SearchSort, PAGE_SIZE,
+    cache_directory, http, icon_color, project_id, safe_image_url, safe_url, Dependency,
+    DependencyType, Project, ProjectProviderInfo, ProjectVersion, ProviderCategories,
+    ProviderSearchQuery, ProviderSearchResult, SearchSort, PAGE_SIZE,
 };
 
 const BASE_URL: &str = "https://thunderstore.io";
@@ -156,7 +156,7 @@ pub async fn categories(
 async fn projects(app: &AppHandle, community: &str) -> Result<(Vec<Project>, bool), CommandError> {
     let path = cache_directory(app)?
         .join(format!("thunderstore-{community}"))
-        .join("projects.json");
+        .join("projects-v2.json");
     let cached = fs::read(&path)
         .ok()
         .and_then(|contents| serde_json::from_slice::<ProjectCache>(&contents).ok());
@@ -299,6 +299,7 @@ fn map_project(community: &str, package: Package) -> Option<Project> {
     let latest = package.latest()?.clone();
     let downloads = package.downloads();
     let external_id = format!("{community}:{}:{}", package.owner, package.name);
+    let icon_url = safe_image_url(latest.icon.as_deref());
     Some(Project {
         id: project_id(ProviderId::Thunderstore, &external_id),
         slug: package.name.clone(),
@@ -307,6 +308,7 @@ fn map_project(community: &str, package: Package) -> Option<Project> {
         game_id: game(community),
         summary: latest.description.clone(),
         icon_color: icon_color(latest.icon.as_deref().unwrap_or(&package.full_name)),
+        icon_url,
         updated_at: package.date_updated,
         downloads,
         followers: package.rating_score,
@@ -452,7 +454,8 @@ mod tests {
                 .is_some_and(|version| !version.download_url.is_empty())));
             assert!(packages
                 .into_iter()
-                .any(|package| map_project("valheim", package).is_some()));
+                .filter_map(|package| map_project("valheim", package))
+                .any(|project| project.icon_url.is_some()));
         });
     }
 

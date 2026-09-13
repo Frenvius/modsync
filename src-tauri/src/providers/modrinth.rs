@@ -8,9 +8,9 @@ use crate::{
 };
 
 use super::{
-    http, icon_color, project_id, ArtifactHash, Dependency, DependencyType, HashAlgorithm, Project,
-    ProjectProviderInfo, ProjectVersion, ProviderCategories, ProviderSearchQuery,
-    ProviderSearchResult, SearchSort, PAGE_SIZE,
+    http, icon_color, project_id, safe_image_url, ArtifactHash, Dependency, DependencyType,
+    HashAlgorithm, Project, ProjectProviderInfo, ProjectVersion, ProviderCategories,
+    ProviderSearchQuery, ProviderSearchResult, SearchSort, PAGE_SIZE,
 };
 
 const BASE_URL: &str = "https://api.modrinth.com/v2";
@@ -187,6 +187,7 @@ pub async fn project(external_id: &str) -> Result<Project, CommandError> {
         .first()
         .map(|member| member.user.username.clone())
         .unwrap_or_default();
+    let icon_url = safe_image_url(project.icon_url.as_deref());
 
     Ok(Project {
         id: project_id(ProviderId::Modrinth, &project.id),
@@ -196,6 +197,7 @@ pub async fn project(external_id: &str) -> Result<Project, CommandError> {
         game_id: GameId::Minecraft,
         summary: project.description,
         icon_color: icon_color(project.icon_url.as_deref().unwrap_or(&project.id)),
+        icon_url,
         updated_at: project.updated,
         downloads: project.downloads,
         followers: project.followers,
@@ -277,6 +279,7 @@ fn search_facets(query: &ProviderSearchQuery) -> String {
 
 fn search_project(hit: SearchHit, latest_version: String) -> Project {
     let loaders = loaders(&hit.categories);
+    let icon_url = safe_image_url(hit.icon_url.as_deref());
     Project {
         id: project_id(ProviderId::Modrinth, &hit.project_id),
         slug: hit.slug.clone(),
@@ -285,6 +288,7 @@ fn search_project(hit: SearchHit, latest_version: String) -> Project {
         game_id: GameId::Minecraft,
         summary: hit.description.clone(),
         icon_color: icon_color(hit.icon_url.as_deref().unwrap_or(&hit.project_id)),
+        icon_url,
         updated_at: hit.date_modified,
         downloads: hit.downloads,
         followers: hit.follows,

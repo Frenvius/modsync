@@ -35,7 +35,7 @@ const ModListItem = ({ mod, onRemove, onRepair, onUpdate, onToggle, onChangeVers
     <TableRow className="h-14 hover:bg-accent/45">
       <TableCell>
         <div className="flex min-w-0 items-center gap-2.5">
-          <ProjectIcon size="md" name={mod.name} color={mod.iconColor} />
+          <ProjectIcon size="md" name={mod.name} color={mod.iconColor} imageUrl={mod.iconUrl} />
           <div className="flex min-w-0 flex-col">
             {mod.provider === ProviderId.Local ? (
               <span className="truncate font-medium text-foreground">{mod.name}</span>

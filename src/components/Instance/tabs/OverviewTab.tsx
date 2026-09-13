@@ -34,7 +34,7 @@ const OverviewTab = ({ instance }: InstanceTabProps) => {
                   key={mod.projectId}
                   className="flex items-center gap-3 border-b border-destructive/20 px-3 py-2 text-sm last:border-b-0"
                 >
-                  <ProjectIcon size="sm" name={mod.name} color={mod.iconColor} />
+                  <ProjectIcon size="sm" name={mod.name} color={mod.iconColor} imageUrl={mod.iconUrl} />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-medium">{mod.name}</span>
                     <span className="text-xs text-muted-foreground">

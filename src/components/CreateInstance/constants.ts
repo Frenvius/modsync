@@ -1,10 +1,8 @@
 import type { WizardDraft } from './types';
 
-import { GameId } from '~/domain/enums/provider.enum';
 import { INSTANCE_COLORS } from '~/components/commons/InstanceIcon/constants';
 
-export const STEPS = ['Game', 'Version', 'Loader', 'Identity', 'Create'];
-export const FEATURED_GAMES = [GameId.Minecraft, GameId.Valheim, GameId.VintageStory];
+export const STEPS = ['Version', 'Loader', 'Identity', 'Create'];
 export const EMPTY_WIZARD_DRAFT: WizardDraft = { name: '', icon: 'sparkles', color: INSTANCE_COLORS[0] };
 export const LOADER_DESCRIPTIONS: Record<string, string> = {
   neoforge: 'Modern fork of Forge with active development.',

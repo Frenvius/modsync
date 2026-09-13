@@ -10,6 +10,7 @@ export interface InstalledMod {
   name: string;
   author: string;
   enabled: boolean;
+  iconUrl?: string;
   type: ProjectType;
   projectId: string;
   iconColor: string;

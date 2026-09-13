@@ -34,6 +34,8 @@ pub struct InstalledMod {
     pub r#type: ProjectType,
     pub project_id: String,
     pub icon_color: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
     pub provider: ProviderId,
     pub status: UpdateStatus,
     #[serde(default)]

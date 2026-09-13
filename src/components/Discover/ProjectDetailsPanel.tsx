@@ -90,7 +90,7 @@ const ProjectDetailsPanel = ({ project, onClose, instanceId }: ProjectDetailsPan
           className="absolute inset-y-0 left-0 z-10 w-2 -translate-x-1/2 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border hover:after:w-0.5 hover:after:bg-primary focus-visible:after:w-0.5 focus-visible:after:bg-primary"
         />
         <div className="flex items-start gap-3 border-b border-border/50 bg-secondary/80 p-3">
-          <ProjectIcon size="lg" name={project.name} color={project.iconColor} />
+          <ProjectIcon size="lg" name={project.name} color={project.iconColor} imageUrl={project.iconUrl} />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-semibold tracking-tight">{project.name}</h2>
             <p className="truncate text-sm text-muted-foreground">by {project.author}</p>

@@ -10,8 +10,9 @@ use crate::{
 };
 
 use super::{
-    cache_directory, http, icon_color, project_id, Project, ProjectProviderInfo, ProjectVersion,
-    ProviderCategories, ProviderSearchQuery, ProviderSearchResult, SearchSort, PAGE_SIZE,
+    cache_directory, http, icon_color, project_id, safe_image_url, Project, ProjectProviderInfo,
+    ProjectVersion, ProviderCategories, ProviderSearchQuery, ProviderSearchResult, SearchSort,
+    PAGE_SIZE,
 };
 
 const BASE_URL: &str = "https://mods.vintagestory.at/api";
@@ -197,6 +198,7 @@ pub async fn project(external_id: &str) -> Result<Project, CommandError> {
         .map(|tag| tag.trim_start_matches('v').to_string())
         .collect::<Vec<_>>();
     let external = detail.modid.to_string();
+    let icon_url = image_url(detail.logo.as_deref().or(detail.logofile.as_deref()));
     Ok(Project {
         id: project_id(ProviderId::VintageStoryDb, &external),
         slug: detail.urlalias.clone().unwrap_or_else(|| external.clone()),
@@ -211,6 +213,7 @@ pub async fn project(external_id: &str) -> Result<Project, CommandError> {
                 .or(detail.logofile.as_deref())
                 .unwrap_or(&external),
         ),
+        icon_url,
         updated_at: normalize_date(detail.lastreleased.as_deref().unwrap_or_default()),
         downloads: detail.downloads.unwrap_or(0),
         followers: detail.follows.unwrap_or(0),
@@ -370,6 +373,7 @@ fn write_cache(path: &Path, items: &[ModSummary]) -> Result<(), CommandError> {
 
 fn map_summary(item: ModSummary) -> Project {
     let external = item.modid.to_string();
+    let icon_url = image_url(item.logo.as_deref());
     let summary = item.summary.unwrap_or_default();
     Project {
         id: project_id(ProviderId::VintageStoryDb, &external),
@@ -379,6 +383,7 @@ fn map_summary(item: ModSummary) -> Project {
         game_id: GameId::VintageStory,
         summary: summary.clone(),
         icon_color: icon_color(item.logo.as_deref().unwrap_or(&external)),
+        icon_url,
         updated_at: normalize_date(item.lastreleased.as_deref().unwrap_or_default()),
         downloads: item.downloads.unwrap_or(0),
         followers: item.follows.unwrap_or(0),
@@ -395,6 +400,13 @@ fn map_summary(item: ModSummary) -> Project {
             external_id: external,
         },
     }
+}
+
+fn image_url(value: Option<&str>) -> Option<String> {
+    value
+        .filter(|candidate| !candidate.is_empty())
+        .map(asset_url)
+        .and_then(|url| safe_image_url(Some(&url)))
 }
 
 fn asset_url(value: &str) -> String {

@@ -15,64 +15,57 @@ import { filesystemService } from '~/usecase/service/filesystem';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Dialog, DialogTitle, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
 
-import GameStep from './GameStep';
 import LoaderStep from './LoaderStep';
 import VersionStep from './VersionStep';
 import IdentityStep from './IdentityStep';
 import { STEPS, EMPTY_WIZARD_DRAFT } from './constants';
 
+const draftForGame = (gameId: GameId): WizardDraft => {
+  const game = projectService.getGame(gameId);
+  return {
+    ...EMPTY_WIZARD_DRAFT,
+    gameId,
+    color: game.color,
+    gameVersion: game.versions[0],
+    loader: game.loaders.find((loader) => loader.recommended)?.id ?? game.loaders[0].id
+  };
+};
+
 const CreateInstanceDialog = () => {
   const navigate = useNavigate();
   const open = useAppStore((s) => s.createInstanceOpen);
+  const selectedGameId = useAppStore((s) => s.selectedGameId);
   const setOpen = useAppStore((s) => s.setCreateInstanceOpen);
   const createInstance = useAppStore((s) => s.createInstance);
   const importInstance = useAppStore((s) => s.importInstance);
   const [step, setStep] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
   const [importPath, setImportPath] = React.useState<string>();
-  const [draft, setDraft] = React.useState<WizardDraft>(EMPTY_WIZARD_DRAFT);
+  const [draft, setDraft] = React.useState<WizardDraft>(() => draftForGame(selectedGameId));
 
-  const game = draft.gameId ? projectService.getGame(draft.gameId) : undefined;
+  const game = projectService.getGame(selectedGameId);
   const skipLoader = (game?.loaders.length ?? 0) <= 1;
 
   const patch = (p: Partial<WizardDraft>) => setDraft((d) => ({ ...d, ...p }));
 
-  const close = (next: boolean) => {
-    setOpen(next);
-    if (!next) {
-      setStep(0);
-      setImportPath(undefined);
-      setDraft(EMPTY_WIZARD_DRAFT);
-    }
-  };
+  React.useEffect(() => {
+    if (!open) return;
+    setStep(0);
+    setImportPath(undefined);
+    setDraft(draftForGame(selectedGameId));
+  }, [open, selectedGameId]);
 
-  const pickGame = (gameId: GameId) => {
-    const g = projectService.getGame(gameId);
-    setDraft({
-      ...EMPTY_WIZARD_DRAFT,
-      gameId,
-      color: g.color,
-      gameVersion: g.versions[0],
-      loader: g.loaders.find((l) => l.recommended)?.id ?? g.loaders[0].id
-    });
-    setStep(1);
-  };
+  const close = (next: boolean) => setOpen(next);
 
-  const canContinue = [
-    Boolean(draft.gameId),
-    Boolean(draft.gameVersion),
-    Boolean(draft.loader),
-    draft.name.trim().length > 1,
-    true
-  ][step];
+  const canContinue = [Boolean(draft.gameVersion), Boolean(draft.loader), draft.name.trim().length > 1, true][step];
 
   const next = () => {
-    if (step === 1 && skipLoader) return setStep(3);
+    if (step === 0 && skipLoader) return setStep(2);
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
   const back = () => {
-    if (step === 3 && skipLoader) return setStep(1);
+    if (step === 2 && skipLoader) return setStep(0);
     setStep((s) => Math.max(s - 1, 0));
   };
 
@@ -112,8 +105,8 @@ const CreateInstanceDialog = () => {
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-4 py-3">
-          <DialogTitle>{importPath ? 'Import instance' : 'Create instance'}</DialogTitle>
-          <DialogDescription>Choose a game, version and loader. Mods come after.</DialogDescription>
+          <DialogTitle>{importPath ? `Import ${game.name} instance` : `Create ${game.name} instance`}</DialogTitle>
+          <DialogDescription>Using the game selected in the title bar. Choose a version and loader.</DialogDescription>
           <ol className="mt-2 flex items-center gap-1 text-[11px] font-medium">
             {STEPS.map((label, i) => (
               <li key={label} className="flex items-center gap-1">
@@ -148,15 +141,12 @@ const CreateInstanceDialog = () => {
                   </>
                 )}
               </div>
-              <GameStep onSelect={pickGame} selected={draft.gameId} />
+              <VersionStep game={game} value={draft.gameVersion} onChange={(gameVersion) => patch({ gameVersion })} />
             </div>
           )}
-          {step === 1 && game && (
-            <VersionStep game={game} value={draft.gameVersion} onChange={(gameVersion) => patch({ gameVersion })} />
-          )}
-          {step === 2 && game && <LoaderStep game={game} value={draft.loader} onChange={(loader) => patch({ loader })} />}
-          {step === 3 && <IdentityStep draft={draft} onChange={patch} />}
-          {step === 4 && game && <Summary draft={draft} gameName={game.name} />}
+          {step === 1 && <LoaderStep game={game} value={draft.loader} onChange={(loader) => patch({ loader })} />}
+          {step === 2 && <IdentityStep draft={draft} onChange={patch} />}
+          {step === 3 && <Summary draft={draft} gameName={game.name} />}
         </div>
 
         <div className="flex items-center justify-between border-t px-4 py-3">
