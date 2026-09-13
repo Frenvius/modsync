@@ -247,29 +247,6 @@ export const INSTANCES: Array<Instance> = [
     ]
   },
   {
-    memoryMb: 0,
-    icon: 'rocket',
-    name: 'Modded Run',
-    iconColor: '#3f7fbf',
-    gameVersion: '1.3.9',
-    playtimeMinutes: 820,
-    id: 'inst-ror2-modded',
-    logs: LOGS.slice(0, 3),
-    loader: LoaderId.BepInEx,
-    loaderVersion: '5.4.2113',
-    gameId: GameId.RiskOfRain2,
-    createdAt: '2026-07-11T10:00:00Z',
-    updatedAt: '2026-08-14T10:00:00Z',
-    lastPlayed: '2026-08-22T23:40:00Z',
-    description: 'Co-op run with item sharing.',
-    configs: [{ size: 2_200, format: 'cfg', path: 'BepInEx/config/BepInEx.cfg', modifiedAt: '2026-07-11T10:00:00Z' }],
-    mods: [
-      mod({ provider: TS, id: 'r2-bepinex', author: 'bbepis', name: 'BepInExPack', version: '5.4.2113' }),
-      mod({ id: 'r2api', provider: TS, name: 'R2API', version: '5.1.5', author: 'tristanmcpherson' }),
-      mod({ provider: TS, version: '2.11.1', author: 'FunkFrog', name: 'ShareSuffering', id: 'ror2-shared-suffering' })
-    ]
-  },
-  {
     logs: [],
     memoryMb: 0,
     icon: 'moon',

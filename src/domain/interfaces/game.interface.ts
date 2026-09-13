@@ -6,6 +6,13 @@ export interface GameLoader {
   recommended?: boolean;
 }
 
+export interface GameCapabilities {
+  launch: boolean;
+  update: boolean;
+  install: boolean;
+  importInstance: boolean;
+}
+
 export interface Game {
   id: GameId;
   name: string;
@@ -14,5 +21,6 @@ export interface Game {
   versions: Array<string>;
   loaders: Array<GameLoader>;
   providers: Array<ProviderId>;
+  capabilities: GameCapabilities;
   contentTypes: Array<ProjectType>;
 }

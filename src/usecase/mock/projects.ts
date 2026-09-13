@@ -55,8 +55,8 @@ const incompatible = (projectId: string, name: string): Dependency => ({
   type: DependencyType.Incompatible
 });
 
-const MC_FABRIC = [LoaderId.Fabric, LoaderId.Quilt];
-const MC_ALL = [LoaderId.Fabric, LoaderId.Forge, LoaderId.NeoForge, LoaderId.Quilt];
+const MC_FABRIC = [LoaderId.Fabric];
+const MC_ALL = [LoaderId.Fabric, LoaderId.Forge, LoaderId.NeoForge];
 const MC_RECENT = ['1.21.4', '1.21.1', '1.21', '1.20.6', '1.20.4', '1.20.1'];
 
 const SEEDS: Array<ProjectSeed> = [
@@ -366,47 +366,6 @@ const SEEDS: Array<ProjectSeed> = [
     summary: 'Improves archery: quivers, arrow retrieval, better bow physics.'
   },
   {
-    id: 'r2-bepinex',
-    author: 'bbepis',
-    name: 'BepInExPack',
-    version: '5.4.2113',
-    downloads: 32_000_000,
-    categories: ['Libraries'],
-    gameId: GameId.RiskOfRain2,
-    gameVersions: ['1.3.9', '1.3.6'],
-    provider: ProviderId.Thunderstore,
-    updatedAt: '2026-06-10T10:00:00Z',
-    summary: 'BepInEx framework pack for Risk of Rain 2.'
-  },
-  {
-    id: 'r2api',
-    name: 'R2API',
-    version: '5.1.5',
-    downloads: 25_500_000,
-    categories: ['Libraries'],
-    author: 'tristanmcpherson',
-    gameId: GameId.RiskOfRain2,
-    gameVersions: ['1.3.9', '1.3.6'],
-    provider: ProviderId.Thunderstore,
-    updatedAt: '2026-08-02T10:00:00Z',
-    summary: 'A modding API for Risk of Rain 2.',
-    dependencies: [req('r2-bepinex', 'BepInExPack')]
-  },
-  {
-    version: '2.11.1',
-    author: 'FunkFrog',
-    downloads: 3_800_000,
-    name: 'ShareSuffering',
-    gameVersions: ['1.3.9'],
-    gameId: GameId.RiskOfRain2,
-    id: 'ror2-shared-suffering',
-    provider: ProviderId.Thunderstore,
-    updatedAt: '2026-08-14T10:00:00Z',
-    categories: ['Multiplayer', 'Items'],
-    summary: 'Item sharing between players for co-op runs.',
-    dependencies: [req('r2-bepinex', 'BepInExPack'), req('r2api', 'R2API')]
-  },
-  {
     id: 'lc-bepinex',
     author: 'BepInEx',
     name: 'BepInExPack',
@@ -578,7 +537,6 @@ export const PROJECT_VERSIONS: Record<string, Array<ProjectVersion>> = Object.fr
 );
 
 export const CATEGORIES_BY_GAME: Record<GameId, Array<string>> = {
-  [GameId.RiskOfRain2]: ['Items', 'Libraries', 'Multiplayer', 'Survivors'],
   [GameId.Valheim]: ['Building', 'Gameplay', 'Items', 'Libraries', 'Tweaks'],
   [GameId.LethalCompany]: ['Cosmetics', 'Libraries', 'Multiplayer', 'Monsters'],
   [GameId.VintageStory]: ['Food', 'Gameplay', 'Library', 'Progression', 'QoL', 'Survival'],

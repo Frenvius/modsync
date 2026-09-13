@@ -6,14 +6,8 @@ export interface GamePathSetting {
   detected: boolean;
 }
 
-export interface UserProfile {
-  name: string;
-  email: string;
-  handle: string;
-  avatarColor: string;
-}
-
 export interface AppSettings {
+  schemaVersion: 1;
   language: string;
   accentHue: number;
   closeToTray: boolean;

@@ -10,14 +10,14 @@ export const GAMES: Array<Game> = [
     id: GameId.Minecraft,
     ecosystemLabel: 'Modrinth + CurseForge',
     providers: [ProviderId.Modrinth, ProviderId.CurseForge],
+    capabilities: { launch: true, update: true, install: true, importInstance: true },
     contentTypes: [ProjectType.Mod, ProjectType.ResourcePack, ProjectType.ShaderPack, ProjectType.DataPack],
     versions: ['1.21.4', '1.21.1', '1.21', '1.20.6', '1.20.4', '1.20.1', '1.19.2', '1.18.2', '1.16.5', '1.12.2'],
     loaders: [
       { name: 'Vanilla', id: LoaderId.Vanilla },
       { name: 'Fabric', recommended: true, id: LoaderId.Fabric },
       { name: 'Forge', id: LoaderId.Forge },
-      { name: 'NeoForge', id: LoaderId.NeoForge },
-      { name: 'Quilt', id: LoaderId.Quilt }
+      { name: 'NeoForge', id: LoaderId.NeoForge }
     ]
   },
   {
@@ -28,7 +28,8 @@ export const GAMES: Array<Game> = [
     contentTypes: [ProjectType.Mod],
     providers: [ProviderId.Thunderstore],
     versions: ['0.219.16', '0.219.13', '0.218.21', '0.217.46'],
-    loaders: [{ name: 'BepInEx', recommended: true, id: LoaderId.BepInEx }]
+    loaders: [{ name: 'BepInEx', recommended: true, id: LoaderId.BepInEx }],
+    capabilities: { launch: true, update: true, install: true, importInstance: true }
   },
   {
     color: '#7a6a4d',
@@ -38,17 +39,8 @@ export const GAMES: Array<Game> = [
     contentTypes: [ProjectType.Mod],
     providers: [ProviderId.VintageStoryDb],
     versions: ['1.20.4', '1.20.1', '1.19.8', '1.19.4', '1.18.15'],
-    loaders: [{ name: 'Built-in', recommended: true, id: LoaderId.Vanilla }]
-  },
-  {
-    color: '#3f7fbf',
-    id: GameId.RiskOfRain2,
-    name: 'Risk of Rain 2',
-    ecosystemLabel: 'Thunderstore',
-    contentTypes: [ProjectType.Mod],
-    providers: [ProviderId.Thunderstore],
-    versions: ['1.3.9', '1.3.6', '1.2.4'],
-    loaders: [{ name: 'BepInEx', recommended: true, id: LoaderId.BepInEx }]
+    loaders: [{ name: 'Built-in', recommended: true, id: LoaderId.Vanilla }],
+    capabilities: { launch: true, update: true, install: true, importInstance: true }
   },
   {
     color: '#c9532f',
@@ -58,7 +50,8 @@ export const GAMES: Array<Game> = [
     contentTypes: [ProjectType.Mod],
     providers: [ProviderId.Thunderstore],
     versions: ['v69', 'v64', 'v56', 'v50'],
-    loaders: [{ name: 'BepInEx', recommended: true, id: LoaderId.BepInEx }]
+    loaders: [{ name: 'BepInEx', recommended: true, id: LoaderId.BepInEx }],
+    capabilities: { launch: true, update: true, install: true, importInstance: true }
   }
 ];
 
@@ -85,7 +78,7 @@ export const PROVIDERS: Array<ProviderMeta> = [
     requiresApiKey: false,
     id: ProviderId.Thunderstore,
     website: 'https://thunderstore.io',
-    games: [GameId.Valheim, GameId.RiskOfRain2, GameId.LethalCompany]
+    games: [GameId.Valheim, GameId.LethalCompany]
   },
   {
     color: '#d0a45a',
@@ -99,7 +92,6 @@ export const PROVIDERS: Array<ProviderMeta> = [
 
 export const LOADER_NAMES: Record<LoaderId, string> = {
   [LoaderId.Forge]: 'Forge',
-  [LoaderId.Quilt]: 'Quilt',
   [LoaderId.Fabric]: 'Fabric',
   [LoaderId.BepInEx]: 'BepInEx',
   [LoaderId.Vanilla]: 'Vanilla',

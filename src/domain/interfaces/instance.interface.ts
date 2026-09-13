@@ -48,6 +48,32 @@ export interface Instance {
   configs: Array<ConfigFile>;
 }
 
+export interface InstanceLocation {
+  path: string;
+  kind: 'managed' | 'external';
+}
+
+export interface InstanceManifest {
+  id: string;
+  name: string;
+  icon: string;
+  gameId: GameId;
+  loader: LoaderId;
+  memoryMb: number;
+  schemaVersion: 1;
+  createdAt: string;
+  iconColor: string;
+  updatedAt: string;
+  javaArgs?: string;
+  description: string;
+  gameVersion: string;
+  loaderVersion: string;
+  playtimeMinutes: number;
+  lastPlayed: null | string;
+  mods: Array<InstalledMod>;
+  location: InstanceLocation;
+}
+
 export interface CreateInstanceInput {
   name: string;
   icon: string;

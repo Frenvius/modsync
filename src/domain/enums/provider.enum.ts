@@ -7,7 +7,6 @@ export enum ProviderId {
 
 export enum GameId {
   Valheim = 'valheim',
-  RiskOfRain2 = 'ror2',
   Minecraft = 'minecraft',
   VintageStory = 'vintagestory',
   LethalCompany = 'lethal-company'
@@ -15,7 +14,6 @@ export enum GameId {
 
 export enum LoaderId {
   Forge = 'forge',
-  Quilt = 'quilt',
   Fabric = 'fabric',
   BepInEx = 'bepinex',
   Vanilla = 'vanilla',
