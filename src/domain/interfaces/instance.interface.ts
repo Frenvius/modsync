@@ -16,6 +16,7 @@ export interface InstalledMod {
   versionId?: string;
   provider: ProviderId;
   status: UpdateStatus;
+  updateAvailable: boolean;
   installedVersion: string;
   loaders: Array<LoaderId>;
   missingDependency?: string;

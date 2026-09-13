@@ -2,7 +2,7 @@ import type { InstalledMod } from '~/domain/interfaces/instance.interface';
 
 import { useNavigate } from 'react-router-dom';
 
-import { Trash2, RotateCcw, ExternalLink } from 'lucide-react';
+import { Trash2, ArrowUp, GitBranch, RotateCcw, ExternalLink, MoreHorizontal } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import { Switch } from '~/components/ui/switch';
@@ -10,15 +10,25 @@ import ProjectIcon from '~/components/commons/ProjectIcon';
 import { TableRow, TableCell } from '~/components/ui/table';
 import { ProviderId, UpdateStatus } from '~/domain/enums/provider.enum';
 import { UpdateBadge, ProviderBadge } from '~/components/commons/Badges';
+import {
+  DropdownMenu,
+  DropdownMenuItem,
+  DropdownMenuGroup,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from '~/components/ui/dropdown-menu';
 
 interface ModListItemProps {
   mod: InstalledMod;
   onRemove: (projectId: string) => void;
   onRepair: (projectId: string) => void;
+  onUpdate: (projectId: string) => void;
+  onChangeVersion: (projectId: string) => void;
   onToggle: (projectId: string, enabled: boolean) => void;
 }
 
-const ModListItem = ({ mod, onRemove, onRepair, onToggle }: ModListItemProps) => {
+const ModListItem = ({ mod, onRemove, onRepair, onUpdate, onToggle, onChangeVersion }: ModListItemProps) => {
   const navigate = useNavigate();
 
   return (
@@ -58,24 +68,42 @@ const ModListItem = ({ mod, onRemove, onRepair, onToggle }: ModListItemProps) =>
         />
       </TableCell>
       <TableCell className="text-right">
+        {mod.updateAvailable && mod.provider !== ProviderId.Local && (
+          <Button size="icon-xs" variant="ghost" aria-label={`Update ${mod.name}`} onClick={() => onUpdate(mod.projectId)}>
+            <ArrowUp />
+          </Button>
+        )}
         {mod.status === UpdateStatus.Damaged && mod.provider !== ProviderId.Local && (
           <Button size="icon-xs" variant="ghost" aria-label={`Repair ${mod.name}`} onClick={() => onRepair(mod.projectId)}>
             <RotateCcw />
           </Button>
         )}
-        {mod.provider !== ProviderId.Local && (
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            aria-label={`Open ${mod.name} details`}
-            onClick={() => navigate(`/project/${encodeURIComponent(mod.projectId)}`)}
-          >
-            <ExternalLink />
-          </Button>
-        )}
-        <Button size="icon-xs" variant="ghost" aria-label={`Remove ${mod.name}`} onClick={() => onRemove(mod.projectId)}>
-          <Trash2 />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon-xs" variant="ghost" aria-label={`${mod.name} actions`}>
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            {mod.provider !== ProviderId.Local && (
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => navigate(`/project/${encodeURIComponent(mod.projectId)}`)}>
+                  <ExternalLink />
+                  View details
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onChangeVersion(mod.projectId)}>
+                  <GitBranch />
+                  Change version
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            )}
+            {mod.provider !== ProviderId.Local && <DropdownMenuSeparator />}
+            <DropdownMenuItem variant="destructive" onClick={() => onRemove(mod.projectId)}>
+              <Trash2 />
+              Remove
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   );

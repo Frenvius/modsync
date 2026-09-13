@@ -13,7 +13,7 @@ import { providerService } from '~/usecase/service/providers';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { settingsService, DEFAULT_SETTINGS } from '~/usecase/service/settings';
 import { contentService, type OperationProgress } from '~/usecase/service/content';
-import { GameId, DownloadKind, DownloadStatus } from '~/domain/enums/provider.enum';
+import { GameId, ProviderId, DownloadKind, DownloadStatus } from '~/domain/enums/provider.enum';
 
 const patchInstance = (instances: Array<Instance>, id: string, fn: (i: Instance) => Instance) =>
   instances.map((i) => (i.id === id ? fn({ ...i, updatedAt: new Date().toISOString() }) : i));
@@ -32,6 +32,11 @@ const newDownload = (
   status: DownloadStatus.Queued,
   startedAt: new Date().toISOString()
 });
+
+const failDownload = (download: DownloadItem, operationId: string, error: unknown, fallback: string): DownloadItem =>
+  download.id !== operationId || download.status === DownloadStatus.Cancelled
+    ? download
+    : { ...download, status: DownloadStatus.Failed, step: getErrorMessage(error, fallback) };
 
 const applyProgress = (download: DownloadItem, progress: OperationProgress): DownloadItem => {
   const status =
@@ -137,6 +142,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  checkUpdates: async (instanceId) => {
+    const result = await contentService.checkUpdates(instanceId);
+    const instance = instanceService.fromManifest(result.instance);
+    set((state) => ({
+      instances: state.instances.map((current) => (current.id === instance.id ? instance : current))
+    }));
+    return result.items;
+  },
+
   toggleMod: async (instanceId, projectId, enabled) => {
     const manifest = await contentService.setEnabled(instanceId, projectId, enabled);
     const instance = instanceService.fromManifest(manifest);
@@ -184,6 +198,76 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  updateAllMods: async (instanceId) => {
+    const instance = get().instances.find((candidate) => candidate.id === instanceId);
+    if (!instance) throw new Error('Instance not found');
+    const operationId = uid('update-all');
+    const download = newDownload(operationId, {
+      instanceId,
+      gameId: instance.gameId,
+      subtitle: instance.name,
+      kind: DownloadKind.UpdateMod,
+      title: `Update all content in ${instance.name}`
+    });
+    set((state) => ({ downloads: [download, ...state.downloads] }));
+    try {
+      const result = await contentService.updateAll(instanceId, operationId, (progress) =>
+        set((state) => ({
+          downloads: state.downloads.map((current) => (current.id === operationId ? applyProgress(current, progress) : current))
+        }))
+      );
+      const updated = instanceService.fromManifest(result.instance);
+      set((state) => ({
+        instances: state.instances.map((current) => (current.id === updated.id ? updated : current))
+      }));
+      return result.items;
+    } catch (error) {
+      set((state) => ({
+        downloads: state.downloads.map((current) => failDownload(current, operationId, error, 'Updates failed'))
+      }));
+      throw error;
+    }
+  },
+
+  updateMod: async (instanceId, projectId, versionId) => {
+    const instance = get().instances.find((candidate) => candidate.id === instanceId);
+    const mod = instance?.mods.find((candidate) => candidate.projectId === projectId);
+    if (!instance || !mod || mod.provider === ProviderId.Local) throw new Error('Installed content cannot be updated');
+    const operationId = uid('update');
+    const download = newDownload(operationId, {
+      instanceId,
+      gameId: instance.gameId,
+      subtitle: instance.name,
+      title: `Update ${mod.name}`,
+      kind: DownloadKind.UpdateMod
+    });
+    set((state) => ({ downloads: [download, ...state.downloads] }));
+    try {
+      const manifest = await contentService.update(
+        {
+          projectId,
+          versionId,
+          instanceId,
+          operationId,
+          optionalDependencies: []
+        },
+        (progress) =>
+          set((state) => ({
+            downloads: state.downloads.map((current) => (current.id === operationId ? applyProgress(current, progress) : current))
+          }))
+      );
+      const updated = instanceService.fromManifest(manifest);
+      set((state) => ({
+        instances: state.instances.map((current) => (current.id === updated.id ? updated : current))
+      }));
+    } catch (error) {
+      set((state) => ({
+        downloads: state.downloads.map((current) => failDownload(current, operationId, error, 'Update failed'))
+      }));
+      throw error;
+    }
+  },
+
   installMod: async (instanceId, project, options = {}) => {
     const instance = get().instances.find((candidate) => candidate.id === instanceId);
     if (!instance) throw new Error('Instance not found');
@@ -213,11 +297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
     } catch (error) {
       set((state) => ({
-        downloads: state.downloads.map((current) =>
-          current.id === operationId
-            ? { ...current, status: DownloadStatus.Failed, step: getErrorMessage(error, 'Installation failed') }
-            : current
-        )
+        downloads: state.downloads.map((current) => failDownload(current, operationId, error, 'Installation failed'))
       }));
       throw error;
     }
@@ -257,11 +337,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
     } catch (error) {
       set((state) => ({
-        downloads: state.downloads.map((current) =>
-          current.id === operationId
-            ? { ...current, status: DownloadStatus.Failed, step: getErrorMessage(error, 'Repair failed') }
-            : current
-        )
+        downloads: state.downloads.map((current) => failDownload(current, operationId, error, 'Repair failed'))
       }));
       throw error;
     }

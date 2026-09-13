@@ -36,6 +36,8 @@ pub struct InstalledMod {
     pub icon_color: String,
     pub provider: ProviderId,
     pub status: UpdateStatus,
+    #[serde(default)]
+    pub update_available: bool,
     pub installed_version: String,
     #[serde(default)]
     pub version_id: String,

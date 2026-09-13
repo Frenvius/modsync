@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     io::{self, Write},
     path::{Component, Path, PathBuf},
@@ -91,6 +91,47 @@ pub struct ImportLocalContentInput {
     pub path: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdateOutcome {
+    UpdateAvailable,
+    UpToDate,
+    Incompatible,
+    Skipped,
+    Updated,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateResultItem {
+    pub project_id: String,
+    pub name: String,
+    pub from_version: String,
+    pub to_version: Option<String>,
+    pub outcome: UpdateOutcome,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheckResult {
+    pub instance: InstanceManifest,
+    pub items: Vec<UpdateResultItem>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAllInput {
+    pub instance_id: String,
+    pub operation_id: String,
+}
+
+struct AvailableUpdate {
+    project_id: String,
+    version_id: String,
+}
+
 struct PlanItem {
     project: Project,
     version: ProjectVersion,
@@ -154,6 +195,169 @@ pub async fn refresh_content(
 }
 
 #[tauri::command]
+pub async fn check_content_updates(
+    app: AppHandle,
+    instance_id: String,
+) -> Result<UpdateCheckResult, CommandError> {
+    let _guard = mutation_lock().lock().await;
+    instances::validate_id(&instance_id)?;
+    let (metadata, mut manifest, root) = load_instance(&app, &instance_id)?;
+    reconcile_at(&root, &mut manifest);
+    let (items, _) = check_updates_at(&app, &mut manifest, None).await;
+    manifest.updated_at = chrono::Utc::now().to_rfc3339();
+    instances::write_manifest(&metadata, &manifest)?;
+    Ok(UpdateCheckResult {
+        instance: manifest,
+        items,
+    })
+}
+
+#[tauri::command]
+pub async fn update_content(
+    app: AppHandle,
+    input: InstallContentInput,
+) -> Result<InstanceManifest, CommandError> {
+    execute_install(app, input, true, "Updated").await
+}
+
+#[tauri::command]
+pub async fn update_all_content(
+    app: AppHandle,
+    input: UpdateAllInput,
+) -> Result<UpdateCheckResult, CommandError> {
+    instances::validate_id(&input.instance_id)?;
+    downloads::register_operation(&input.operation_id).await?;
+    emit(
+        &app,
+        OperationProgress {
+            message: "Checking for updates".into(),
+            operation_id: input.operation_id.clone(),
+            status: OperationStatus::Pending,
+            completed_items: 0,
+            total_items: 0,
+            downloaded_bytes: 0,
+            total_bytes: 0,
+        },
+    );
+    let _guard = mutation_lock().lock().await;
+    let result = run_update_all(&app, &input).await;
+    let progress = match &result {
+        Ok(result) => {
+            let updated = result
+                .items
+                .iter()
+                .filter(|item| matches!(item.outcome, UpdateOutcome::Updated))
+                .count();
+            let failed = result
+                .items
+                .iter()
+                .filter(|item| matches!(item.outcome, UpdateOutcome::Failed))
+                .count();
+            let cancelled = downloads::is_cancelled(&input.operation_id).await;
+            OperationProgress {
+                message: format!("{updated} updated, {failed} failed"),
+                operation_id: input.operation_id.clone(),
+                status: if cancelled {
+                    OperationStatus::Cancelled
+                } else if failed > 0 && updated == 0 {
+                    OperationStatus::Failed
+                } else {
+                    OperationStatus::Completed
+                },
+                completed_items: updated as u32,
+                total_items: result.items.len() as u32,
+                downloaded_bytes: 0,
+                total_bytes: 0,
+            }
+        }
+        Err(error) => OperationProgress {
+            message: error.message.clone(),
+            operation_id: input.operation_id.clone(),
+            status: OperationStatus::Failed,
+            completed_items: 0,
+            total_items: 0,
+            downloaded_bytes: 0,
+            total_bytes: 0,
+        },
+    };
+    emit(&app, progress);
+    downloads::finish_operation(&input.operation_id).await;
+    result
+}
+
+async fn run_update_all(
+    app: &AppHandle,
+    input: &UpdateAllInput,
+) -> Result<UpdateCheckResult, CommandError> {
+    let (metadata, mut manifest, root) = load_instance(app, &input.instance_id)?;
+    reconcile_at(&root, &mut manifest);
+    let (mut items, updates) =
+        check_updates_at(app, &mut manifest, Some(&input.operation_id)).await;
+    manifest.updated_at = chrono::Utc::now().to_rfc3339();
+    instances::write_manifest(&metadata, &manifest)?;
+    let mut latest_manifest = manifest;
+
+    for (index, update) in updates.iter().enumerate() {
+        if downloads::is_cancelled(&input.operation_id).await {
+            for remaining in &updates[index..] {
+                if let Some(item) = items
+                    .iter_mut()
+                    .find(|item| item.project_id == remaining.project_id)
+                {
+                    item.outcome = UpdateOutcome::Skipped;
+                    item.message = Some("Update cancelled before this item started".into());
+                }
+            }
+            break;
+        }
+        if latest_manifest.mods.iter().any(|installed| {
+            installed.project_id == update.project_id && installed.version_id == update.version_id
+        }) {
+            if let Some(item) = items
+                .iter_mut()
+                .find(|item| item.project_id == update.project_id)
+            {
+                item.outcome = UpdateOutcome::Updated;
+                item.message = Some("Updated as a dependency".into());
+            }
+            continue;
+        }
+        let request = InstallContentInput {
+            operation_id: input.operation_id.clone(),
+            instance_id: input.instance_id.clone(),
+            project_id: update.project_id.clone(),
+            version_id: Some(update.version_id.clone()),
+            optional_dependencies: Vec::new(),
+        };
+        let outcome = run_install(app, &request, true).await;
+        if let Some(item) = items
+            .iter_mut()
+            .find(|item| item.project_id == update.project_id)
+        {
+            match outcome {
+                Ok(next_manifest) => {
+                    latest_manifest = next_manifest;
+                    item.outcome = UpdateOutcome::Updated;
+                    item.message = None;
+                }
+                Err(error) => {
+                    item.outcome = if matches!(error.code, CommandErrorCode::Cancelled) {
+                        UpdateOutcome::Skipped
+                    } else {
+                        UpdateOutcome::Failed
+                    };
+                    item.message = Some(error.message);
+                }
+            }
+        }
+    }
+    Ok(UpdateCheckResult {
+        instance: latest_manifest,
+        items,
+    })
+}
+
+#[tauri::command]
 pub async fn remove_content(
     app: AppHandle,
     input: RemoveContentInput,
@@ -176,6 +380,22 @@ pub async fn preview_install(
     app: AppHandle,
     input: PreviewInstallInput,
 ) -> Result<Vec<InstallPlanItem>, CommandError> {
+    preview_plan(&app, input, false).await
+}
+
+#[tauri::command]
+pub async fn preview_update(
+    app: AppHandle,
+    input: PreviewInstallInput,
+) -> Result<Vec<InstallPlanItem>, CommandError> {
+    preview_plan(&app, input, true).await
+}
+
+async fn preview_plan(
+    app: &AppHandle,
+    input: PreviewInstallInput,
+    replace: bool,
+) -> Result<Vec<InstallPlanItem>, CommandError> {
     instances::validate_id(&input.instance_id)?;
     if input.optional_dependencies.len() > 100 {
         return Err(CommandError::new(
@@ -183,7 +403,7 @@ pub async fn preview_install(
             "Installation request is invalid",
         ));
     }
-    let metadata = instances::instances_root(&app)?.join(&input.instance_id);
+    let metadata = instances::instances_root(app)?.join(&input.instance_id);
     let mut manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
     let content_root = validate_content_root(&metadata, &manifest)?;
     recover_at(&content_root, &mut manifest, &metadata)?;
@@ -194,7 +414,7 @@ pub async fn preview_install(
         version_id: input.version_id,
         optional_dependencies: input.optional_dependencies,
     };
-    resolve_plan(&app, &manifest, &request, false)
+    resolve_plan(app, &manifest, &request, replace)
         .await
         .map(|items| {
             items
@@ -213,7 +433,7 @@ pub async fn install_content(
     app: AppHandle,
     input: InstallContentInput,
 ) -> Result<InstanceManifest, CommandError> {
-    execute_install(app, input, false).await
+    execute_install(app, input, false, "Installed").await
 }
 
 #[tauri::command]
@@ -221,13 +441,14 @@ pub async fn repair_content(
     app: AppHandle,
     input: InstallContentInput,
 ) -> Result<InstanceManifest, CommandError> {
-    execute_install(app, input, true).await
+    execute_install(app, input, true, "Repaired").await
 }
 
 async fn execute_install(
     app: AppHandle,
     input: InstallContentInput,
     replace: bool,
+    completion_message: &str,
 ) -> Result<InstanceManifest, CommandError> {
     validate_input(&input)?;
     downloads::register_operation(&input.operation_id).await?;
@@ -249,7 +470,7 @@ async fn execute_install(
         Ok(_) => emit(
             &app,
             OperationProgress {
-                message: "Installed".into(),
+                message: completion_message.into(),
                 operation_id: input.operation_id.clone(),
                 status: OperationStatus::Completed,
                 completed_items: 1,
@@ -368,57 +589,107 @@ async fn run_install(
         )?;
         downloaded_bytes = downloaded_bytes.saturating_add(item.version.file_size);
     }
-    let preserved_files = if replace {
-        manifest
-            .mods
-            .iter()
-            .find(|installed| installed.project_id == input.project_id)
-            .map(|installed| {
+    let replacement_ids = if replace {
+        plan.iter()
+            .filter(|item| {
+                manifest
+                    .mods
+                    .iter()
+                    .any(|installed| installed.project_id == item.project.id)
+            })
+            .map(|item| item.project.id.clone())
+            .collect::<HashSet<_>>()
+    } else {
+        HashSet::new()
+    };
+    let preserved_files = manifest
+        .mods
+        .iter()
+        .filter(|installed| replacement_ids.contains(&installed.project_id))
+        .map(|installed| {
+            (
+                installed.project_id.clone(),
                 installed
                     .files
                     .iter()
                     .filter(|file| file.mutable)
                     .cloned()
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    if !preserved_files.is_empty() {
-        let preserved_paths = preserved_files
-            .iter()
-            .map(|file| file.path.as_str())
-            .collect::<HashSet<_>>();
-        prepared.retain(|file| !preserved_paths.contains(path_string(&file.relative).as_str()));
-    }
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let preserved_paths = preserved_files
+        .values()
+        .flatten()
+        .map(|file| file.path.as_str())
+        .collect::<HashSet<_>>();
+    prepared.retain(|file| !preserved_paths.contains(path_string(&file.relative).as_str()));
     reject_duplicate_targets(&prepared)?;
+    let previous_enabled = manifest
+        .mods
+        .iter()
+        .filter(|installed| replacement_ids.contains(&installed.project_id))
+        .map(|installed| (installed.project_id.clone(), installed.enabled))
+        .collect::<HashMap<_, _>>();
+    let destinations = prepared
+        .iter()
+        .map(|file| {
+            let enabled = previous_enabled
+                .get(file.project_id.as_str())
+                .copied()
+                .unwrap_or(true);
+            let provider = manifest
+                .mods
+                .iter()
+                .find(|installed| installed.project_id == file.project_id)
+                .map(|installed| installed.provider)
+                .unwrap_or(crate::catalog::ProviderId::Local);
+            prepared_destination(
+                provider,
+                &file.relative,
+                is_mutable_path(&file.relative),
+                enabled,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut unique_destinations = HashSet::new();
+    if destinations
+        .iter()
+        .any(|path| !unique_destinations.insert(path_string(path)))
+    {
+        return Err(CommandError::new(
+            CommandErrorCode::Conflict,
+            "Updated packages contain conflicting file paths",
+        ));
+    }
 
     let mut transaction_files = prepared
         .iter()
-        .map(|file| TransactionFile {
-            relative: path_string(&file.relative),
-            had_original: content_root.join(&file.relative).exists(),
+        .zip(&destinations)
+        .map(|(_, destination)| TransactionFile {
+            relative: path_string(destination),
+            had_original: content_root.join(destination).exists(),
         })
         .collect::<Vec<_>>();
-    if replace {
-        if let Some(installed) = manifest
-            .mods
-            .iter()
-            .find(|installed| installed.project_id == input.project_id)
-        {
-            for file in &installed.files {
-                let relative = path_string(&installed_file_path(installed, file));
-                if !transaction_files
-                    .iter()
-                    .any(|candidate| candidate.relative == relative)
-                    && content_root.join(&relative).exists()
-                {
-                    transaction_files.push(TransactionFile {
-                        relative,
-                        had_original: true,
-                    });
-                }
+    for installed in manifest
+        .mods
+        .iter()
+        .filter(|installed| replacement_ids.contains(&installed.project_id))
+    {
+        for file in &installed.files {
+            if file.mutable {
+                continue;
+            }
+            let relative = path_string(&installed_file_path(installed, file));
+            if !transaction_files
+                .iter()
+                .any(|candidate| candidate.relative == relative)
+                && content_root.join(&relative).exists()
+            {
+                transaction_files.push(TransactionFile {
+                    relative,
+                    had_original: true,
+                });
             }
         }
     }
@@ -436,24 +707,27 @@ async fn run_install(
             "Installation cancelled",
         ));
     }
-    if let Err(error) = commit_files(&content_root, &transaction, &prepared).and_then(|_| {
-        remove_transaction_extras(&content_root, &transaction, &journal, prepared.len())
-    }) {
+    if let Err(error) = commit_files(&content_root, &transaction, &prepared, &destinations)
+        .and_then(|_| {
+            remove_transaction_extras(&content_root, &transaction, &journal, prepared.len())
+        })
+    {
         let _ = rollback(&content_root, &transaction, &journal);
         let _ = fs::remove_dir_all(&staging);
         return Err(error);
     }
 
-    if replace {
-        manifest
-            .mods
-            .retain(|installed| installed.project_id != input.project_id);
-    }
+    manifest
+        .mods
+        .retain(|installed| !replacement_ids.contains(&installed.project_id));
     for item in plan {
-        let is_target = item.project.id == input.project_id;
         let mut installed = installed_mod(item, &prepared);
-        if is_target {
-            installed.files.extend(preserved_files.clone());
+        if let Some(files) = preserved_files.get(&installed.project_id) {
+            installed.files.extend(files.clone());
+        }
+        if previous_enabled.get(installed.project_id.as_str()) == Some(&false) {
+            installed.enabled = false;
+            installed.status = UpdateStatus::Disabled;
         }
         manifest.mods.push(installed);
     }
@@ -467,6 +741,134 @@ async fn run_install(
     let _ = fs::remove_dir_all(&transaction);
     let _ = fs::remove_dir_all(&staging);
     Ok(manifest)
+}
+
+async fn check_updates_at(
+    app: &AppHandle,
+    manifest: &mut InstanceManifest,
+    operation_id: Option<&str>,
+) -> (Vec<UpdateResultItem>, Vec<AvailableUpdate>) {
+    let mut items = Vec::with_capacity(manifest.mods.len());
+    let mut available = Vec::new();
+    let providers = [
+        crate::catalog::ProviderId::Modrinth,
+        crate::catalog::ProviderId::CurseForge,
+        crate::catalog::ProviderId::Thunderstore,
+        crate::catalog::ProviderId::VintageStoryDb,
+        crate::catalog::ProviderId::Local,
+    ];
+    for provider in providers {
+        let indices = manifest
+            .mods
+            .iter()
+            .enumerate()
+            .filter_map(|(index, installed)| (installed.provider == provider).then_some(index))
+            .collect::<Vec<_>>();
+        for batch in indices.chunks(20) {
+            for &index in batch {
+                let installed = &manifest.mods[index];
+                let project_id = installed.project_id.clone();
+                let name = installed.name.clone();
+                let from_version = installed.installed_version.clone();
+                if let Some(operation_id) = operation_id {
+                    if downloads::is_cancelled(operation_id).await {
+                        items.push(UpdateResultItem {
+                            project_id,
+                            name,
+                            from_version,
+                            to_version: None,
+                            outcome: UpdateOutcome::Skipped,
+                            message: Some("Update check cancelled".into()),
+                        });
+                        continue;
+                    }
+                }
+                if provider == crate::catalog::ProviderId::Local {
+                    manifest.mods[index].update_available = false;
+                    items.push(UpdateResultItem {
+                        project_id,
+                        name,
+                        from_version,
+                        to_version: None,
+                        outcome: UpdateOutcome::Skipped,
+                        message: Some("Local content has no provider update source".into()),
+                    });
+                    continue;
+                }
+
+                let result = providers::resolve_versions(app, &project_id)
+                    .await
+                    .and_then(|versions| select_version(manifest, versions, None));
+                match result {
+                    Ok(version) => {
+                        let has_update =
+                            apply_update_candidate(&mut manifest.mods[index], &version);
+                        let outcome = if has_update {
+                            available.push(AvailableUpdate {
+                                project_id: project_id.clone(),
+                                version_id: version.id,
+                            });
+                            UpdateOutcome::UpdateAvailable
+                        } else {
+                            UpdateOutcome::UpToDate
+                        };
+                        items.push(UpdateResultItem {
+                            project_id,
+                            name,
+                            from_version,
+                            to_version: has_update.then_some(version.number),
+                            outcome,
+                            message: None,
+                        });
+                    }
+                    Err(error) if matches!(error.code, CommandErrorCode::Incompatible) => {
+                        manifest.mods[index].update_available = false;
+                        items.push(UpdateResultItem {
+                            project_id,
+                            name,
+                            from_version,
+                            to_version: None,
+                            outcome: UpdateOutcome::Incompatible,
+                            message: Some(error.message),
+                        });
+                    }
+                    Err(error) => items.push(UpdateResultItem {
+                        project_id,
+                        name,
+                        from_version,
+                        to_version: None,
+                        outcome: UpdateOutcome::Failed,
+                        message: Some(error.message),
+                    }),
+                }
+            }
+        }
+    }
+    (items, available)
+}
+
+fn apply_update_candidate(installed: &mut InstalledMod, version: &ProjectVersion) -> bool {
+    let has_update = if installed.version_id.is_empty() {
+        version.number != installed.installed_version
+    } else {
+        version.id != installed.version_id
+    };
+    installed.latest_compatible_version = version.number.clone();
+    installed.update_available = has_update;
+    if matches!(
+        installed.status,
+        UpdateStatus::UpToDate | UpdateStatus::UpdateAvailable
+    ) {
+        installed.status = if has_update {
+            UpdateStatus::UpdateAvailable
+        } else {
+            UpdateStatus::UpToDate
+        };
+    }
+    if installed.version_id.is_empty() && !has_update {
+        installed.version_id = version.id.clone();
+    }
+    has_update
 }
 
 async fn resolve_plan(
@@ -488,14 +890,20 @@ async fn resolve_plan(
     let installed = instance
         .mods
         .iter()
-        .map(|item| item.project_id.as_str())
-        .collect::<HashSet<_>>();
+        .map(|item| (item.project_id.as_str(), item))
+        .collect::<HashMap<_, _>>();
     let mut seen = HashSet::new();
     let mut plan = Vec::new();
 
     while let Some((project_id, version_hint)) = queue.pop_front() {
-        let replacing_target = replace && project_id == input.project_id;
-        if (installed.contains(project_id.as_str()) && !replacing_target)
+        let replacing = replace
+            && installed.get(project_id.as_str()).is_some_and(|item| {
+                project_id == input.project_id
+                    || version_hint.as_ref().is_some_and(|hint| {
+                        item.version_id != *hint && item.installed_version != *hint
+                    })
+            });
+        if (installed.contains_key(project_id.as_str()) && !replacing)
             || !seen.insert(project_id.clone())
         {
             continue;
@@ -539,7 +947,7 @@ async fn resolve_plan(
                         dependency.version_range.clone(),
                     )),
                 DependencyType::Incompatible
-                    if installed.contains(dependency.project_id.as_str())
+                    if installed.contains_key(dependency.project_id.as_str())
                         || seen.contains(&dependency.project_id) =>
                 {
                     return Err(CommandError::new(
@@ -744,12 +1152,19 @@ fn commit_files(
     root: &Path,
     transaction: &Path,
     files: &[PreparedFile],
+    destinations: &[PathBuf],
 ) -> Result<(), CommandError> {
+    if files.len() != destinations.len() {
+        return Err(CommandError::new(
+            CommandErrorCode::CorruptedData,
+            "Installation destinations do not match prepared files",
+        ));
+    }
     let backups = transaction.join("backups");
     fs::create_dir_all(&backups)
         .map_err(|error| CommandError::io("Could not create the installation backup", &error))?;
-    for (index, file) in files.iter().enumerate() {
-        let destination = safe_destination(root, &file.relative)?;
+    for (index, (file, relative)) in files.iter().zip(destinations).enumerate() {
+        let destination = safe_destination(root, relative)?;
         let parent = destination.parent().ok_or_else(|| {
             CommandError::new(
                 CommandErrorCode::InvalidInput,
@@ -962,6 +1377,7 @@ fn import_local_at(
         icon_color: "#8b8f98".into(),
         provider: crate::catalog::ProviderId::Local,
         status: UpdateStatus::UpToDate,
+        update_available: false,
         installed_version: "local".into(),
         version_id: String::new(),
         files: vec![InstalledFile {
@@ -1278,6 +1694,8 @@ fn reconcile_at(root: &Path, manifest: &mut InstanceManifest) {
             UpdateStatus::Incompatible
         } else if !installed.enabled {
             UpdateStatus::Disabled
+        } else if installed.update_available {
+            UpdateStatus::UpdateAvailable
         } else {
             UpdateStatus::UpToDate
         };
@@ -1342,12 +1760,29 @@ fn installed_file_path(installed: &InstalledMod, file: &InstalledFile) -> PathBu
     }
 }
 
+fn prepared_destination(
+    provider: crate::catalog::ProviderId,
+    path: &Path,
+    mutable: bool,
+    enabled: bool,
+) -> PathBuf {
+    if !enabled && toggle_path(provider, path, mutable) {
+        disabled_path(path)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 fn toggle_file(installed: &InstalledMod, file: &InstalledFile) -> bool {
-    if installed.provider != crate::catalog::ProviderId::Thunderstore {
+    toggle_path(installed.provider, Path::new(&file.path), file.mutable)
+}
+
+fn toggle_path(provider: crate::catalog::ProviderId, path: &Path, mutable: bool) -> bool {
+    if provider != crate::catalog::ProviderId::Thunderstore {
         return true;
     }
-    let path = path_string(Path::new(&file.path));
-    !file.mutable && (path.starts_with("BepInEx/plugins/") || path.starts_with("BepInEx/patchers/"))
+    let path = path_string(path);
+    !mutable && (path.starts_with("BepInEx/plugins/") || path.starts_with("BepInEx/patchers/"))
 }
 
 fn disabled_path(path: &Path) -> PathBuf {
@@ -1449,6 +1884,7 @@ fn installed_mod(item: PlanItem, files: &[PreparedFile]) -> InstalledMod {
         icon_color: item.project.icon_color,
         provider: item.project.provider.id,
         status: UpdateStatus::UpToDate,
+        update_available: false,
         installed_version: item.version.number.clone(),
         version_id: item.version.id,
         files: file_paths,
@@ -1681,6 +2117,7 @@ mod tests {
             icon_color: "#000000".into(),
             provider: crate::catalog::ProviderId::Modrinth,
             status: UpdateStatus::UpToDate,
+            update_available: false,
             installed_version: "1.0".into(),
             version_id: "version".into(),
             files: Vec::new(),
@@ -1690,6 +2127,36 @@ mod tests {
             loaders: vec![LoaderId::Fabric],
             game_versions: vec!["1.21.4".into()],
         }
+    }
+
+    #[test]
+    fn update_candidate_marks_only_a_different_compatible_version() {
+        let mut item = installed("modrinth:test");
+        let version = ProjectVersion {
+            id: "version-2".into(),
+            name: "Version 2".into(),
+            number: "2.0".into(),
+            file_size: 1,
+            downloads: 1,
+            changelog: String::new(),
+            project_id: item.project_id.clone(),
+            published_at: String::new(),
+            loaders: vec![LoaderId::Fabric],
+            game_versions: vec!["1.21.4".into()],
+            dependencies: Vec::new(),
+            download_url: "https://example.invalid/mod.jar".into(),
+            file_name: "mod.jar".into(),
+            hashes: Vec::new(),
+        };
+
+        assert!(apply_update_candidate(&mut item, &version));
+        assert!(item.update_available);
+        assert_eq!(item.status, UpdateStatus::UpdateAvailable);
+        item.version_id = version.id.clone();
+        item.installed_version = version.number.clone();
+        assert!(!apply_update_candidate(&mut item, &version));
+        assert!(!item.update_available);
+        assert_eq!(item.status, UpdateStatus::UpToDate);
     }
 
     #[test]
@@ -1783,6 +2250,28 @@ mod tests {
     }
 
     #[test]
+    fn updates_keep_disabled_content_disabled() {
+        assert_eq!(
+            prepared_destination(
+                crate::catalog::ProviderId::Modrinth,
+                Path::new("mods/test.jar"),
+                false,
+                false,
+            ),
+            PathBuf::from("mods/test.jar.disabled")
+        );
+        assert_eq!(
+            prepared_destination(
+                crate::catalog::ProviderId::Thunderstore,
+                Path::new("BepInEx/config/test.cfg"),
+                true,
+                false,
+            ),
+            PathBuf::from("BepInEx/config/test.cfg")
+        );
+    }
+
+    #[test]
     fn content_files_are_renamed_when_disabled_and_enabled() {
         let root = test_root("toggle");
         fs::create_dir_all(root.join("mods")).unwrap();
@@ -1837,7 +2326,13 @@ mod tests {
             sha512: "hash".into(),
         }];
 
-        commit_files(&root, &transaction, &files).unwrap();
+        commit_files(
+            &root,
+            &transaction,
+            &files,
+            &[PathBuf::from("mods/test.jar")],
+        )
+        .unwrap();
 
         assert_eq!(
             fs::read_to_string(root.join("mods/test.jar")).unwrap(),

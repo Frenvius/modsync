@@ -4,8 +4,9 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { toast } from 'sonner';
-import { Plus, Package, FileQuestion } from 'lucide-react';
+import { Plus, ArrowUp, Package, RefreshCw, FileQuestion } from 'lucide-react';
 
+import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import SearchBar from '~/components/commons/SearchBar';
 import { useAppStore } from '~/usecase/store/appStore';
@@ -15,8 +16,9 @@ import { ProjectType } from '~/domain/enums/provider.enum';
 import ConfirmDialog from '~/components/commons/ConfirmDialog';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { MOD_STATUS_LABELS } from '~/components/Instance/constants';
-import { contentService, type UnmanagedContent } from '~/usecase/service/content';
+import ChangeVersionDialog from '~/components/Mods/ChangeVersionDialog';
 import { Table, TableRow, TableBody, TableHead, TableHeader } from '~/components/ui/table';
+import { contentService, type UpdateResultItem, type UnmanagedContent } from '~/usecase/service/content';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
 const ModsTab = ({ instance, contentType }: ModsTabProps) => {
@@ -26,9 +28,16 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
   const toggleMod = useAppStore((state) => state.toggleMod);
   const importLocalMod = useAppStore((state) => state.importLocalMod);
   const refreshContent = useAppStore((state) => state.refreshContent);
+  const checkUpdates = useAppStore((state) => state.checkUpdates);
+  const updateMod = useAppStore((state) => state.updateMod);
+  const updateAllMods = useAppStore((state) => state.updateAllMods);
   const [unmanaged, setUnmanaged] = React.useState<Array<UnmanagedContent>>([]);
   const [query, setQuery] = React.useState('');
   const [removeTarget, setRemoveTarget] = React.useState<string>();
+  const [versionTarget, setVersionTarget] = React.useState<string>();
+  const [checking, setChecking] = React.useState(false);
+  const [updateReport, setUpdateReport] = React.useState<Array<UpdateResultItem>>([]);
+  const [updatingAll, setUpdatingAll] = React.useState(false);
   const [sort, setSort] = React.useState<ModSortKey>('name');
   const [status, setStatus] = React.useState<ModStatusFilter>('all');
 
@@ -71,6 +80,51 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
     }
   };
 
+  const check = async () => {
+    setChecking(true);
+    try {
+      const items = await checkUpdates(instance.id);
+      setUpdateReport(items);
+      const available = items.filter((item) => item.outcome === 'update-available').length;
+      const incompatible = items.filter((item) => item.outcome === 'incompatible').length;
+      const failed = items.filter((item) => item.outcome === 'failed').length;
+      toast.info(`${available} updates available, ${incompatible} incompatible, ${failed} checks failed`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not check for updates'));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const updateOne = async (projectId: string) => {
+    try {
+      await updateMod(instance.id, projectId);
+      setUpdateReport((items) =>
+        items.map((item) => (item.projectId === projectId ? { ...item, outcome: 'updated', message: undefined } : item))
+      );
+      toast.success('Content updated');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not update content'));
+    }
+  };
+
+  const updateAll = async () => {
+    setUpdatingAll(true);
+    try {
+      const items = await updateAllMods(instance.id);
+      setUpdateReport(items);
+      const updated = items.filter((item) => item.outcome === 'updated').length;
+      const failed = items.filter((item) => item.outcome === 'failed').length;
+      const skipped = items.filter((item) => item.outcome === 'skipped').length;
+      const incompatible = items.filter((item) => item.outcome === 'incompatible').length;
+      toast.info(`${updated} updated, ${failed} failed, ${skipped} skipped, ${incompatible} incompatible`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not update content'));
+    } finally {
+      setUpdatingAll(false);
+    }
+  };
+
   const remove = async () => {
     if (!removeTarget) return;
     try {
@@ -109,6 +163,8 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
           ? 'data packs'
           : 'resource packs';
   const visibleUnmanaged = unmanaged.filter((item) => item.type === contentType);
+  const updateCount = instance.mods.filter((mod) => mod.updateAvailable).length;
+  const selectedVersionMod = instance.mods.find((mod) => mod.projectId === versionTarget);
 
   return (
     <div className="flex flex-col gap-3">
@@ -141,11 +197,44 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
           </SelectContent>
         </Select>
         <span className="flex-1" />
+        <Button size="sm" variant="outline" onClick={() => void check()} disabled={checking || updatingAll}>
+          <RefreshCw data-icon="inline-start" className={checking ? 'animate-spin' : undefined} />
+          Check updates
+        </Button>
+        {updateCount > 0 && (
+          <Button size="sm" variant="secondary" onClick={() => void updateAll()} disabled={updatingAll || checking}>
+            <ArrowUp data-icon="inline-start" />
+            Update all ({updateCount})
+          </Button>
+        )}
         <Button size="sm" onClick={() => navigate(`/discover?instance=${instance.id}`)}>
           <Plus data-icon="inline-start" />
           Add {label}
         </Button>
       </div>
+
+      {updateReport.length > 0 && (
+        <section aria-live="polite" className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+          <h2 className="text-sm font-semibold">Update report</h2>
+          <div className="flex flex-wrap gap-1.5">
+            {(['updated', 'update-available', 'up-to-date', 'incompatible', 'failed', 'skipped'] as const).map((outcome) => {
+              const count = updateReport.filter((item) => item.outcome === outcome).length;
+              return count > 0 ? (
+                <Badge key={outcome} variant="secondary" className="capitalize">
+                  {outcome.replaceAll('-', ' ')}: {count}
+                </Badge>
+              ) : null;
+            })}
+          </div>
+          {updateReport
+            .filter((item) => item.message && ['failed', 'skipped', 'incompatible'].includes(item.outcome))
+            .map((item) => (
+              <p key={item.projectId} className="text-xs text-muted-foreground">
+                <strong className="font-medium text-foreground">{item.name}:</strong> {item.message}
+              </p>
+            ))}
+        </section>
+      )}
 
       {visibleUnmanaged.length > 0 && (
         <section className="flex flex-col gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
@@ -197,7 +286,9 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
                   mod={mod}
                   key={mod.projectId}
                   onRemove={setRemoveTarget}
+                  onChangeVersion={setVersionTarget}
                   onRepair={(projectId) => void repair(projectId)}
+                  onUpdate={(projectId) => void updateOne(projectId)}
                   onToggle={(projectId, enabled) => void toggle(projectId, enabled)}
                 />
               ))}
@@ -205,6 +296,14 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
           </Table>
         </div>
       )}
+
+      <ChangeVersionDialog
+        instance={instance}
+        mod={selectedVersionMod}
+        open={Boolean(versionTarget)}
+        onOpenChange={(open) => !open && setVersionTarget(undefined)}
+        onChanged={(projectId) => setUpdateReport((items) => items.filter((item) => item.projectId !== projectId))}
+      />
 
       <ConfirmDialog
         destructive
