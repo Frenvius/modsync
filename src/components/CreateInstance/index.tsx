@@ -5,12 +5,14 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { toast } from 'sonner';
-import { Loader2, ArrowLeft, ArrowRight } from 'lucide-react';
+import { X, Loader2, ArrowLeft, FolderOpen, ArrowRight } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Button } from '~/components/ui/button';
 import { useAppStore } from '~/usecase/store/appStore';
 import { projectService } from '~/usecase/service/project';
+import { filesystemService } from '~/usecase/service/filesystem';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Dialog, DialogTitle, DialogHeader, DialogContent, DialogDescription } from '~/components/ui/dialog';
 
 import GameStep from './GameStep';
@@ -24,8 +26,10 @@ const CreateInstanceDialog = () => {
   const open = useAppStore((s) => s.createInstanceOpen);
   const setOpen = useAppStore((s) => s.setCreateInstanceOpen);
   const createInstance = useAppStore((s) => s.createInstance);
+  const importInstance = useAppStore((s) => s.importInstance);
   const [step, setStep] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
+  const [importPath, setImportPath] = React.useState<string>();
   const [draft, setDraft] = React.useState<WizardDraft>(EMPTY_WIZARD_DRAFT);
 
   const game = draft.gameId ? projectService.getGame(draft.gameId) : undefined;
@@ -37,6 +41,7 @@ const CreateInstanceDialog = () => {
     setOpen(next);
     if (!next) {
       setStep(0);
+      setImportPath(undefined);
       setDraft(EMPTY_WIZARD_DRAFT);
     }
   };
@@ -71,28 +76,43 @@ const CreateInstanceDialog = () => {
     setStep((s) => Math.max(s - 1, 0));
   };
 
+  const chooseImport = async () => {
+    try {
+      const path = await filesystemService.chooseDirectory();
+      if (path) setImportPath(path);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not select the folder'));
+    }
+  };
+
   const create = async () => {
     if (!draft.gameId || !draft.gameVersion || !draft.loader) return;
     setBusy(true);
-    const instance = await createInstance({
-      icon: draft.icon,
-      gameId: draft.gameId,
-      loader: draft.loader,
-      iconColor: draft.color,
-      name: draft.name.trim(),
-      gameVersion: draft.gameVersion
-    });
-    setBusy(false);
-    close(false);
-    toast.success(`Instance "${instance.name}" created`);
-    navigate(`/instance/${instance.id}`);
+    try {
+      const input = {
+        icon: draft.icon,
+        gameId: draft.gameId,
+        loader: draft.loader,
+        iconColor: draft.color,
+        name: draft.name.trim(),
+        gameVersion: draft.gameVersion
+      };
+      const instance = importPath ? await importInstance(input, importPath) : await createInstance(input);
+      close(false);
+      toast.success(`Instance "${instance.name}" ${importPath ? 'imported' : 'created'}`);
+      navigate(`/instance/${instance.id}`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, `Could not ${importPath ? 'import' : 'create'} the instance`));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-4 py-3">
-          <DialogTitle>Create instance</DialogTitle>
+          <DialogTitle>{importPath ? 'Import instance' : 'Create instance'}</DialogTitle>
           <DialogDescription>Choose a game, version and loader. Mods come after.</DialogDescription>
           <ol className="mt-2 flex items-center gap-1 text-[11px] font-medium">
             {STEPS.map((label, i) => (
@@ -112,7 +132,25 @@ const CreateInstanceDialog = () => {
         </DialogHeader>
 
         <div className="min-h-[320px] flex-1 overflow-y-auto p-4">
-          {step === 0 && <GameStep onSelect={pickGame} selected={draft.gameId} />}
+          {step === 0 && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2 rounded-md border bg-card p-2">
+                <Button size="sm" variant="outline" onClick={chooseImport}>
+                  <FolderOpen data-icon="inline-start" />
+                  Import existing folder
+                </Button>
+                {importPath && (
+                  <>
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{importPath}</span>
+                    <Button size="icon-sm" variant="ghost" aria-label="Cancel import" onClick={() => setImportPath(undefined)}>
+                      <X />
+                    </Button>
+                  </>
+                )}
+              </div>
+              <GameStep onSelect={pickGame} selected={draft.gameId} />
+            </div>
+          )}
           {step === 1 && game && (
             <VersionStep game={game} value={draft.gameVersion} onChange={(gameVersion) => patch({ gameVersion })} />
           )}
@@ -134,7 +172,7 @@ const CreateInstanceDialog = () => {
           ) : (
             <Button disabled={busy} onClick={create}>
               {busy && <Loader2 data-icon="inline-start" className="animate-spin" />}
-              Create instance
+              {importPath ? 'Import instance' : 'Create instance'}
             </Button>
           )}
         </div>

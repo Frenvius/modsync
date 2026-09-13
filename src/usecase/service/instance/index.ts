@@ -1,47 +1,94 @@
 import type { Project } from '~/domain/interfaces/project.interface';
-import type { Instance, InstalledMod, CreateInstanceInput } from '~/domain/interfaces/instance.interface';
+import type {
+  Instance,
+  InstalledMod,
+  InstanceManifest,
+  CreateInstanceInput,
+  UpdateInstanceInput
+} from '~/domain/interfaces/instance.interface';
 
-import { GAMES } from '~/usecase/mock/games';
-import { INSTANCES } from '~/usecase/mock/instances';
+import { invoke, isTauri } from '@tauri-apps/api/core';
+
 import { uid, wait } from '~/usecase/util/formatUtils';
 import { UpdateStatus } from '~/domain/enums/provider.enum';
+import { filesystemService } from '~/usecase/service/filesystem';
+
+const STORAGE_KEY = 'modsync.instances.v1';
+
+const toInstance = (manifest: InstanceManifest): Instance => ({ ...manifest, logs: [], configs: [] });
+const toManifest = ({ logs: _logs, configs: _configs, ...manifest }: Instance): InstanceManifest => manifest;
 
 class Service {
   async list(): Promise<Array<Instance>> {
-    await wait(150);
-    return INSTANCES;
+    if (!isTauri()) return this.readBrowserInstances();
+    return (await invoke<Array<InstanceManifest>>('list_instances')).map(toInstance);
   }
 
   async create(input: CreateInstanceInput): Promise<Instance> {
-    await wait(600);
-    const game = GAMES.find((g) => g.id === input.gameId);
+    if (isTauri()) return toInstance(await invoke<InstanceManifest>('create_instance', { input }));
     const now = new Date().toISOString();
-    return {
+    const instance: Instance = {
       ...input,
       mods: [],
+      logs: [],
       configs: [],
       createdAt: now,
       updatedAt: now,
       memoryMb: 4096,
       id: uid('inst'),
       lastPlayed: null,
+      schemaVersion: 1,
       playtimeMinutes: 0,
       loaderVersion: 'latest',
-      description: `${game?.name ?? 'Game'} ${input.gameVersion}`,
-      logs: [{ level: 'info', timestamp: now, message: 'Instance created' }]
+      location: { path: '', kind: 'managed' },
+      description: `${input.gameId} ${input.gameVersion}`
     };
+    this.writeBrowserInstances([instance, ...this.readBrowserInstances()]);
+    return instance;
   }
 
-  async duplicate(source: Instance): Promise<Instance> {
-    await wait(400);
-    return {
-      ...source,
-      id: uid('inst'),
-      lastPlayed: null,
-      playtimeMinutes: 0,
-      name: `${source.name} (copy)`,
-      createdAt: new Date().toISOString()
+  async import(input: CreateInstanceInput, path: string): Promise<Instance> {
+    if (!isTauri()) throw new Error('Folder import is available in the desktop app');
+    return toInstance(await invoke<InstanceManifest>('import_instance', { input: { ...input, path } }));
+  }
+
+  async update(input: UpdateInstanceInput): Promise<Instance> {
+    if (isTauri()) return toInstance(await invoke<InstanceManifest>('update_instance', { input }));
+    const instances = this.readBrowserInstances();
+    const current = instances.find((instance) => instance.id === input.id);
+    if (!current) throw new Error('Instance not found');
+    const updated: Instance = {
+      ...current,
+      name: input.name,
+      memoryMb: input.memoryMb,
+      updatedAt: new Date().toISOString(),
+      javaArgs: input.javaArgs || undefined
     };
+    this.writeBrowserInstances(instances.map((instance) => (instance.id === input.id ? updated : instance)));
+    return updated;
+  }
+
+  async duplicate(id: string): Promise<Instance> {
+    if (isTauri()) return toInstance(await invoke<InstanceManifest>('duplicate_instance', { id }));
+    const source = this.readBrowserInstances().find((instance) => instance.id === id);
+    if (!source) throw new Error('Instance not found');
+    return this.create({
+      icon: source.icon,
+      loader: source.loader,
+      gameId: source.gameId,
+      iconColor: source.iconColor,
+      name: `${source.name} (copy)`,
+      gameVersion: source.gameVersion
+    });
+  }
+
+  async delete(id: string): Promise<void> {
+    if (isTauri()) return invoke('delete_instance', { id });
+    this.writeBrowserInstances(this.readBrowserInstances().filter((instance) => instance.id !== id));
+  }
+
+  async openFolder(instance: Instance): Promise<void> {
+    await filesystemService.openDirectory(instance.location.path);
   }
 
   toInstalledMod(project: Project, version = project.latestVersion): InstalledMod {
@@ -62,6 +109,15 @@ class Service {
   async play(instance: Instance): Promise<void> {
     await wait(800);
     void instance;
+  }
+
+  private readBrowserInstances(): Array<Instance> {
+    const value = localStorage.getItem(STORAGE_KEY);
+    return value ? (JSON.parse(value) as Array<InstanceManifest>).map(toInstance) : [];
+  }
+
+  private writeBrowserInstances(instances: Array<Instance>): void {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(instances.map(toManifest)));
   }
 }
 

@@ -23,8 +23,14 @@ export interface DependencyResolution {
 }
 
 class Service {
+  private games = GAMES;
+
+  setGames(games: Array<Game>): void {
+    this.games = games;
+  }
+
   getGame(gameId: Game['id']): Game {
-    return GAMES.find((g) => g.id === gameId) ?? GAMES[0];
+    return this.games.find((game) => game.id === gameId) ?? this.games[0];
   }
 
   getCategories(gameId: Game['id']): Array<string> {

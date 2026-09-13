@@ -5,7 +5,6 @@ import React from 'react';
 
 import { Plus, List, Library, LayoutGrid } from 'lucide-react';
 
-import { GAMES } from '~/usecase/mock/games';
 import { Button } from '~/components/ui/button';
 import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
@@ -20,7 +19,8 @@ import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrig
 import { ALL_GAMES, LIBRARY_SORT_LABELS } from './constants';
 
 const LibraryPage = () => {
-  const instances = useAppStore((s) => s.instances);
+  const games = useAppStore((state) => state.games);
+  const instances = useAppStore((state) => state.instances);
   const openCreate = useAppStore((s) => s.setCreateInstanceOpen);
   const [query, setQuery] = React.useState('');
   const [view, setView] = React.useState<LibraryView>('grid');
@@ -58,7 +58,7 @@ const LibraryPage = () => {
           <SelectContent>
             <SelectGroup>
               <SelectItem value={ALL_GAMES}>All games</SelectItem>
-              {GAMES.map((game) => (
+              {games.map((game) => (
                 <SelectItem key={game.id} value={game.id}>
                   <GameIcon size="sm" gameId={game.id} />
                   {game.name}

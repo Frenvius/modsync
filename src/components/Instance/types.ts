@@ -23,12 +23,6 @@ export interface InstanceTabProps {
   instance: Instance;
 }
 
-export interface SwitchRowProps {
-  label: string;
-  description?: string;
-  defaultChecked?: boolean;
-}
-
 export interface StatProps {
   label: string;
   value: string;

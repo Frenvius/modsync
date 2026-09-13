@@ -4,13 +4,13 @@ import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { X, Minus, Square, ChevronDown } from 'lucide-react';
 
-import { GAMES } from '~/usecase/mock/games';
 import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuContent, DropdownMenuTrigger } from '~/components/ui/dropdown-menu';
 
 const Titlebar = () => {
-  const selectedGameId = useAppStore((s) => s.selectedGameId);
+  const games = useAppStore((state) => state.games);
+  const selectedGameId = useAppStore((state) => state.selectedGameId);
   const desktop = isTauri();
 
   const closeWindow = () => void getCurrentWindow().close();
@@ -43,7 +43,7 @@ const Titlebar = () => {
     window.addEventListener('mouseup', cleanup);
   };
   const setSelectedGame = useAppStore((s) => s.setSelectedGame);
-  const selectedGame = GAMES.find((game) => game.id === selectedGameId)!;
+  const selectedGame = games.find((game) => game.id === selectedGameId) ?? games[0];
 
   return (
     <header
@@ -68,7 +68,7 @@ const Titlebar = () => {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          {GAMES.map((game) => (
+          {games.map((game) => (
             <DropdownMenuItem
               key={game.id}
               onClick={() => setSelectedGame(game.id)}

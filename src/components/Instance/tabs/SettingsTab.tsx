@@ -1,4 +1,4 @@
-import type { SwitchRowProps, InstanceTabProps } from '~/components/Instance/types';
+import type { InstanceTabProps } from '~/components/Instance/types';
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -9,16 +9,16 @@ import { Save, Trash2 } from 'lucide-react';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Button } from '~/components/ui/button';
-import { Switch } from '~/components/ui/switch';
 import { Textarea } from '~/components/ui/textarea';
 import { GameId } from '~/domain/enums/provider.enum';
 import { useAppStore } from '~/usecase/store/appStore';
 import ConfirmDialog from '~/components/commons/ConfirmDialog';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '~/components/ui/card';
 
 const SettingsTab = ({ instance }: InstanceTabProps) => {
   const navigate = useNavigate();
-  const renameInstance = useAppStore((s) => s.renameInstance);
+  const updateInstance = useAppStore((s) => s.updateInstance);
   const deleteInstance = useAppStore((s) => s.deleteInstance);
   const [name, setName] = React.useState(instance.name);
   const [memory, setMemory] = React.useState(String(instance.memoryMb));
@@ -26,15 +26,28 @@ const SettingsTab = ({ instance }: InstanceTabProps) => {
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const isMinecraft = instance.gameId === GameId.Minecraft;
 
-  const save = () => {
-    renameInstance(instance.id, name.trim() || instance.name);
-    toast.success('Instance settings saved');
+  const save = async () => {
+    const memoryMb = Number(memory);
+    if (!Number.isInteger(memoryMb)) {
+      toast.error('Memory must be a whole number');
+      return;
+    }
+    try {
+      await updateInstance({ memoryMb, javaArgs, id: instance.id, name: name.trim() || instance.name });
+      toast.success('Instance settings saved');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not save instance settings'));
+    }
   };
 
-  const remove = () => {
-    deleteInstance(instance.id);
-    toast.success('Instance deleted');
-    navigate('/library');
+  const remove = async () => {
+    try {
+      await deleteInstance(instance.id);
+      toast.success('Instance deleted');
+      navigate('/library');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not delete the instance'));
+    }
   };
 
   return (
@@ -49,12 +62,6 @@ const SettingsTab = ({ instance }: InstanceTabProps) => {
             <Label htmlFor="inst-name">Name</Label>
             <Input value={name} id="inst-name" onChange={(e) => setName(e.target.value)} />
           </div>
-          <SwitchRow defaultChecked description="Reopens when the game exits." label="Close launcher when the game starts" />
-          <SwitchRow
-            defaultChecked={false}
-            label="Check for mod updates on launch"
-            description="Only safe updates are applied automatically."
-          />
         </CardContent>
       </Card>
 
@@ -101,7 +108,11 @@ const SettingsTab = ({ instance }: InstanceTabProps) => {
       <Card className="border-destructive/30">
         <CardHeader>
           <CardTitle>Danger zone</CardTitle>
-          <CardDescription>Deleting removes the folder, mods and saves.</CardDescription>
+          <CardDescription>
+            {instance.location.kind === 'external'
+              ? 'Deleting removes this instance from ModSync without deleting the linked folder.'
+              : 'Deleting removes the folder, mods and saves.'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
@@ -118,22 +129,13 @@ const SettingsTab = ({ instance }: InstanceTabProps) => {
         confirmLabel="Delete"
         onOpenChange={setConfirmDelete}
         title={`Delete "${instance.name}"?`}
-        description="This cannot be undone."
+        description={
+          instance.location.kind === 'external'
+            ? 'The linked folder will remain on disk.'
+            : 'The managed instance folder will be permanently deleted.'
+        }
       />
     </div>
-  );
-};
-
-export const SwitchRow = ({ label, description, defaultChecked }: SwitchRowProps) => {
-  const [checked, setChecked] = React.useState(defaultChecked ?? false);
-  return (
-    <label className="flex items-center gap-4">
-      <span className="flex flex-1 flex-col">
-        <span className="text-sm font-medium">{label}</span>
-        {description && <span className="text-xs text-muted-foreground">{description}</span>}
-      </span>
-      <Switch checked={checked} onCheckedChange={setChecked} />
-    </label>
   );
 };
 

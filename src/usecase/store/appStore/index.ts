@@ -4,11 +4,15 @@ import type { DownloadItem } from '~/domain/interfaces/download.interface';
 
 import { create } from 'zustand';
 
+import { GAMES } from '~/usecase/mock/games';
 import { PROJECTS } from '~/usecase/mock/projects';
-import { SETTINGS } from '~/usecase/mock/settings';
 import { DOWNLOADS } from '~/usecase/mock/downloads';
 import { uid, wait } from '~/usecase/util/formatUtils';
+import { catalogService } from '~/usecase/service/catalog';
+import { projectService } from '~/usecase/service/project';
 import { instanceService } from '~/usecase/service/instance';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
+import { settingsService, DEFAULT_SETTINGS } from '~/usecase/service/settings';
 import { GameId, DownloadKind, UpdateStatus, DownloadStatus } from '~/domain/enums/provider.enum';
 
 const patchInstance = (instances: Array<Instance>, id: string, fn: (i: Instance) => Instance) =>
@@ -37,27 +41,22 @@ const finishDownload = (d: DownloadItem): DownloadItem => ({
 
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
+  games: GAMES,
   instances: [],
-  settings: SETTINGS,
+  loadError: null,
   downloads: DOWNLOADS,
   createInstanceOpen: false,
+  settings: DEFAULT_SETTINGS,
   selectedGameId: GameId.Minecraft,
 
   setSelectedGame: (selectedGameId) => set({ selectedGameId }),
 
   setCreateInstanceOpen: (createInstanceOpen) => set({ createInstanceOpen }),
 
-  updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
-
-  deleteInstance: (instanceId) => set((s) => ({ instances: s.instances.filter((i) => i.id !== instanceId) })),
-
-  hydrate: async () => {
-    const instances = await instanceService.list();
-    set({ instances, ready: true });
+  deleteInstance: async (instanceId) => {
+    await instanceService.delete(instanceId);
+    set((s) => ({ instances: s.instances.filter((i) => i.id !== instanceId) }));
   },
-
-  renameInstance: (instanceId, name) =>
-    set((s) => ({ instances: patchInstance(s.instances, instanceId, (i) => ({ ...i, name })) })),
 
   cancelDownload: (id) =>
     set((s) => ({
@@ -66,6 +65,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   createInstance: async (input) => {
     const instance = await instanceService.create(input);
+    set((s) => ({ instances: [instance, ...s.instances] }));
+    return instance;
+  },
+
+  duplicateInstance: async (instanceId) => {
+    const copy = await instanceService.duplicate(instanceId);
+    set((s) => ({ instances: [copy, ...s.instances] }));
+    return copy;
+  },
+
+  importInstance: async (input, path) => {
+    const instance = await instanceService.import(input, path);
     set((s) => ({ instances: [instance, ...s.instances] }));
     return instance;
   },
@@ -99,12 +110,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       )
     })),
 
-  duplicateInstance: async (instanceId) => {
-    const source = get().instances.find((i) => i.id === instanceId);
-    if (!source) throw new Error('Instance not found');
-    const copy = await instanceService.duplicate(source);
-    set((s) => ({ instances: [copy, ...s.instances] }));
-    return copy;
+  updateInstance: async (input) => {
+    const instance = await instanceService.update(input);
+    set((s) => ({ instances: s.instances.map((current) => (current.id === instance.id ? instance : current)) }));
+    return instance;
+  },
+
+  updateSettings: async (patch) => {
+    const previous = get().settings;
+    const settings = { ...previous, ...patch };
+    set({ settings });
+    try {
+      return await settingsService.save(settings);
+    } catch (error) {
+      if (get().settings === settings) set({ settings: previous });
+      throw error;
+    }
   },
 
   changeModVersion: (instanceId, projectId, version) =>
@@ -122,6 +143,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         )
       }))
     })),
+
+  hydrate: async () => {
+    set({ ready: false, loadError: null });
+    try {
+      const [catalog, instances, settings] = await Promise.all([
+        catalogService.get(),
+        instanceService.list(),
+        settingsService.get()
+      ]);
+      projectService.setGames(catalog.games);
+      set({ settings, instances, ready: true, games: catalog.games });
+    } catch (error) {
+      set({ ready: true, loadError: getErrorMessage(error, 'Could not load ModSync data') });
+    }
+  },
 
   playInstance: async (instanceId) => {
     const instance = get().instances.find((i) => i.id === instanceId);

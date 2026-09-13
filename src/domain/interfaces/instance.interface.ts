@@ -34,6 +34,7 @@ export interface Instance {
   gameId: GameId;
   loader: LoaderId;
   memoryMb: number;
+  schemaVersion: 1;
   createdAt: string;
   iconColor: string;
   updatedAt: string;
@@ -46,6 +47,7 @@ export interface Instance {
   lastPlayed: null | string;
   mods: Array<InstalledMod>;
   configs: Array<ConfigFile>;
+  location: InstanceLocation;
 }
 
 export interface InstanceLocation {
@@ -72,6 +74,13 @@ export interface InstanceManifest {
   lastPlayed: null | string;
   mods: Array<InstalledMod>;
   location: InstanceLocation;
+}
+
+export interface UpdateInstanceInput {
+  id: string;
+  name: string;
+  memoryMb: number;
+  javaArgs?: string;
 }
 
 export interface CreateInstanceInput {

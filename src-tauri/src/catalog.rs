@@ -95,6 +95,17 @@ pub struct Catalog {
     pub providers: Vec<ProviderMeta>,
 }
 
+pub fn supports_loader(game_id: GameId, loader_id: LoaderId) -> bool {
+    match game_id {
+        GameId::Minecraft => matches!(
+            loader_id,
+            LoaderId::Vanilla | LoaderId::Fabric | LoaderId::Forge | LoaderId::NeoForge
+        ),
+        GameId::LethalCompany | GameId::Valheim => loader_id == LoaderId::BepInEx,
+        GameId::VintageStory => loader_id == LoaderId::Vanilla,
+    }
+}
+
 const CAPABILITIES: GameCapabilities = GameCapabilities {
     launch: true,
     install: true,
@@ -111,7 +122,12 @@ pub fn get_catalog() -> Catalog {
                 name: "Minecraft".into(),
                 color: "#5b8c3a".into(),
                 ecosystem_label: "Modrinth + CurseForge".into(),
-                versions: vec!["1.21.4".into(), "1.21.1".into(), "1.20.1".into()],
+                versions: [
+                    "1.21.4", "1.21.1", "1.21", "1.20.6", "1.20.4", "1.20.1", "1.19.2", "1.18.2",
+                    "1.16.5", "1.12.2",
+                ]
+                .map(String::from)
+                .into(),
                 loaders: vec![
                     GameLoader {
                         id: LoaderId::Vanilla,
@@ -148,7 +164,9 @@ pub fn get_catalog() -> Catalog {
                 name: "Valheim".into(),
                 color: "#b08a4a".into(),
                 ecosystem_label: "Thunderstore".into(),
-                versions: vec!["0.219.16".into(), "0.219.13".into()],
+                versions: ["0.219.16", "0.219.13", "0.218.21", "0.217.46"]
+                    .map(String::from)
+                    .into(),
                 loaders: vec![GameLoader {
                     id: LoaderId::BepInEx,
                     name: "BepInEx".into(),
@@ -163,7 +181,9 @@ pub fn get_catalog() -> Catalog {
                 name: "Vintage Story".into(),
                 color: "#7a6a4d".into(),
                 ecosystem_label: "ModDB".into(),
-                versions: vec!["1.20.4".into(), "1.20.1".into()],
+                versions: ["1.20.4", "1.20.1", "1.19.8", "1.19.4", "1.18.15"]
+                    .map(String::from)
+                    .into(),
                 loaders: vec![GameLoader {
                     id: LoaderId::Vanilla,
                     name: "Built-in".into(),
@@ -178,7 +198,7 @@ pub fn get_catalog() -> Catalog {
                 name: "Lethal Company".into(),
                 color: "#c9532f".into(),
                 ecosystem_label: "Thunderstore".into(),
-                versions: vec!["v69".into(), "v64".into()],
+                versions: ["v69", "v64", "v56", "v50"].map(String::from).into(),
                 loaders: vec![GameLoader {
                     id: LoaderId::BepInEx,
                     name: "BepInEx".into(),
@@ -229,6 +249,20 @@ pub fn get_catalog() -> Catalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn supported_loader_matrix_accepts_every_v1_game() {
+        let supported = [
+            (GameId::Minecraft, LoaderId::Fabric),
+            (GameId::LethalCompany, LoaderId::BepInEx),
+            (GameId::Valheim, LoaderId::BepInEx),
+            (GameId::VintageStory, LoaderId::Vanilla),
+        ];
+
+        assert!(supported
+            .into_iter()
+            .all(|(game, loader)| supports_loader(game, loader)));
+    }
 
     #[test]
     fn catalog_contains_only_confirmed_v1_games_and_loaders() {

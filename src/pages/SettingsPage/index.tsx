@@ -14,6 +14,8 @@ import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
 import PageHeader from '~/components/commons/PageHeader';
 import { projectService } from '~/usecase/service/project';
+import { filesystemService } from '~/usecase/service/filesystem';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '~/components/ui/card';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
@@ -25,7 +27,13 @@ const SettingsPage = () => {
   const section = SETTINGS_SECTIONS.find((s) => s.toLowerCase() === raw) ?? 'General';
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
-  const patch = (p: Partial<AppSettings>) => updateSettings(p);
+  const patch = async (next: Partial<AppSettings>) => {
+    try {
+      await updateSettings(next);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not save settings'));
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -55,6 +63,20 @@ const SettingsPage = () => {
 };
 
 const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
+  const browseGamePath = async (gameId: AppSettings['gamePaths'][number]['gameId']) => {
+    try {
+      const path = await filesystemService.chooseDirectory();
+      if (!path) return;
+      await patch({
+        gamePaths: settings.gamePaths.map((gamePath) =>
+          gamePath.gameId === gameId ? { ...gamePath, path, detected: false } : gamePath
+        )
+      });
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not select the game folder'));
+    }
+  };
+
   if (section === 'General') {
     return (
       <Card>
@@ -149,17 +171,17 @@ const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
                   <span className="text-sm font-medium">{game.name}</span>
                   <span className="truncate font-mono text-xs text-muted-foreground">{gp.path || 'Not configured'}</span>
                 </span>
-                {gp.detected ? (
+                {gp.path ? (
                   <Badge className="gap-1 bg-primary/10 text-primary">
                     <Check />
-                    Detected
+                    {gp.detected ? 'Detected' : 'Configured'}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-muted-foreground">
                     Missing
                   </Badge>
                 )}
-                <Button size="sm" variant="outline" onClick={() => toast.info(`Folder picker for ${game.name}`)}>
+                <Button size="sm" variant="outline" onClick={() => browseGamePath(gp.gameId)}>
                   <FolderOpen data-icon="inline-start" />
                   Browse
                 </Button>

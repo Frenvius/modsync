@@ -6,9 +6,9 @@ import React from 'react';
 import { Check, Search } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
-import { GAMES } from '~/usecase/mock/games';
 import { Button } from '~/components/ui/button';
 import GameIcon from '~/components/commons/GameIcon';
+import { useAppStore } from '~/usecase/store/appStore';
 import { ProviderId } from '~/domain/enums/provider.enum';
 import {
   Command,
@@ -23,8 +23,9 @@ import {
 import { FEATURED_GAMES } from './constants';
 
 const GameStep = ({ selected, onSelect }: GameStepProps) => {
+  const games = useAppStore((state) => state.games);
   const [pickerOpen, setPickerOpen] = React.useState(false);
-  const thunderstoreGames = GAMES.filter((g) => g.providers.includes(ProviderId.Thunderstore));
+  const thunderstoreGames = games.filter((game) => game.providers.includes(ProviderId.Thunderstore));
 
   const pickFromList = (gameId: GameId) => {
     setPickerOpen(false);
@@ -34,7 +35,7 @@ const GameStep = ({ selected, onSelect }: GameStepProps) => {
   return (
     <div className="grid grid-cols-2 gap-3">
       {FEATURED_GAMES.map((id) => {
-        const game = GAMES.find((g) => g.id === id)!;
+        const game = games.find((candidate) => candidate.id === id)!;
         const active = selected === id;
         return (
           <button

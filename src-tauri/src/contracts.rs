@@ -122,6 +122,35 @@ pub struct CommandError {
     pub details: Option<String>,
 }
 
+impl CommandError {
+    pub fn new(code: CommandErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            retryable: false,
+            details: None,
+        }
+    }
+
+    pub fn io(message: impl Into<String>, error: &std::io::Error) -> Self {
+        let code = match error.kind() {
+            std::io::ErrorKind::NotFound => CommandErrorCode::NotFound,
+            std::io::ErrorKind::PermissionDenied => CommandErrorCode::PermissionDenied,
+            _ => CommandErrorCode::Io,
+        };
+
+        Self {
+            code,
+            message: message.into(),
+            retryable: matches!(
+                error.kind(),
+                std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock
+            ),
+            details: Some(error.to_string()),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OperationStatus {

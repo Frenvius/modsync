@@ -4,7 +4,6 @@ import React from 'react';
 
 import { Trash2, Download } from 'lucide-react';
 
-import { GAMES } from '~/usecase/mock/games';
 import { Button } from '~/components/ui/button';
 import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
@@ -17,7 +16,8 @@ import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrig
 import { ALL_GAMES, RUNNING_DOWNLOAD_STATUSES } from './constants';
 
 const DownloadsPage = () => {
-  const downloads = useAppStore((s) => s.downloads);
+  const games = useAppStore((state) => state.games);
+  const downloads = useAppStore((state) => state.downloads);
   const clearCompleted = useAppStore((s) => s.clearCompleted);
   const [gameId, setGameId] = React.useState<GameId | typeof ALL_GAMES>(ALL_GAMES);
   const visibleDownloads = gameId === ALL_GAMES ? downloads : downloads.filter((download) => download.gameId === gameId);
@@ -38,7 +38,7 @@ const DownloadsPage = () => {
           <SelectContent>
             <SelectGroup>
               <SelectItem value={ALL_GAMES}>All games</SelectItem>
-              {GAMES.map((game) => (
+              {games.map((game) => (
                 <SelectItem key={game.id} value={game.id}>
                   <GameIcon size="sm" gameId={game.id} />
                   {game.name}

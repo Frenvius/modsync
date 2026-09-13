@@ -9,7 +9,7 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export interface SectionBodyProps {
   settings: AppSettings;
   section: SettingsSection;
-  patch: (patch: Partial<AppSettings>) => void;
+  patch: (patch: Partial<AppSettings>) => Promise<void>;
 }
 
 export interface RowProps {
