@@ -1,5 +1,5 @@
+import type { RowProps, SectionBodyProps } from './types';
 import type { AppSettings } from '~/domain/interfaces/settings.interface';
-import type { RowProps, ToggleRowProps, SectionBodyProps } from './types';
 
 import { useSearchParams } from 'react-router-dom';
 
@@ -9,7 +9,6 @@ import { Check, FolderOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
-import { Switch } from '~/components/ui/switch';
 import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
 import PageHeader from '~/components/commons/PageHeader';
@@ -17,14 +16,13 @@ import { projectService } from '~/usecase/service/project';
 import { filesystemService } from '~/usecase/service/filesystem';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '~/components/ui/card';
-import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
 import { SETTINGS_SECTIONS } from './constants';
 
 const SettingsPage = () => {
   const [params, setParams] = useSearchParams();
-  const raw = params.get('section') ?? 'general';
-  const section = SETTINGS_SECTIONS.find((s) => s.toLowerCase() === raw) ?? 'General';
+  const raw = params.get('section') ?? 'games';
+  const section = SETTINGS_SECTIONS.find((s) => s.toLowerCase() === raw) ?? 'Games';
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const patch = async (next: Partial<AppSettings>) => {
@@ -44,7 +42,7 @@ const SettingsPage = () => {
             <button
               key={s}
               type="button"
-              onClick={() => setParams(s === 'General' ? {} : { section: s.toLowerCase() })}
+              onClick={() => setParams(s === 'Games' ? {} : { section: s.toLowerCase() })}
               className={cn(
                 'rounded-md px-2.5 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
                 s === section && 'bg-accent text-foreground'
@@ -76,83 +74,6 @@ const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
       toast.error(getErrorMessage(error, 'Could not select the game folder'));
     }
   };
-
-  if (section === 'General') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>General</CardTitle>
-          <CardDescription>Startup and window behaviour.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <Row label="Language">
-            <Select value={settings.language} onValueChange={(language) => patch({ language })}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="en-US">English (US)</SelectItem>
-                  <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
-                  <SelectItem value="es-ES">Español</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Row>
-          <ToggleRow
-            label="Launch on system startup"
-            checked={settings.launchOnStartup}
-            onChange={(launchOnStartup) => patch({ launchOnStartup })}
-          />
-          <ToggleRow
-            label="Close to tray"
-            checked={settings.closeToTray}
-            onChange={(closeToTray) => patch({ closeToTray })}
-            description="Keep downloads running in the background."
-          />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (section === 'Appearance') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-          <CardDescription>Theme and accent.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <Row label="Theme">
-            <Select value={settings.theme} onValueChange={(theme) => patch({ theme: theme as AppSettings['theme'] })}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="dark">Dark</SelectItem>
-                  <SelectItem value="system">System</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Row>
-          <Row label="Accent hue">
-            <div className="flex items-center gap-3">
-              <input
-                min={0}
-                max={360}
-                type="range"
-                value={settings.accentHue}
-                className="w-44 accent-primary"
-                onChange={(e) => patch({ accentHue: Number(e.target.value) })}
-              />
-              <span className="size-6 rounded-full border" style={{ background: `oklch(0.8 0.17 ${settings.accentHue})` }} />
-            </div>
-          </Row>
-        </CardContent>
-      </Card>
-    );
-  }
 
   if (section === 'Games') {
     return (
@@ -201,13 +122,13 @@ const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Row label="Reset provider caches" description="Forces a full re-index on next search.">
-          <Button size="sm" variant="outline" onClick={() => toast.success('Caches reset')}>
-            Reset
+          <Button disabled size="sm" variant="outline">
+            Not available yet
           </Button>
         </Row>
         <Row label="Export diagnostics" description="Zip with logs and instance manifests.">
-          <Button size="sm" variant="outline" onClick={() => toast.success('Diagnostics exported')}>
-            Export
+          <Button disabled size="sm" variant="outline">
+            Not available yet
           </Button>
         </Row>
       </CardContent>
@@ -223,12 +144,6 @@ const Row = ({ label, children, description }: RowProps) => (
     </span>
     {children}
   </div>
-);
-
-const ToggleRow = ({ label, checked, onChange, description }: ToggleRowProps) => (
-  <Row label={label} description={description}>
-    <Switch checked={checked} onCheckedChange={onChange} />
-  </Row>
 );
 
 export default SettingsPage;

@@ -1,8 +1,10 @@
 pub mod catalog;
+mod configuration;
 mod content;
 pub mod contracts;
 mod downloads;
 mod instances;
+mod launch;
 mod persistence;
 mod providers;
 mod settings;
@@ -30,6 +32,14 @@ pub fn run() {
             instances::update_instance,
             instances::duplicate_instance,
             instances::delete_instance,
+            launch::launch_instance,
+            launch::list_java_runtimes,
+            launch::list_process_logs,
+            launch::logs_directory,
+            configuration::list_config_files,
+            configuration::read_config_file,
+            configuration::write_config_file,
+            configuration::config_directory,
             content::preview_install,
             content::preview_update,
             content::install_content,

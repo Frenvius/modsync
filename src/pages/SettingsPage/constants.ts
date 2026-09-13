@@ -1,1 +1,1 @@
-export const SETTINGS_SECTIONS = ['General', 'Appearance', 'Games', 'Advanced'] as const;
+export const SETTINGS_SECTIONS = ['Games', 'Advanced'] as const;

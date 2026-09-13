@@ -4,55 +4,109 @@ import type { ConfigFile } from '~/domain/interfaces/instance.interface';
 import React from 'react';
 
 import { toast } from 'sonner';
-import { Save, FileCode, FolderOpen } from 'lucide-react';
+import { Save, Loader2, FileCode, FolderOpen } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import EmptyState from '~/components/commons/EmptyState';
+import { filesystemService } from '~/usecase/service/filesystem';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
+import { configurationService } from '~/usecase/service/configuration';
 import { formatBytes, formatRelative } from '~/usecase/util/formatUtils';
 
-const sampleContent = (file: ConfigFile) => {
-  if (file.format === 'json') return '{\n  "enabled": true,\n  "renderDistance": 12,\n  "vsync": false\n}';
-  if (file.format === 'toml') return '[general]\nenabled = true\n\n[client]\nshowOverlay = true\nscale = 1.0';
-  if (file.format === 'properties') return 'enabled=true\nlogLevel=info\nmaxThreads=4';
-  return '[General]\n## Enable the mod\nEnabled = true\n\n[Logging]\nLogLevel = Info';
-};
-
 const ConfigTab = ({ instance }: InstanceTabProps) => {
-  const [active, setActive] = React.useState<undefined | ConfigFile>(instance.configs[0]);
-  const [content, setContent] = React.useState(active ? sampleContent(active) : '');
+  const [files, setFiles] = React.useState<Array<ConfigFile>>([]);
+  const [active, setActive] = React.useState<ConfigFile>();
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [content, setContent] = React.useState('');
   const [dirty, setDirty] = React.useState(false);
 
-  const openFile = (file: ConfigFile) => {
-    setActive(file);
-    setContent(sampleContent(file));
-    setDirty(false);
-  };
+  const openFile = React.useCallback(
+    async (file: ConfigFile) => {
+      try {
+        const value = await configurationService.read(instance.id, file.path);
+        setActive(file);
+        setContent(value);
+        setDirty(false);
+      } catch (error) {
+        toast.error(getErrorMessage(error, 'Could not read the configuration file'));
+      }
+    },
+    [instance.id]
+  );
 
-  const edit = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value);
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void configurationService
+      .list(instance.id)
+      .then(async (next) => {
+        if (cancelled) return;
+        setFiles(next);
+        if (next[0]) await openFile(next[0]);
+      })
+      .catch((error) => toast.error(getErrorMessage(error, 'Could not list configuration files')))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [instance.id, openFile]);
+
+  const edit = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setContent(event.target.value);
     setDirty(true);
   };
 
-  const save = () => {
-    setDirty(false);
-    toast.success(`${active?.path} saved`);
+  const selectFile = (file: ConfigFile) => {
+    if (dirty && !window.confirm('Discard unsaved configuration changes?')) return;
+    void openFile(file);
   };
 
-  if (instance.configs.length === 0) {
-    return <EmptyState icon={FileCode} title="No config files" description="Config files appear after the first launch." />;
+  const save = async () => {
+    if (!active) return;
+    setSaving(true);
+    try {
+      const updated = await configurationService.write(instance.id, active.path, content);
+      setFiles((current) => current.map((file) => (file.path === updated.path ? updated : file)));
+      setActive(updated);
+      setDirty(false);
+      toast.success('Configuration saved');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not save the configuration file'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openDirectory = async () => {
+    try {
+      await filesystemService.openDirectory(await configurationService.directory(instance.id));
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not open the configuration folder'));
+    }
+  };
+
+  if (loading) {
+    return <EmptyState icon={Loader2} title="Loading configuration files" description="Scanning the instance configuration." />;
+  }
+
+  if (files.length === 0) {
+    return (
+      <EmptyState icon={FileCode} title="No config files" description="Config files appear after a mod or game creates them." />
+    );
   }
 
   return (
     <div className="grid grid-cols-[280px_minmax(0,1fr)] gap-4">
       <div className="flex flex-col gap-1 rounded-lg border bg-card p-1">
-        {instance.configs.map((file) => (
+        {files.map((file) => (
           <button
             type="button"
             key={file.path}
-            onClick={() => openFile(file)}
+            onClick={() => selectFile(file)}
             className={cn(
               'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent',
               active?.path === file.path && 'bg-accent'
@@ -67,7 +121,7 @@ const ConfigTab = ({ instance }: InstanceTabProps) => {
             </span>
           </button>
         ))}
-        <Button size="sm" variant="ghost" className="mt-1 justify-start" onClick={() => toast.info('Opened config folder')}>
+        <Button size="sm" variant="ghost" onClick={openDirectory} className="mt-1 justify-start">
           <FolderOpen data-icon="inline-start" />
           Open folder
         </Button>
@@ -75,12 +129,14 @@ const ConfigTab = ({ instance }: InstanceTabProps) => {
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <span className="font-mono text-sm">{active?.path}</span>
-          <Badge variant="outline" className="uppercase">
-            {active?.format}
-          </Badge>
+          {active && (
+            <Badge variant="outline" className="uppercase">
+              {active.format}
+            </Badge>
+          )}
           <span className="flex-1" />
-          <Button size="sm" onClick={save} disabled={!dirty}>
-            <Save data-icon="inline-start" />
+          <Button size="sm" onClick={save} disabled={!dirty || saving}>
+            {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
             Save
           </Button>
         </div>
@@ -88,6 +144,8 @@ const ConfigTab = ({ instance }: InstanceTabProps) => {
           value={content}
           onChange={edit}
           spellCheck={false}
+          disabled={!active}
+          aria-label="Configuration file content"
           className="min-h-[360px] resize-y font-mono text-xs leading-relaxed"
         />
       </div>

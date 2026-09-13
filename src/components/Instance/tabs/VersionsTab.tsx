@@ -16,7 +16,7 @@ const VersionsTab = ({ instance }: InstanceTabProps) => {
           <Badge className="bg-primary/10 text-primary">Installed</Badge>
         </div>
         <p className="text-xs text-muted-foreground">
-          {game.name} version changes become available after safe content replacement is implemented.
+          {game.name} runtime files are verified and prepared when this instance launches.
         </p>
       </div>
       <aside className="flex flex-col gap-3 rounded-lg border bg-card p-4">

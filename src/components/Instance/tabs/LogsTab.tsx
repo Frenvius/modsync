@@ -1,4 +1,5 @@
 import type { InstanceTabProps } from '~/components/Instance/types';
+import type { LogLine } from '~/domain/interfaces/instance.interface';
 
 import React from 'react';
 
@@ -8,24 +9,72 @@ import { Copy, ScrollText, FolderOpen } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { Button } from '~/components/ui/button';
 import SearchBar from '~/components/commons/SearchBar';
+import { launchService } from '~/usecase/service/launch';
 import EmptyState from '~/components/commons/EmptyState';
+import { filesystemService } from '~/usecase/service/filesystem';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group';
 import { LOG_LEVELS, LOG_LEVEL_CLASSES } from '~/components/Instance/constants';
 
 const LogsTab = ({ instance }: InstanceTabProps) => {
   const [query, setQuery] = React.useState('');
+  const [lines, setLines] = React.useState<Array<LogLine>>([]);
   const [levels, setLevels] = React.useState<Array<string>>(['info', 'warn', 'error']);
-  const lines = instance.logs.filter((l) => levels.includes(l.level) && l.message.toLowerCase().includes(query.toLowerCase()));
+  const visible = lines.filter((line) => levels.includes(line.level) && line.message.toLowerCase().includes(query.toLowerCase()));
+
+  React.useEffect(() => {
+    let disposed = false;
+    let unsubscribe: () => void = () => undefined;
+    void launchService
+      .onLog(instance.id, (line) => setLines((current) => [...current.slice(-4_999), line]))
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else unsubscribe = unlisten;
+      })
+      .catch((error) => toast.error(getErrorMessage(error, 'Could not stream process logs')));
+    void launchService
+      .logs(instance.id)
+      .then((stored) => {
+        if (disposed) return;
+        setLines((current) =>
+          Array.from(
+            current
+              .reduce(
+                (all, line) => all.set(`${line.timestamp}\0${line.level}\0${line.message}`, line),
+                new Map(stored.map((line) => [`${line.timestamp}\0${line.level}\0${line.message}`, line]))
+              )
+              .values()
+          ).slice(-5_000)
+        );
+      })
+      .catch((error) => toast.error(getErrorMessage(error, 'Could not load process logs')));
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [instance.id]);
 
   const copy = async () => {
-    await navigator.clipboard
-      .writeText(lines.map((l) => `[${l.timestamp}] [${l.level.toUpperCase()}] ${l.message}`).join('\n'))
-      .catch(() => undefined);
-    toast.success('Log copied');
+    try {
+      await navigator.clipboard.writeText(
+        visible.map((line) => `[${line.timestamp}] [${line.level.toUpperCase()}] ${line.message}`).join('\n')
+      );
+      toast.success('Log copied');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not copy the log'));
+    }
   };
 
-  if (instance.logs.length === 0) {
-    return <EmptyState icon={ScrollText} title="No logs yet" description="Launch the instance to generate a log." />;
+  const openDirectory = async () => {
+    try {
+      await filesystemService.openDirectory(await launchService.logsDirectory(instance.id));
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not open the logs folder'));
+    }
+  };
+
+  if (lines.length === 0) {
+    return <EmptyState icon={ScrollText} title="No logs yet" description="Launch the instance to generate a process log." />;
   }
 
   return (
@@ -33,9 +82,9 @@ const LogsTab = ({ instance }: InstanceTabProps) => {
       <div className="flex flex-wrap items-center gap-2">
         <SearchBar value={query} className="w-64" onChange={setQuery} placeholder="Filter log" />
         <ToggleGroup size="sm" value={levels} type="multiple" variant="outline" onValueChange={setLevels}>
-          {LOG_LEVELS.map((l) => (
-            <ToggleGroupItem key={l} value={l} className="uppercase">
-              {l}
+          {LOG_LEVELS.map((level) => (
+            <ToggleGroupItem key={level} value={level} className="uppercase">
+              {level}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
@@ -44,17 +93,23 @@ const LogsTab = ({ instance }: InstanceTabProps) => {
           <Copy data-icon="inline-start" />
           Copy
         </Button>
-        <Button size="sm" variant="outline" onClick={() => toast.info('Opened logs folder')}>
+        <Button size="sm" variant="outline" onClick={openDirectory}>
           <FolderOpen data-icon="inline-start" />
           Open folder
         </Button>
       </div>
-      <pre className="max-h-[520px] overflow-auto rounded-lg border bg-[oklch(0.12_0.005_160)] p-4 font-mono text-xs leading-relaxed">
-        {lines.map((l, i) => (
-          <div key={i} className={cn('flex gap-3', LOG_LEVEL_CLASSES[l.level])}>
-            <span className="shrink-0 text-muted-foreground/60">{l.timestamp.slice(11, 19)}</span>
-            <span className="w-12 shrink-0 uppercase">{l.level}</span>
-            <span className="whitespace-pre-wrap">{l.message}</span>
+      <span role="status" className="sr-only">
+        {lines.at(-1)?.message}
+      </span>
+      <pre
+        aria-label="Game process log"
+        className="max-h-[520px] overflow-auto rounded-lg border bg-[oklch(0.12_0.005_160)] p-4 font-mono text-xs leading-relaxed"
+      >
+        {visible.map((line, index) => (
+          <div key={`${line.timestamp}-${index}`} className={cn('flex gap-3', LOG_LEVEL_CLASSES[line.level])}>
+            <span className="shrink-0 text-muted-foreground/60">{line.timestamp.slice(11, 19)}</span>
+            <span className="w-12 shrink-0 uppercase">{line.level}</span>
+            <span className="whitespace-pre-wrap">{line.message}</span>
           </div>
         ))}
       </pre>

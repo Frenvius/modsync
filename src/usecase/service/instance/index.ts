@@ -7,7 +7,8 @@ import type {
 
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
-import { uid, wait } from '~/usecase/util/formatUtils';
+import { uid } from '~/usecase/util/formatUtils';
+import { launchService } from '~/usecase/service/launch';
 import { filesystemService } from '~/usecase/service/filesystem';
 
 const STORAGE_KEY = 'modsync.instances.v1';
@@ -92,9 +93,8 @@ class Service {
     await filesystemService.openDirectory(instance.location.path);
   }
 
-  async play(instance: Instance): Promise<void> {
-    await wait(800);
-    void instance;
+  async play(instance: Instance): Promise<Instance> {
+    return toInstance(await launchService.launch(instance.id));
   }
 
   private readBrowserInstances(): Array<Instance> {

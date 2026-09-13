@@ -1,5 +1,4 @@
 import type { AppState } from './types';
-import type { Instance } from '~/domain/interfaces/instance.interface';
 import type { DownloadItem } from '~/domain/interfaces/download.interface';
 
 import { create } from 'zustand';
@@ -14,9 +13,6 @@ import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { settingsService, DEFAULT_SETTINGS } from '~/usecase/service/settings';
 import { contentService, type OperationProgress } from '~/usecase/service/content';
 import { GameId, ProviderId, DownloadKind, DownloadStatus } from '~/domain/enums/provider.enum';
-
-const patchInstance = (instances: Array<Instance>, id: string, fn: (i: Instance) => Instance) =>
-  instances.map((i) => (i.id === id ? fn({ ...i, updatedAt: new Date().toISOString() }) : i));
 
 const newDownload = (
   id: string,
@@ -169,16 +165,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   playInstance: async (instanceId) => {
-    const instance = get().instances.find((i) => i.id === instanceId);
-    if (!instance) return;
-    await instanceService.play(instance);
-    set((s) => ({
-      instances: patchInstance(s.instances, instanceId, (i) => ({
-        ...i,
-        lastPlayed: new Date().toISOString(),
-        playtimeMinutes: i.playtimeMinutes + 1,
-        logs: [{ level: 'info', message: 'Game process started', timestamp: new Date().toISOString() }, ...i.logs]
-      }))
+    const instance = get().instances.find((candidate) => candidate.id === instanceId);
+    if (!instance) throw new Error('Instance not found');
+    const launched = await instanceService.play(instance);
+    set((state) => ({
+      instances: state.instances.map((current) =>
+        current.id === launched.id ? { ...launched, logs: current.logs, configs: current.configs } : current
+      )
     }));
   },
 

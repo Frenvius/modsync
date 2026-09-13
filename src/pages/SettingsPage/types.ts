@@ -17,10 +17,3 @@ export interface RowProps {
   description?: string;
   children: React.ReactNode;
 }
-
-export interface ToggleRowProps {
-  label: string;
-  checked: boolean;
-  description?: string;
-  onChange: (checked: boolean) => void;
-}
