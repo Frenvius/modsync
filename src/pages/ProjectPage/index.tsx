@@ -4,7 +4,7 @@ import type { Project, ProjectVersion } from '~/domain/interfaces/project.interf
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
-import { Heart, Clock, Loader2, Package, Download, ExternalLink } from 'lucide-react';
+import { Heart, Clock, Loader2, Package, Download, ExternalLink, AlertTriangle } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -14,10 +14,10 @@ import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';
 import { projectService } from '~/usecase/service/project';
 import ProjectIcon from '~/components/commons/ProjectIcon';
-import InstallDialog from '~/components/Mods/InstallDialog';
 import InstanceIcon from '~/components/commons/InstanceIcon';
 import { getProviderMeta } from '~/usecase/service/providers';
 import DependencyList from '~/components/Mods/DependencyList';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
 import { ProviderBadge, CompatibilityBadge } from '~/components/commons/Badges';
 import { formatDate, formatBytes, formatCompact, formatRelative } from '~/usecase/util/formatUtils';
@@ -28,18 +28,29 @@ const ProjectPage = () => {
   const navigate = useNavigate();
   const instances = useAppStore((s) => s.instances);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string>();
   const [project, setProject] = React.useState<Project | undefined>();
   const [versions, setVersions] = React.useState<Array<ProjectVersion>>([]);
-  const [installVersion, setInstallVersion] = React.useState<string | undefined>();
-  const [installOpen, setInstallOpen] = React.useState(false);
 
   React.useEffect(() => {
+    let cancelled = false;
+    setError(undefined);
     setLoading(true);
-    void Promise.all([projectService.getProject(projectId ?? ''), projectService.getVersions(projectId ?? '')]).then(([p, v]) => {
-      setProject(p);
-      setVersions(v);
-      setLoading(false);
-    });
+    void Promise.all([projectService.getProject(projectId ?? ''), projectService.getVersions(projectId ?? '')])
+      .then(([nextProject, nextVersions]) => {
+        if (cancelled) return;
+        setProject(nextProject);
+        setVersions(nextVersions);
+      })
+      .catch((loadError: unknown) => {
+        if (!cancelled) setError(getErrorMessage(loadError, 'The provider could not load this project.'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
   if (loading) {
@@ -53,7 +64,11 @@ const ProjectPage = () => {
   if (!project) {
     return (
       <div className="p-6">
-        <EmptyState icon={Package} title="Project not found">
+        <EmptyState
+          description={error}
+          icon={error ? AlertTriangle : Package}
+          title={error ? 'Provider unavailable' : 'Project not found'}
+        >
           <Button variant="outline" onClick={() => navigate('/discover')}>
             Back to Discover
           </Button>
@@ -66,11 +81,6 @@ const ProjectPage = () => {
   const game = projectService.getGame(project.gameId);
   const latest = versions[0];
   const sameGame = instances.filter((i) => i.gameId === project.gameId);
-
-  const openInstall = (version?: string) => {
-    setInstallVersion(version);
-    setInstallOpen(true);
-  };
 
   return (
     <div className="flex flex-col">
@@ -110,10 +120,6 @@ const ProjectPage = () => {
                 {provider.name}
               </a>
             </Button>
-            <Button onClick={() => openInstall()}>
-              <Download data-icon="inline-start" />
-              Install
-            </Button>
           </div>
         </div>
 
@@ -132,7 +138,10 @@ const ProjectPage = () => {
           </span>
           <span className="flex items-center gap-1.5">
             <Package className="size-4" />
-            latest <strong className="font-mono font-medium text-foreground">{project.latestVersion}</strong>
+            latest{' '}
+            <strong className="font-mono font-medium text-foreground">
+              {latest?.number || project.latestVersion || 'Unknown'}
+            </strong>
           </span>
         </div>
 
@@ -152,14 +161,14 @@ const ProjectPage = () => {
             </TabsContent>
 
             <TabsContent value="gallery" className="grid grid-cols-3 gap-3 pt-2">
-              {project.gallery.map((color, i) => (
-                <div
-                  key={color}
-                  className="flex aspect-video items-end rounded-lg border p-2 text-[11px] text-white/80"
-                  style={{ background: `linear-gradient(135deg, ${color}, color-mix(in oklch, ${color} 40%, black))` }}
-                >
-                  Screenshot {i + 1}
-                </div>
+              {project.gallery.map((image, index) => (
+                <img
+                  src={image}
+                  key={image}
+                  loading="lazy"
+                  alt={`${project.name} screenshot ${index + 1}`}
+                  className="aspect-video rounded-lg border object-cover"
+                />
               ))}
             </TabsContent>
 
@@ -174,7 +183,6 @@ const ProjectPage = () => {
                       <TableHead className="text-right">Downloads</TableHead>
                       <TableHead className="text-right">Size</TableHead>
                       <TableHead>Published</TableHead>
-                      <TableHead />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -193,11 +201,6 @@ const ProjectPage = () => {
                         <TableCell className="text-right tabular-nums">{formatCompact(v.downloads)}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatBytes(v.fileSize)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{formatDate(v.publishedAt)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button size="xs" variant="secondary" onClick={() => openInstall(v.number)}>
-                            Install
-                          </Button>
-                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -292,8 +295,6 @@ const ProjectPage = () => {
           </aside>
         </div>
       </div>
-
-      <InstallDialog project={project} open={installOpen} version={installVersion} onOpenChange={setInstallOpen} />
     </div>
   );
 };

@@ -11,6 +11,7 @@ import { uid, wait } from '~/usecase/util/formatUtils';
 import { catalogService } from '~/usecase/service/catalog';
 import { projectService } from '~/usecase/service/project';
 import { instanceService } from '~/usecase/service/instance';
+import { providerService } from '~/usecase/service/providers';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { settingsService, DEFAULT_SETTINGS } from '~/usecase/service/settings';
 import { GameId, DownloadKind, UpdateStatus, DownloadStatus } from '~/domain/enums/provider.enum';
@@ -144,21 +145,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
     })),
 
-  hydrate: async () => {
-    set({ ready: false, loadError: null });
-    try {
-      const [catalog, instances, settings] = await Promise.all([
-        catalogService.get(),
-        instanceService.list(),
-        settingsService.get()
-      ]);
-      projectService.setGames(catalog.games);
-      set({ settings, instances, ready: true, games: catalog.games });
-    } catch (error) {
-      set({ ready: true, loadError: getErrorMessage(error, 'Could not load ModSync data') });
-    }
-  },
-
   playInstance: async (instanceId) => {
     const instance = get().instances.find((i) => i.id === instanceId);
     if (!instance) return;
@@ -171,6 +157,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         logs: [{ level: 'info', message: 'Game process started', timestamp: new Date().toISOString() }, ...i.logs]
       }))
     }));
+  },
+
+  hydrate: async () => {
+    set({ ready: false, loadError: null });
+    try {
+      const [catalog, instances, settings] = await Promise.all([
+        catalogService.get(),
+        instanceService.list(),
+        settingsService.get()
+      ]);
+      projectService.setGames(catalog.games);
+      providerService.setProviders(catalog.providers);
+      set({ settings, instances, ready: true, games: catalog.games });
+    } catch (error) {
+      set({ ready: true, loadError: getErrorMessage(error, 'Could not load ModSync data') });
+    }
   },
 
   toggleMod: (instanceId, projectId, enabled) =>

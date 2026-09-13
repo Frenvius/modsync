@@ -6,14 +6,15 @@ import type {
   SearchQuery,
   SearchResult,
   ProjectVersion,
+  ProviderFailure,
   CompatibilityIssue,
   CompatibilityReport
 } from '~/domain/interfaces/project.interface';
 
 import { GAMES, LOADER_NAMES } from '~/usecase/mock/games';
-import { providerRegistry } from '~/usecase/service/providers';
-import { LoaderId, DependencyType } from '~/domain/enums/provider.enum';
-import { PROJECTS, PROJECT_VERSIONS, CATEGORIES_BY_GAME } from '~/usecase/mock/projects';
+import { DependencyType } from '~/domain/enums/provider.enum';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
+import { getProviderMeta, providerService } from '~/usecase/service/providers';
 
 export interface DependencyResolution {
   optional: Array<Dependency>;
@@ -22,8 +23,15 @@ export interface DependencyResolution {
   alreadyInstalled: Array<Dependency>;
 }
 
+export interface CategoryResult {
+  stale: boolean;
+  items: Array<string>;
+  providerErrors: Array<ProviderFailure>;
+}
+
 class Service {
   private games = GAMES;
+  private versions = new Map<string, Array<ProjectVersion>>();
 
   setGames(games: Array<Game>): void {
     this.games = games;
@@ -33,34 +41,64 @@ class Service {
     return this.games.find((game) => game.id === gameId) ?? this.games[0];
   }
 
-  getCategories(gameId: Game['id']): Array<string> {
-    return CATEGORIES_BY_GAME[gameId];
+  async getCategories(gameId: Game['id']): Promise<CategoryResult> {
+    const game = this.getGame(gameId);
+    const results = await Promise.allSettled(
+      game.providers.map((providerId) => providerService.getCategories(providerId, gameId))
+    );
+    const providerErrors: Array<ProviderFailure> = [];
+    const items = new Set<string>();
+    let stale = false;
+    results.forEach((result, index) => {
+      const providerId = game.providers[index];
+      if (result.status === 'rejected') {
+        providerErrors.push({
+          providerId,
+          message: `${getProviderMeta(providerId).name}: ${getErrorMessage(result.reason, 'categories unavailable')}`
+        });
+        return;
+      }
+      stale ||= result.value.stale;
+      result.value.items.forEach((item) => items.add(item));
+    });
+    return { stale, providerErrors, items: [...items].sort() };
   }
 
   async search(query: SearchQuery): Promise<SearchResult> {
     const game = this.getGame(query.gameId);
-    const providers = (query.providers?.length ? query.providers : game.providers).filter((p) => game.providers.includes(p));
-    const results = await Promise.all(providers.map((id) => providerRegistry[id].search(query)));
-    const items = results.flatMap((r) => r.items);
+    const providers = (query.providers?.length ? query.providers : game.providers).filter((provider) =>
+      game.providers.includes(provider)
+    );
+    const results = await Promise.allSettled(providers.map((providerId) => providerService.search(providerId, query)));
+    const providerErrors: Array<ProviderFailure> = [];
+    const items: Array<Project> = [];
+    let total = 0;
+    let stale = false;
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        providerErrors.push({
+          providerId: providers[index],
+          message: `${getProviderMeta(providers[index]).name}: ${getErrorMessage(result.reason, 'search unavailable')}`
+        });
+        return;
+      }
+      items.push(...result.value.items);
+      total += result.value.total;
+      stale ||= result.value.stale;
+    });
     if (query.sort === 'downloads' || !query.sort) items.sort((a, b) => b.downloads - a.downloads);
     if (query.sort === 'updated' || query.sort === 'newest') items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return { items, total: items.length };
+    return { items, total, stale, providerErrors };
   }
 
-  async getProject(projectId: string): Promise<Project | undefined> {
-    const local = PROJECTS.find((p) => p.id === projectId);
-    if (!local) return undefined;
-    return providerRegistry[local.provider.id].getProject(projectId);
+  async getProject(projectId: string): Promise<Project> {
+    return providerService.getProject(projectId);
   }
 
   async getVersions(projectId: string): Promise<Array<ProjectVersion>> {
-    const local = PROJECTS.find((p) => p.id === projectId);
-    if (!local) return [];
-    return providerRegistry[local.provider.id].getVersions(projectId);
-  }
-
-  async getFeatured(): Promise<Array<Project>> {
-    return [...PROJECTS].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6);
+    const versions = await providerService.getVersions(projectId);
+    this.versions.set(projectId, versions);
+    return versions;
   }
 
   checkCompatibility(project: Project, instance: Instance): CompatibilityReport {
@@ -73,15 +111,15 @@ class Service {
       });
       return { issues, compatible: false };
     }
-    if (project.loaders.length > 0 && instance.loader !== LoaderId.Vanilla && !project.loaders.includes(instance.loader)) {
+    if (project.loaders.length > 0 && !project.loaders.includes(instance.loader)) {
       issues.push({
         kind: 'loader',
         severity: 'error',
         remediation: 'Create a new instance with a supported loader',
-        message: `Requires ${project.loaders.map((l) => LOADER_NAMES[l]).join(' or ')}. This instance uses ${LOADER_NAMES[instance.loader]}.`
+        message: `Requires ${project.loaders.map((loader) => LOADER_NAMES[loader]).join(' or ')}. This instance uses ${LOADER_NAMES[instance.loader]}.`
       });
     }
-    if (!project.gameVersions.includes(instance.gameVersion)) {
+    if (project.gameVersions.length > 0 && !project.gameVersions.includes(instance.gameVersion)) {
       issues.push({
         kind: 'version',
         severity: 'warning',
@@ -90,32 +128,42 @@ class Service {
       });
     }
     const conflicts = this.latestDependencies(project).filter(
-      (d) => d.type === DependencyType.Incompatible && instance.mods.some((m) => m.projectId === d.projectId && m.enabled)
+      (dependency) =>
+        dependency.type === DependencyType.Incompatible &&
+        instance.mods.some((mod) => mod.projectId === dependency.projectId && mod.enabled)
     );
-    for (const c of conflicts) {
+    for (const conflict of conflicts) {
       issues.push({
         kind: 'conflict',
         severity: 'error',
-        remediation: `Disable or remove ${c.name}`,
-        message: `Conflicts with ${c.name}, which is installed.`
+        remediation: `Disable or remove ${conflict.name}`,
+        message: `Conflicts with ${conflict.name}, which is installed.`
       });
     }
-    return { issues, compatible: issues.every((i) => i.severity !== 'error') };
+    return { issues, compatible: issues.every((issue) => issue.severity !== 'error') };
   }
 
   resolveDependencies(project: Project, instance: Instance): DependencyResolution {
-    const deps = this.latestDependencies(project);
-    const installed = new Set(instance.mods.map((m) => m.projectId));
+    const dependencies = this.latestDependencies(project);
+    const installed = new Set(instance.mods.map((mod) => mod.projectId));
     return {
-      optional: deps.filter((d) => d.type === DependencyType.Optional && !installed.has(d.projectId)),
-      toInstall: deps.filter((d) => d.type === DependencyType.Required && !installed.has(d.projectId)),
-      conflicts: deps.filter((d) => d.type === DependencyType.Incompatible && installed.has(d.projectId)),
-      alreadyInstalled: deps.filter((d) => d.type === DependencyType.Required && installed.has(d.projectId))
+      optional: dependencies.filter(
+        (dependency) => dependency.type === DependencyType.Optional && !installed.has(dependency.projectId)
+      ),
+      toInstall: dependencies.filter(
+        (dependency) => dependency.type === DependencyType.Required && !installed.has(dependency.projectId)
+      ),
+      conflicts: dependencies.filter(
+        (dependency) => dependency.type === DependencyType.Incompatible && installed.has(dependency.projectId)
+      ),
+      alreadyInstalled: dependencies.filter(
+        (dependency) => dependency.type === DependencyType.Required && installed.has(dependency.projectId)
+      )
     };
   }
 
   private latestDependencies(project: Project): Array<Dependency> {
-    return PROJECT_VERSIONS[project.id]?.[0]?.dependencies ?? [];
+    return this.versions.get(project.id)?.[0]?.dependencies ?? [];
   }
 }
 

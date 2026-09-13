@@ -1,6 +1,7 @@
 import type { ProjectDetailsPanelProps } from './types';
 
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 import { X, Clock, Heart, Download, ExternalLink } from 'lucide-react';
 
@@ -10,7 +11,7 @@ import ProjectIcon from '~/components/commons/ProjectIcon';
 import { ProviderBadge } from '~/components/commons/Badges';
 import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
 
-const ProjectDetailsPanel = ({ project, onClose, installed, onInstall }: ProjectDetailsPanelProps) => {
+const ProjectDetailsPanel = ({ project, onClose }: ProjectDetailsPanelProps) => {
   const panelRef = React.useRef<HTMLElement>(null);
   const resizing = React.useRef(false);
   const [width, setWidth] = React.useState(448);
@@ -138,7 +139,7 @@ const ProjectDetailsPanel = ({ project, onClose, installed, onInstall }: Project
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Latest version</dt>
-              <dd className="mt-1 font-mono font-medium">{project.latestVersion}</dd>
+              <dd className="mt-1 font-mono font-medium">{project.latestVersion || 'Unknown'}</dd>
             </div>
           </dl>
 
@@ -161,15 +162,14 @@ const ProjectDetailsPanel = ({ project, onClose, installed, onInstall }: Project
         </div>
 
         <div className="flex gap-2 border-t border-border/50 p-3">
+          <Button asChild className="flex-1">
+            <Link to={`/project/${encodeURIComponent(project.id)}`}>Full details</Link>
+          </Button>
           <Button asChild variant="outline">
             <a target="_blank" rel="noreferrer" href={project.provider.url}>
               <ExternalLink data-icon="inline-start" />
               Provider
             </a>
-          </Button>
-          <Button className="flex-1" disabled={installed} onClick={() => onInstall(project)}>
-            <Download data-icon="inline-start" />
-            {installed ? 'Installed' : 'Install'}
           </Button>
         </div>
       </aside>

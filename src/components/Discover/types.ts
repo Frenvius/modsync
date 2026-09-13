@@ -25,7 +25,5 @@ export interface FilterSelectProps {
 
 export interface ProjectDetailsPanelProps {
   project: Project;
-  installed?: boolean;
   onClose: () => void;
-  onInstall: (project: Project) => void;
 }

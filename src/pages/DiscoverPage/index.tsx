@@ -4,7 +4,7 @@ import type { Project, SearchSort } from '~/domain/interfaces/project.interface'
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { Plus, Clock, Compass, Download } from 'lucide-react';
+import { Clock, Compass, Download, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -15,10 +15,10 @@ import EmptyState from '~/components/commons/EmptyState';
 import PageHeader from '~/components/commons/PageHeader';
 import { projectService } from '~/usecase/service/project';
 import ProjectIcon from '~/components/commons/ProjectIcon';
-import InstallDialog from '~/components/Mods/InstallDialog';
 import { ProviderBadge } from '~/components/commons/Badges';
 import FilterPopover from '~/components/Discover/FilterPopover';
 import { formatCompact, formatRelative } from '~/usecase/util/formatUtils';
+import { Alert, AlertTitle, AlertDescription } from '~/components/ui/alert';
 import ProjectDetailsPanel from '~/components/Discover/ProjectDetailsPanel';
 import { Table, TableRow, TableBody, TableCell, TableHead, TableHeader } from '~/components/ui/table';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
@@ -41,19 +41,23 @@ const DiscoverPage = () => {
   const targetInstance = instances.find((i) => i.id === instanceId);
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState<SearchSort>('relevance');
+  const [page, setPage] = React.useState(0);
+  const [total, setTotal] = React.useState(0);
+  const [stale, setStale] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [errors, setErrors] = React.useState<Array<string>>([]);
   const [results, setResults] = React.useState<Array<Project>>([]);
-  const [installTarget, setInstallTarget] = React.useState<null | Project>(null);
+  const [categories, setCategories] = React.useState<Array<string>>([]);
   const [selectedProject, setSelectedProject] = React.useState<null | Project>(null);
   const [openCategoryProjectId, setOpenCategoryProjectId] = React.useState<null | string>(null);
   const categoryMenuCloseTimer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+  const categoriesGame = React.useRef<typeof gameId>(undefined);
   const [filters, setFilters] = React.useState<DiscoverFilters>({
     providers: [],
     loader: targetInstance?.loader,
     gameVersion: targetInstance?.gameVersion
   });
   const game = projectService.getGame(gameId);
-  const categories = projectService.getCategories(gameId);
   const cancelCategoryMenuClose = () => clearTimeout(categoryMenuCloseTimer.current);
   const scheduleCategoryMenuClose = () => {
     categoryMenuCloseTimer.current = setTimeout(() => setOpenCategoryProjectId(null), 100);
@@ -70,20 +74,38 @@ const DiscoverPage = () => {
   }, [gameId, setSelectedGame, targetInstance]);
 
   React.useEffect(() => {
+    categoriesGame.current = undefined;
+    setCategories([]);
+  }, [gameId]);
+
+  React.useEffect(() => setPage(0), [gameId, query, sort, filters]);
+
+  React.useEffect(() => {
     let cancelled = false;
+    setStale(false);
+    setErrors([]);
     setLoading(true);
     const handle = setTimeout(() => {
-      void projectService.search({ sort, query, gameId, ...filters }).then((r) => {
+      void projectService.search({ page, sort, query, gameId, ...filters }).then((result) => {
         if (cancelled) return;
-        setResults(r.items);
+        setTotal(result.total);
+        setStale(result.stale);
+        setResults(result.items);
+        setErrors(result.providerErrors.map((error) => error.message));
         setLoading(false);
+        if (categoriesGame.current !== gameId) {
+          categoriesGame.current = gameId;
+          void projectService.getCategories(gameId).then((categoryResult) => {
+            if (!cancelled) setCategories(categoryResult.items);
+          });
+        }
       });
     }, 150);
     return () => {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [gameId, query, sort, filters]);
+  }, [page, gameId, query, sort, filters]);
 
   const toggleCategory = (c: string) => setFilters((f) => ({ ...f, category: f.category === c ? undefined : c }));
 
@@ -91,7 +113,7 @@ const DiscoverPage = () => {
     <div className="flex flex-col gap-4 p-4">
       <PageHeader
         title="Discover"
-        description={targetInstance ? `Installing into ${targetInstance.name}` : 'One catalog across every provider.'}
+        description={targetInstance ? `Compatible content for ${targetInstance.name}` : 'One catalog across every provider.'}
       />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -133,6 +155,21 @@ const DiscoverPage = () => {
         ))}
       </div>
 
+      {errors.length > 0 ? (
+        <Alert variant="destructive">
+          <AlertTriangle />
+          <AlertTitle>Some providers are unavailable</AlertTitle>
+          <AlertDescription>{errors.join(' ')}</AlertDescription>
+        </Alert>
+      ) : null}
+      {stale ? (
+        <Alert>
+          <AlertTriangle />
+          <AlertTitle>Showing cached provider data</AlertTitle>
+          <AlertDescription>Live provider data could not be refreshed.</AlertDescription>
+        </Alert>
+      ) : null}
+
       {loading ? (
         <div className="rounded-lg border bg-card/40 p-1">
           {Array.from({ length: 6 }, (_, i) => (
@@ -147,7 +184,7 @@ const DiscoverPage = () => {
         </EmptyState>
       ) : (
         <>
-          <span className="text-xs text-muted-foreground">{results.length} results</span>
+          <span className="text-xs text-muted-foreground">{total} results</span>
           <div className="overflow-hidden rounded-lg border bg-card">
             <Table className="min-w-[900px]">
               <TableHeader className="bg-secondary/70">
@@ -158,15 +195,10 @@ const DiscoverPage = () => {
                   <TableHead className="text-right">Downloads</TableHead>
                   <TableHead>Updated</TableHead>
                   <TableHead>Versions</TableHead>
-                  <TableHead>
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="[&_tr:nth-child(even)]:bg-muted/25">
                 {results.map((project) => {
-                  const installed = targetInstance?.mods.some((mod) => mod.projectId === project.id);
-
                   return (
                     <TableRow
                       key={project.id}
@@ -256,44 +288,27 @@ const DiscoverPage = () => {
                         </span>
                       </TableCell>
                       <TableCell className="font-mono text-xs">{project.gameVersions.slice(0, 2).join(', ')}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="xs"
-                          disabled={installed}
-                          variant={installed ? 'secondary' : 'default'}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setInstallTarget(project);
-                          }}
-                        >
-                          {!installed && <Plus data-icon="inline-start" />}
-                          {installed ? 'Installed' : 'Install'}
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           </div>
+          <nav aria-label="Search pages" className="flex items-center justify-end gap-2">
+            <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((value) => value - 1)}>
+              <ChevronLeft data-icon="inline-start" />
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground">Page {page + 1}</span>
+            <Button size="sm" variant="outline" disabled={(page + 1) * 20 >= total} onClick={() => setPage((value) => value + 1)}>
+              Next
+              <ChevronRight data-icon="inline-end" />
+            </Button>
+          </nav>
         </>
       )}
 
-      {selectedProject && (
-        <ProjectDetailsPanel
-          project={selectedProject}
-          onInstall={setInstallTarget}
-          onClose={() => setSelectedProject(null)}
-          installed={targetInstance?.mods.some((mod) => mod.projectId === selectedProject.id)}
-        />
-      )}
-
-      <InstallDialog
-        project={installTarget}
-        instanceId={instanceId}
-        open={installTarget !== null}
-        onOpenChange={(o) => !o && setInstallTarget(null)}
-      />
+      {selectedProject && <ProjectDetailsPanel project={selectedProject} onClose={() => setSelectedProject(null)} />}
     </div>
   );
 };

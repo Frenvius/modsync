@@ -2,6 +2,7 @@ pub mod catalog;
 pub mod contracts;
 mod instances;
 mod persistence;
+mod providers;
 mod settings;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,6 +28,10 @@ pub fn run() {
             instances::update_instance,
             instances::duplicate_instance,
             instances::delete_instance,
+            providers::search_provider,
+            providers::get_provider_project,
+            providers::get_provider_versions,
+            providers::get_provider_categories,
             settings::get_settings,
             settings::save_settings
         ])

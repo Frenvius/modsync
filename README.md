@@ -1,16 +1,48 @@
-# React + TypeScript + Vite
+# ModSync
 
-This template provides a minimal setup to get React working in Vite with HMR, ESLint, and Prettier.
+A compact Tauri desktop manager for local modded game instances.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Install dependencies and start the desktop application:
 
-## React Compiler
+```sh
+bun install
+bun run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Frontend-only development is available with `bun run dev:vite`. Provider discovery requires the desktop application.
 
-## Code quality
+## CurseForge
 
-Run `bun run lint` to check ESLint rules and `bun run lint:fix` to apply safe fixes. Run `bun run format` to format files with Prettier.
+CurseForge discovery requires a developer API key. Set `CURSEFORGE_API_KEY` when building or running the Rust application:
+
+```sh
+CURSEFORGE_API_KEY=your-key bun run dev
+```
+
+On PowerShell:
+
+```powershell
+$env:CURSEFORGE_API_KEY = 'your-key'
+bun run dev
+```
+
+The key is read from the runtime environment or embedded from the build environment. It is not stored in instance or application manifests.
+
+## Verification
+
+```sh
+bun run lint
+bun run build:vite
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+Provider smoke tests require network access and are ignored by default:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml providers:: -- --ignored
+```

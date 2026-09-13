@@ -2,7 +2,6 @@ import type { DependencyListProps } from './types';
 
 import { cn } from '~/lib/utils';
 import { Badge } from '~/components/ui/badge';
-import { PROJECTS } from '~/usecase/mock/projects';
 import ProjectIcon from '~/components/commons/ProjectIcon';
 import { DependencyType } from '~/domain/enums/provider.enum';
 
@@ -14,14 +13,15 @@ const DependencyList = ({ className, dependencies, installedIds = [] }: Dependen
     <ul className={cn('flex flex-col divide-y rounded-md border', className)}>
       {dependencies.map((dep) => {
         const meta = DEPENDENCY_TYPE_META[dep.type];
-        const project = PROJECTS.find((p) => p.id === dep.projectId);
         const installed = installedIds.includes(dep.projectId);
         return (
           <li key={dep.projectId} className="flex items-center gap-3 px-3 py-2 text-sm">
-            <ProjectIcon size="sm" name={dep.name} color={project?.iconColor ?? '#666'} />
+            <ProjectIcon size="sm" color="#666" name={dep.name} />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate font-medium">{dep.name}</span>
-              <span className="text-xs text-muted-foreground">{dep.versionRange === '*' ? 'Any version' : dep.versionRange}</span>
+              <span className="text-xs text-muted-foreground">
+                {!dep.versionRange || dep.versionRange === '*' ? 'Any version' : dep.versionRange}
+              </span>
             </span>
             {installed && dep.type !== DependencyType.Incompatible && (
               <Badge variant="outline" className="text-muted-foreground">

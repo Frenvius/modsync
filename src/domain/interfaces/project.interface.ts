@@ -61,9 +61,16 @@ export interface SearchQuery {
 
 export type SearchSort = 'newest' | 'updated' | 'relevance' | 'downloads';
 
+export interface ProviderFailure {
+  message: string;
+  providerId: ProviderId;
+}
+
 export interface SearchResult {
   total: number;
+  stale: boolean;
   items: Array<Project>;
+  providerErrors: Array<ProviderFailure>;
 }
 
 export interface CompatibilityIssue {
