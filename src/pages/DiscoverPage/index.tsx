@@ -235,10 +235,10 @@ const DiscoverPage = () => {
               <TableHeader className="bg-secondary/70">
                 <TableRow>
                   <TableHead>Project</TableHead>
+                  <TableHead>Updated</TableHead>
                   <TableHead>Provider</TableHead>
                   <TableHead>Categories</TableHead>
                   <TableHead className="text-right">Downloads</TableHead>
-                  <TableHead>Updated</TableHead>
                   <TableHead>Versions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -272,10 +272,10 @@ const DiscoverPage = () => {
               <TableHeader className="bg-secondary/70">
                 <TableRow>
                   <TableHead>Project</TableHead>
+                  <TableHead>Updated</TableHead>
                   <TableHead>Provider</TableHead>
                   <TableHead>Categories</TableHead>
                   <TableHead className="text-right">Downloads</TableHead>
-                  <TableHead>Updated</TableHead>
                   <TableHead>Versions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -318,6 +318,12 @@ const DiscoverPage = () => {
                             <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{project.summary}</p>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="size-3" />
+                          {formatRelative(project.updatedAt)}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <ProviderBadge providerId={project.provider.id} />
@@ -368,12 +374,6 @@ const DiscoverPage = () => {
                         <span className="inline-flex items-center gap-1">
                           <Download className="size-3" />
                           {formatCompact(project.downloads)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <Clock className="size-3" />
-                          {formatRelative(project.updatedAt)}
                         </span>
                       </TableCell>
                       <TableCell className="font-mono text-xs">{project.gameVersions.slice(0, 2).join(', ')}</TableCell>

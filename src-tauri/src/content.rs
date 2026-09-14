@@ -193,7 +193,7 @@ pub async fn refresh_content(
     instances::validate_id(&instance_id)?;
     let (metadata, mut manifest, root) = load_instance(&app, &instance_id)?;
     let before = manifest.mods.clone();
-    reconcile_at(&root, &mut manifest, true);
+    reconcile_at(&root, &mut manifest, false);
     if manifest.mods != before {
         manifest.updated_at = chrono::Utc::now().to_rfc3339();
         instances::write_manifest(&metadata, &manifest)?;
@@ -1573,6 +1573,7 @@ fn removal_files(
     let mut files = Vec::new();
     let mut warnings = Vec::new();
     for installed in targets {
+        let mut preserved_config = 0;
         for file in &installed.files {
             let relative = installed_file_path(installed, file);
             let Some(path) = safe_existing_file(root, &relative)? else {
@@ -1582,10 +1583,7 @@ fn removal_files(
                 continue;
             };
             if file.mutable {
-                warnings.push(format!(
-                    "{} is configuration data and was preserved",
-                    file.path
-                ));
+                preserved_config += 1;
                 continue;
             }
             if file
@@ -1600,6 +1598,12 @@ fn removal_files(
                 relative: path_string(&relative),
                 had_original: true,
             });
+        }
+        if preserved_config > 0 {
+            warnings.push(format!(
+                "{}: preserved {preserved_config} configuration file(s).",
+                installed.name
+            ));
         }
     }
     Ok((files, warnings))
@@ -2450,6 +2454,43 @@ mod tests {
         assert!(root.join("mods/test.jar.disabled").is_file());
         move_content_files(&root, &item, true).unwrap();
         assert!(root.join("mods/test.jar").is_file());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn removal_verifies_only_selected_files_and_summarizes_preserved_configuration() {
+        let root = test_root("thunderstore-removal");
+        fs::create_dir_all(root.join("BepInEx/plugins/Author-Mod")).unwrap();
+        fs::create_dir_all(root.join("BepInEx/config")).unwrap();
+        let relative = "BepInEx/plugins/Author-Mod/mod.dll";
+        let path = root.join(relative);
+        fs::write(&path, vec![b'a'; 16 * 1024 * 1024]).unwrap();
+        let mut item = installed("thunderstore:valheim:Author:Mod");
+        item.provider = crate::catalog::ProviderId::Thunderstore;
+        item.files.push(InstalledFile {
+            path: relative.into(),
+            mutable: false,
+            sha512: Some(downloads::sha512(&path).unwrap()),
+        });
+        for name in ["mod.cfg", "mod.buy.json", "mod.sell.json"] {
+            let path = format!("BepInEx/config/{name}");
+            fs::write(root.join(&path), "configuration").unwrap();
+            item.files.push(InstalledFile {
+                path,
+                mutable: true,
+                sha512: None,
+            });
+        }
+        let started = std::time::Instant::now();
+        let (files, warnings) = removal_files(&root, &[&item]).unwrap();
+        eprintln!("Removal preparation for 16 MiB: {:?}", started.elapsed());
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].relative, relative);
+        assert_eq!(
+            warnings,
+            vec![format!("{}: preserved 3 configuration file(s).", item.name)]
+        );
+        assert!(root.join("BepInEx/config/mod.cfg").is_file());
         fs::remove_dir_all(root).unwrap();
     }
 

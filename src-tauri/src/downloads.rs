@@ -222,7 +222,20 @@ fn valid_cached_file(path: &Path, version: &ProjectVersion) -> Result<bool, Comm
 }
 
 pub fn sha512(path: &Path) -> Result<String, CommandError> {
-    compute_hashes(path).map(|(_, _, _, sha512)| sha512)
+    let mut file = fs::File::open(path)
+        .map_err(|error| CommandError::io("Could not verify the downloaded file", &error))?;
+    let mut hash = Sha512::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| CommandError::io("Could not verify the downloaded file", &error))?;
+        if read == 0 {
+            break;
+        }
+        hash.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hash.finalize()))
 }
 
 fn verify(path: &Path, hashes: &[ArtifactHash], expected_size: u64) -> Result<(), CommandError> {
@@ -344,6 +357,22 @@ mod tests {
             finish_operation("test-operation-one").await;
             finish_operation("test-operation-two").await;
         });
+    }
+
+    #[test]
+    fn sha512_matches_known_digest_across_multiple_buffers() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("modsync-sha512-{nonce}"));
+        let contents = vec![b'a'; 16 * 1024 * 1024];
+        fs::write(&path, &contents).unwrap();
+        let started = std::time::Instant::now();
+        let actual = sha512(&path).unwrap();
+        eprintln!("SHA-512 of 16 MiB: {:?}", started.elapsed());
+        assert_eq!(actual, format!("{:x}", Sha512::digest(&contents)));
+        fs::remove_file(path).unwrap();
     }
 
     #[test]

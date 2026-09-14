@@ -129,11 +129,12 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
     if (!removeTarget) return;
     try {
       const warnings = await removeMods(instance.id, [removeTarget]);
-      setRemoveTarget(undefined);
-      if (warnings.length > 0) toast.warning(warnings.join(' '));
+      if (warnings.length > 0)
+        toast.warning('Content removed with preserved or missing files', { description: warnings.join(' ') });
       else toast.success('Content removed');
     } catch (error) {
       toast.error(getErrorMessage(error, 'Could not remove content'));
+      throw error;
     }
   };
 
@@ -308,9 +309,9 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
 
       <ConfirmDialog
         destructive
+        onConfirm={remove}
         confirmLabel="Remove"
         open={Boolean(removeTarget)}
-        onConfirm={() => void remove()}
         title="Remove installed content?"
         onOpenChange={(open) => !open && setRemoveTarget(undefined)}
         description="Tracked files are removed. Modified files are preserved and reported."
