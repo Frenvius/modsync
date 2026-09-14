@@ -4,6 +4,7 @@ import type { UpdateResultItem } from '~/usecase/service/content';
 import type { Project } from '~/domain/interfaces/project.interface';
 import type { AppSettings } from '~/domain/interfaces/settings.interface';
 import type { DownloadItem } from '~/domain/interfaces/download.interface';
+import type { SharingProgress } from '~/domain/interfaces/sharing.interface';
 import type { Instance, CreateInstanceInput, UpdateInstanceInput } from '~/domain/interfaces/instance.interface';
 
 export interface InstallOptions {
@@ -41,4 +42,10 @@ export interface AppState {
   toggleMod: (instanceId: string, projectId: string, enabled: boolean) => Promise<void>;
   updateMod: (instanceId: string, projectId: string, versionId?: string) => Promise<void>;
   installMod: (instanceId: string, project: Project, options?: InstallOptions) => Promise<void>;
+  joinSharedInstance: (code: string, operationId: string, onProgress: (progress: SharingProgress) => void) => Promise<Instance>;
+  syncJoinedInstance: (
+    instanceId: string,
+    operationId: string,
+    onProgress: (progress: SharingProgress) => void
+  ) => Promise<Instance>;
 }

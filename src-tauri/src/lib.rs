@@ -8,6 +8,7 @@ mod launch;
 mod persistence;
 mod providers;
 mod settings;
+mod sharing;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -59,7 +60,12 @@ pub fn run() {
             providers::get_provider_versions,
             providers::get_provider_categories,
             settings::get_settings,
-            settings::save_settings
+            settings::save_settings,
+            sharing::start_sharing,
+            sharing::stop_sharing,
+            sharing::get_sharing_status,
+            sharing::join_shared_instance,
+            sharing::sync_joined_instance
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

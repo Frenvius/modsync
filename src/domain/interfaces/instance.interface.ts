@@ -41,6 +41,13 @@ export interface LogLine {
   level: 'info' | 'warn' | 'error' | 'debug';
 }
 
+export interface RemoteInstance {
+  peerId: string;
+  revision: string;
+  instanceId: string;
+  lastSyncedAt: string;
+}
+
 export interface Instance {
   id: string;
   name: string;
@@ -48,7 +55,7 @@ export interface Instance {
   gameId: GameId;
   loader: LoaderId;
   memoryMb: number;
-  schemaVersion: 1;
+  schemaVersion: 2;
   createdAt: string;
   iconColor: string;
   updatedAt: string;
@@ -57,11 +64,13 @@ export interface Instance {
   gameVersion: string;
   logs: Array<LogLine>;
   loaderVersion: string;
+  remote?: RemoteInstance;
   playtimeMinutes: number;
   lastPlayed: null | string;
   mods: Array<InstalledMod>;
   configs: Array<ConfigFile>;
   location: InstanceLocation;
+  ownership: 'owned' | 'joined';
 }
 
 export interface InstanceLocation {
@@ -76,7 +85,7 @@ export interface InstanceManifest {
   gameId: GameId;
   loader: LoaderId;
   memoryMb: number;
-  schemaVersion: 1;
+  schemaVersion: 2;
   createdAt: string;
   iconColor: string;
   updatedAt: string;
@@ -84,11 +93,13 @@ export interface InstanceManifest {
   description: string;
   gameVersion: string;
   loaderVersion: string;
+  remote?: RemoteInstance;
   playtimeMinutes: number;
   lastOperationId?: string;
   lastPlayed: null | string;
   mods: Array<InstalledMod>;
   location: InstanceLocation;
+  ownership: 'owned' | 'joined';
 }
 
 export interface UpdateInstanceInput {

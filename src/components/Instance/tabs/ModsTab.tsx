@@ -43,6 +43,12 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
 
   React.useEffect(() => {
     let cancelled = false;
+    if (instance.ownership === 'joined') {
+      setUnmanaged([]);
+      return () => {
+        cancelled = true;
+      };
+    }
     void refreshContent(instance.id)
       .then(() => contentService.listUnmanaged(instance.id))
       .then((items) => {
@@ -54,7 +60,7 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
     return () => {
       cancelled = true;
     };
-  }, [instance.id, instance.updatedAt, refreshContent]);
+  }, [instance.id, instance.ownership, instance.updatedAt, refreshContent]);
 
   const mods = instance.mods
     .filter((mod) => mod.type === contentType)
@@ -198,20 +204,24 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
           </SelectContent>
         </Select>
         <span className="flex-1" />
-        <Button size="sm" variant="outline" onClick={() => void check()} disabled={checking || updatingAll}>
-          <RefreshCw data-icon="inline-start" className={checking ? 'animate-spin' : undefined} />
-          Check updates
-        </Button>
-        {updateCount > 0 && (
-          <Button size="sm" variant="secondary" onClick={() => void updateAll()} disabled={updatingAll || checking}>
-            <ArrowUp data-icon="inline-start" />
-            Update all ({updateCount})
-          </Button>
+        {instance.ownership === 'owned' && (
+          <>
+            <Button size="sm" variant="outline" onClick={() => void check()} disabled={checking || updatingAll}>
+              <RefreshCw data-icon="inline-start" className={checking ? 'animate-spin' : undefined} />
+              Check updates
+            </Button>
+            {updateCount > 0 && (
+              <Button size="sm" variant="secondary" onClick={() => void updateAll()} disabled={updatingAll || checking}>
+                <ArrowUp data-icon="inline-start" />
+                Update all ({updateCount})
+              </Button>
+            )}
+            <Button size="sm" onClick={() => navigate(`/discover?instance=${instance.id}`)}>
+              <Plus data-icon="inline-start" />
+              Add {label}
+            </Button>
+          </>
         )}
-        <Button size="sm" onClick={() => navigate(`/discover?instance=${instance.id}`)}>
-          <Plus data-icon="inline-start" />
-          Add {label}
-        </Button>
       </div>
 
       {updateReport.length > 0 && (
@@ -261,10 +271,12 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
           title={`No ${label}`}
           description={query || status !== 'all' ? 'Nothing matches the current filters.' : `Browse Discover to add ${label}.`}
         >
-          <Button onClick={() => navigate(`/discover?instance=${instance.id}`)}>
-            <Plus data-icon="inline-start" />
-            Discover {label}
-          </Button>
+          {instance.ownership === 'owned' && (
+            <Button onClick={() => navigate(`/discover?instance=${instance.id}`)}>
+              <Plus data-icon="inline-start" />
+              Discover {label}
+            </Button>
+          )}
         </EmptyState>
       ) : (
         <div className="overflow-hidden rounded-lg border bg-card">
@@ -289,6 +301,7 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
                   key={mod.projectId}
                   onRemove={setRemoveTarget}
                   onChangeVersion={setVersionTarget}
+                  readOnly={instance.ownership === 'joined'}
                   onRepair={(projectId) => void repair(projectId)}
                   onUpdate={(projectId) => void updateOne(projectId)}
                   onToggle={(projectId, enabled) => void toggle(projectId, enabled)}
@@ -299,13 +312,15 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
         </div>
       )}
 
-      <ChangeVersionDialog
-        instance={instance}
-        mod={selectedVersionMod}
-        open={Boolean(versionTarget)}
-        onOpenChange={(open) => !open && setVersionTarget(undefined)}
-        onChanged={(projectId) => setUpdateReport((items) => items.filter((item) => item.projectId !== projectId))}
-      />
+      {instance.ownership === 'owned' && (
+        <ChangeVersionDialog
+          instance={instance}
+          mod={selectedVersionMod}
+          open={Boolean(versionTarget)}
+          onOpenChange={(open) => !open && setVersionTarget(undefined)}
+          onChanged={(projectId) => setUpdateReport((items) => items.filter((item) => item.projectId !== projectId))}
+        />
+      )}
 
       <ConfirmDialog
         destructive

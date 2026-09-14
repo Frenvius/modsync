@@ -1,13 +1,15 @@
+import React from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { Play, Loader2, Package, Settings2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Play, Loader2, Package, RefreshCw, Settings2 } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
+import { uid } from '~/usecase/util/formatUtils';
 import { usePlay } from '~/usecase/hooks/usePlay';
 import { LOADER_NAMES } from '~/domain/data/catalog';
 import GameIcon from '~/components/commons/GameIcon';
-import { useInstance } from '~/usecase/store/appStore';
 import LogsTab from '~/components/Instance/tabs/LogsTab';
 import ModsTab from '~/components/Instance/tabs/ModsTab';
 import EmptyState from '~/components/commons/EmptyState';
@@ -15,8 +17,10 @@ import { projectService } from '~/usecase/service/project';
 import InstanceIcon from '~/components/commons/InstanceIcon';
 import ConfigTab from '~/components/Instance/tabs/ConfigTab';
 import InstanceMenu from '~/components/Instance/InstanceMenu';
+import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import VersionsTab from '~/components/Instance/tabs/VersionsTab';
 import SettingsTab from '~/components/Instance/tabs/SettingsTab';
+import { useAppStore, useInstance } from '~/usecase/store/appStore';
 import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
 
 import { CONTENT_TAB_LABELS } from './constants';
@@ -30,6 +34,8 @@ const InstancePage = () => {
   const [params, setParams] = useSearchParams();
   const instance = useInstance(instanceId);
   const { play, playing } = usePlay(instanceId ?? '');
+  const syncJoined = useAppStore((state) => state.syncJoinedInstance);
+  const [syncing, setSyncing] = React.useState(false);
   const requestedTab = params.get('tab');
 
   if (!instance) {
@@ -43,6 +49,18 @@ const InstancePage = () => {
       </div>
     );
   }
+
+  const sync = async () => {
+    setSyncing(true);
+    try {
+      await syncJoined(instance.id, uid('sync'), () => undefined);
+      toast.success('Instance synchronized');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not synchronize the instance'));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const game = projectService.getGame(instance.gameId);
   const contentTypes = game.contentTypes;
@@ -77,10 +95,17 @@ const InstancePage = () => {
             <Badge variant="outline" className="text-muted-foreground">
               {instance.mods.length} mods
             </Badge>
+            {instance.ownership === 'joined' && <Badge variant="outline">Joined - read only</Badge>}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="lg" className="px-6" disabled={playing} onClick={() => play()}>
+          {instance.ownership === 'joined' && (
+            <Button size="lg" variant="outline" onClick={() => void sync()} disabled={syncing || playing}>
+              <RefreshCw aria-hidden="true" data-icon="inline-start" className={syncing ? 'animate-spin' : undefined} />
+              Sync
+            </Button>
+          )}
+          <Button size="lg" className="px-6" onClick={() => play()} disabled={playing || syncing}>
             {playing ? (
               <Loader2 data-icon="inline-start" className="animate-spin" />
             ) : (

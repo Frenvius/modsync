@@ -192,6 +192,7 @@ pub async fn refresh_content(
     let _guard = mutation_lock().lock().await;
     instances::validate_id(&instance_id)?;
     let (metadata, mut manifest, root) = load_instance(&app, &instance_id)?;
+    instances::ensure_owned(&manifest)?;
     let before = manifest.mods.clone();
     reconcile_at(&root, &mut manifest, false);
     if manifest.mods != before {
@@ -209,6 +210,7 @@ pub async fn check_content_updates(
     let _guard = mutation_lock().lock().await;
     instances::validate_id(&instance_id)?;
     let (metadata, mut manifest, root) = load_instance(&app, &instance_id)?;
+    instances::ensure_owned(&manifest)?;
     reconcile_at(&root, &mut manifest, true);
     let (items, _) = check_updates_at(&app, &mut manifest, None).await;
     manifest.updated_at = chrono::Utc::now().to_rfc3339();
@@ -297,6 +299,7 @@ async fn run_update_all(
     input: &UpdateAllInput,
 ) -> Result<UpdateCheckResult, CommandError> {
     let (metadata, mut manifest, root) = load_instance(app, &input.instance_id)?;
+    instances::ensure_owned(&manifest)?;
     reconcile_at(&root, &mut manifest, true);
     let (mut items, updates) =
         check_updates_at(app, &mut manifest, Some(&input.operation_id)).await;
@@ -413,6 +416,7 @@ async fn preview_plan(
     let instances_root = instances::instances_root(app)?;
     let metadata = instances::metadata_directory(&instances_root, &input.instance_id)?;
     let mut manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
+    instances::ensure_owned(&manifest)?;
     let content_root = validate_content_root(&metadata, &manifest)?;
     recover_at(&content_root, &mut manifest, &metadata)?;
     let request = InstallContentInput {
@@ -450,6 +454,39 @@ pub async fn repair_content(
     input: InstallContentInput,
 ) -> Result<InstanceManifest, CommandError> {
     execute_install(app, input, true, "Repaired").await
+}
+
+pub(crate) async fn install_synced_content(
+    app: &AppHandle,
+    instance_id: &str,
+    operation_id: &str,
+    desired: &InstalledMod,
+) -> Result<InstanceManifest, CommandError> {
+    let (_, manifest, _) = load_instance(app, instance_id)?;
+    let existing = manifest
+        .mods
+        .iter()
+        .find(|installed| installed.project_id == desired.project_id);
+    if existing.is_some_and(|installed| installed.version_id == desired.version_id) {
+        return Ok(manifest);
+    }
+    let version_id = if desired.version_id.is_empty() {
+        desired.installed_version.clone()
+    } else {
+        desired.version_id.clone()
+    };
+    run_install(
+        app,
+        &InstallContentInput {
+            operation_id: operation_id.into(),
+            instance_id: instance_id.into(),
+            project_id: desired.project_id.clone(),
+            version_id: Some(version_id),
+            optional_dependencies: Vec::new(),
+        },
+        existing.is_some(),
+    )
+    .await
 }
 
 async fn execute_install(
@@ -522,6 +559,7 @@ async fn run_install(
     let root = instances::instances_root(app)?;
     let metadata = instances::metadata_directory(&root, &input.instance_id)?;
     let mut manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
+    instances::ensure_owned(&manifest)?;
     let content_root = validate_content_root(&metadata, &manifest)?;
     recover_at(&content_root, &mut manifest, &metadata)?;
 
@@ -1402,6 +1440,7 @@ fn import_local_at(
         ));
     }
     let (metadata, mut manifest, root) = load_instance(app, &input.instance_id)?;
+    instances::ensure_owned(&manifest)?;
     let unmanaged = unmanaged_at(&root, &manifest)?;
     let candidate = unmanaged
         .into_iter()
@@ -1496,6 +1535,7 @@ fn remove_at(
     }
     let selected = input.project_ids.into_iter().collect::<HashSet<_>>();
     let (metadata, mut manifest, root) = load_instance(app, &input.instance_id)?;
+    instances::ensure_owned(&manifest)?;
     if bepinex_project(&manifest).is_some_and(|loader| selected.contains(loader)) {
         return Err(CommandError::new(
             CommandErrorCode::Conflict,
@@ -1621,6 +1661,7 @@ fn set_enabled_at(
         ));
     }
     let (metadata, mut manifest, root) = load_instance(app, &input.instance_id)?;
+    instances::ensure_owned(&manifest)?;
     let index = manifest
         .mods
         .iter()
@@ -2178,6 +2219,8 @@ mod tests {
             last_played: None,
             playtime_minutes: 0,
             mods,
+            remote: None,
+            ownership: crate::contracts::InstanceOwnership::Owned,
             last_operation_id: None,
         }
     }

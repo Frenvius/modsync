@@ -12,7 +12,13 @@ import { launchService } from '~/usecase/service/launch';
 
 const STORAGE_KEY = 'modsync.instances.v1';
 
-const toInstance = (manifest: InstanceManifest): Instance => ({ ...manifest, logs: [], configs: [] });
+const toInstance = (manifest: InstanceManifest): Instance => ({
+  ...manifest,
+  logs: [],
+  configs: [],
+  schemaVersion: 2,
+  ownership: manifest.ownership ?? 'owned'
+});
 const toManifest = ({ logs: _logs, configs: _configs, ...manifest }: Instance): InstanceManifest => manifest;
 
 class Service {
@@ -38,7 +44,8 @@ class Service {
       memoryMb: 4096,
       id: uid('inst'),
       lastPlayed: null,
-      schemaVersion: 1,
+      schemaVersion: 2,
+      ownership: 'owned',
       playtimeMinutes: 0,
       loaderVersion: 'latest',
       location: { path: '', kind: 'managed' },

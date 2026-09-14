@@ -28,7 +28,7 @@ const InstallDialog = ({ open, project, version, instanceId, onOpenChange }: Ins
   const [planLoading, setPlanLoading] = React.useState(false);
   const [optionalPicked, setOptionalPicked] = React.useState<Array<string>>([]);
 
-  const candidates = instances.filter((i) => i.gameId === project?.gameId);
+  const candidates = instances.filter((instance) => instance.gameId === project?.gameId && instance.ownership === 'owned');
   const linkedInstance = candidates.find((i) => i.id === instanceId);
   const instance = linkedInstance ?? candidates.find((i) => i.id === target) ?? candidates[0];
 

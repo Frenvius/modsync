@@ -93,10 +93,12 @@ const LogsTab = ({ instance }: InstanceTabProps) => {
           <Copy data-icon="inline-start" />
           Copy
         </Button>
-        <Button size="sm" variant="outline" onClick={openDirectory}>
-          <FolderOpen data-icon="inline-start" />
-          Open folder
-        </Button>
+        {instance.ownership === 'owned' && (
+          <Button size="sm" variant="outline" onClick={openDirectory}>
+            <FolderOpen data-icon="inline-start" />
+            Open folder
+          </Button>
+        )}
       </div>
       <span role="status" className="sr-only">
         {lines.at(-1)?.message}

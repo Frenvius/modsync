@@ -7,6 +7,7 @@ import { GAMES } from '~/domain/data/catalog';
 import { uid } from '~/usecase/util/formatUtils';
 import { catalogService } from '~/usecase/service/catalog';
 import { projectService } from '~/usecase/service/project';
+import { sharingService } from '~/usecase/service/sharing';
 import { instanceService } from '~/usecase/service/instance';
 import { providerService } from '~/usecase/service/providers';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
@@ -117,6 +118,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
+  joinSharedInstance: async (code, operationId, onProgress) => {
+    const manifest = await sharingService.join(code, operationId, onProgress);
+    const instance = instanceService.fromManifest(manifest);
+    set((state) => ({ instances: [instance, ...state.instances] }));
+    return instance;
+  },
+
   refreshContent: async (instanceId) => {
     const manifest = await contentService.refresh(instanceId);
     const instance = instanceService.fromManifest(manifest);
@@ -169,6 +177,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       instances: state.instances.map((current) => (current.id === instance.id ? instance : current))
     }));
     return result.warnings;
+  },
+
+  syncJoinedInstance: async (instanceId, operationId, onProgress) => {
+    const manifest = await sharingService.sync(instanceId, operationId, onProgress);
+    const instance = instanceService.fromManifest(manifest);
+    set((state) => ({
+      instances: state.instances.map((current) => (current.id === instance.id ? instance : current))
+    }));
+    return instance;
   },
 
   playInstance: async (instanceId) => {

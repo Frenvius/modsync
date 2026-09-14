@@ -3,7 +3,7 @@ import type { LibraryView, LibrarySortKey } from './types';
 
 import React from 'react';
 
-import { Plus, List, Library, LayoutGrid } from 'lucide-react';
+import { Plus, List, Link, Library, LayoutGrid } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import GameIcon from '~/components/commons/GameIcon';
@@ -13,6 +13,7 @@ import EmptyState from '~/components/commons/EmptyState';
 import PageHeader from '~/components/commons/PageHeader';
 import InstanceCard from '~/components/Instance/InstanceCard';
 import InstanceListItem from '~/components/Instance/InstanceListItem';
+import JoinInstanceDialog from '~/components/Sharing/JoinInstanceDialog';
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
@@ -26,6 +27,7 @@ const LibraryPage = () => {
   const [view, setView] = React.useState<LibraryView>('grid');
   const [sort, setSort] = React.useState<LibrarySortKey>('lastPlayed');
   const [game, setGame] = React.useState<string>(ALL_GAMES);
+  const [joinOpen, setJoinOpen] = React.useState(false);
 
   const visible = instances
     .filter((i) => game === ALL_GAMES || i.gameId === game)
@@ -43,8 +45,12 @@ const LibraryPage = () => {
         title="Library"
         description={`${instances.length} instances across ${new Set(instances.map((i) => i.gameId)).size} games.`}
       >
+        <Button variant="outline" onClick={() => setJoinOpen(true)}>
+          <Link aria-hidden="true" data-icon="inline-start" />
+          Join instance
+        </Button>
         <Button onClick={() => openCreate(true)}>
-          <Plus data-icon="inline-start" />
+          <Plus aria-hidden="true" data-icon="inline-start" />
           Create instance
         </Button>
       </PageHeader>
@@ -116,6 +122,8 @@ const LibraryPage = () => {
           ))}
         </div>
       )}
+
+      <JoinInstanceDialog open={joinOpen} onOpenChange={setJoinOpen} />
     </div>
   );
 };

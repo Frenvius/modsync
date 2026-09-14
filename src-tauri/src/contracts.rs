@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::catalog::{GameId, LoaderId, ProjectType, ProviderId};
 
-pub const MANIFEST_SCHEMA_VERSION: u32 = 1;
+pub const MANIFEST_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -72,6 +72,23 @@ pub struct InstanceLocation {
     pub kind: InstanceLocationKind,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InstanceOwnership {
+    #[default]
+    Owned,
+    Joined,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteInstance {
+    pub peer_id: String,
+    pub instance_id: String,
+    pub revision: String,
+    pub last_synced_at: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstanceManifest {
@@ -94,6 +111,10 @@ pub struct InstanceManifest {
     pub last_played: Option<String>,
     pub playtime_minutes: u64,
     pub mods: Vec<InstalledMod>,
+    #[serde(default)]
+    pub ownership: InstanceOwnership,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<RemoteInstance>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_operation_id: Option<String>,
 }
@@ -232,6 +253,8 @@ mod tests {
             last_played: None,
             playtime_minutes: 0,
             mods: Vec::new(),
+            remote: None,
+            ownership: InstanceOwnership::Owned,
             last_operation_id: None,
         };
         let json = serde_json::to_string(&manifest).unwrap();

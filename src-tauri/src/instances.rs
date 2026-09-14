@@ -10,13 +10,17 @@ use tauri_plugin_opener::OpenerExt;
 use crate::catalog::{supports_loader, GameId, LoaderId};
 use crate::contracts::{
     CommandError, CommandErrorCode, InstanceLocation, InstanceLocationKind, InstanceManifest,
-    MANIFEST_SCHEMA_VERSION,
+    InstanceOwnership, MANIFEST_SCHEMA_VERSION,
 };
 use crate::persistence::atomic_write;
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 const MANIFEST_FILE: &str = "manifest.json";
 const CONTENT_DIRECTORY: &str = "content";
+const SYNC_INCOMPLETE_FILE: &str = ".sync-incomplete";
+const SYNC_PUBLISH_FILE: &str = ".sync-publish";
+const SYNC_BACKUP_DIRECTORY: &str = ".sync-backup";
+const SYNC_BACKUP_MANIFEST: &str = ".sync-manifest-backup";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +109,7 @@ pub fn open_instance_folder(app: AppHandle, id: String) -> Result<(), CommandErr
             "Instance identifier does not match its directory",
         ));
     }
+    ensure_owned(&manifest)?;
     let path = PathBuf::from(manifest.location.path);
     if !path.is_dir() {
         return Err(CommandError::new(
@@ -219,6 +224,13 @@ fn list_from(root: &Path) -> Result<Vec<InstanceManifest>, CommandError> {
         {
             continue;
         }
+        recover_sync_publish(&entry.path())?;
+        if entry.path().join(SYNC_INCOMPLETE_FILE).exists() {
+            fs::remove_dir_all(entry.path()).map_err(|error| {
+                CommandError::io("Could not remove an interrupted synchronization", &error)
+            })?;
+            continue;
+        }
         let manifest_path = entry.path().join(MANIFEST_FILE);
         if manifest_path.exists() {
             let mut manifest = read_manifest(&manifest_path)?;
@@ -230,6 +242,52 @@ fn list_from(root: &Path) -> Result<Vec<InstanceManifest>, CommandError> {
     }
     instances.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
     Ok(instances)
+}
+
+fn recover_sync_publish(metadata: &Path) -> Result<(), CommandError> {
+    let marker = metadata.join(SYNC_PUBLISH_FILE);
+    let backup = metadata.join(SYNC_BACKUP_DIRECTORY);
+    let backup_manifest = metadata.join(SYNC_BACKUP_MANIFEST);
+    if !marker.exists() {
+        if backup.exists() {
+            fs::remove_dir_all(&backup).map_err(|error| {
+                CommandError::io("Could not clear synchronization recovery data", &error)
+            })?;
+        }
+        if backup_manifest.exists() {
+            fs::remove_file(&backup_manifest).map_err(|error| {
+                CommandError::io("Could not clear synchronization recovery data", &error)
+            })?;
+        }
+        return Ok(());
+    }
+    let previous = read_manifest(&backup_manifest)?;
+    let content = PathBuf::from(&previous.location.path);
+    if previous.location.kind != InstanceLocationKind::Managed
+        || content != metadata.join(CONTENT_DIRECTORY)
+    {
+        return Err(CommandError::new(
+            CommandErrorCode::CorruptedData,
+            "Synchronization recovery path is invalid",
+        ));
+    }
+    if backup.exists() {
+        if content.exists() {
+            fs::remove_dir_all(&content).map_err(|error| {
+                CommandError::io("Could not remove an interrupted synchronization", &error)
+            })?;
+        }
+        fs::rename(&backup, &content).map_err(|error| {
+            CommandError::io("Could not restore an interrupted synchronization", &error)
+        })?;
+    }
+    fs::copy(&backup_manifest, metadata.join(MANIFEST_FILE))
+        .map_err(|error| CommandError::io("Could not restore the instance manifest", &error))?;
+    fs::remove_file(marker)
+        .map_err(|error| CommandError::io("Could not finalize synchronization recovery", &error))?;
+    fs::remove_file(backup_manifest)
+        .map_err(|error| CommandError::io("Could not finalize synchronization recovery", &error))?;
+    Ok(())
 }
 
 fn restore_managed_content_directory(
@@ -247,7 +305,7 @@ fn restore_managed_content_directory(
         .map_err(|error| CommandError::io("Could not restore the instance directory", &error))
 }
 
-fn create_managed(
+pub(crate) fn create_managed(
     root: &Path,
     input: CreateInstanceInput,
 ) -> Result<InstanceManifest, CommandError> {
@@ -319,6 +377,7 @@ fn update_at(root: &Path, input: UpdateInstanceInput) -> Result<InstanceManifest
 
     let metadata_directory = metadata_directory(root, &input.id)?;
     let mut manifest = read_manifest(&metadata_directory.join(MANIFEST_FILE))?;
+    ensure_owned(&manifest)?;
     manifest.name = name.into();
     manifest.memory_mb = input.memory_mb;
     manifest.java_args = input.java_args.filter(|value| !value.trim().is_empty());
@@ -356,6 +415,8 @@ fn duplicate_at(root: &Path, id: &str) -> Result<InstanceManifest, CommandError>
     copy.last_played = None;
     copy.playtime_minutes = 0;
     copy.location = location;
+    copy.remote = None;
+    copy.ownership = InstanceOwnership::Owned;
     if let Err(error) = write_manifest(&copy_directory, &copy) {
         let _ = fs::remove_dir_all(copy_directory);
         return Err(error);
@@ -402,6 +463,8 @@ fn new_manifest(
         last_played: None,
         playtime_minutes: 0,
         mods: Vec::new(),
+        remote: None,
+        ownership: InstanceOwnership::Owned,
         last_operation_id: None,
     }
 }
@@ -445,14 +508,18 @@ pub(crate) fn validate_id(id: &str) -> Result<(), CommandError> {
 pub(crate) fn read_manifest(path: &Path) -> Result<InstanceManifest, CommandError> {
     let contents = fs::read(path)
         .map_err(|error| CommandError::io("Could not read the instance manifest", &error))?;
-    let manifest: InstanceManifest =
+    let mut manifest: InstanceManifest =
         serde_json::from_slice(&contents).map_err(|error| CommandError {
             code: CommandErrorCode::CorruptedData,
             message: "The instance manifest is corrupted".into(),
             retryable: false,
             details: Some(error.to_string()),
         })?;
-    if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
+    if manifest.schema_version == 1 {
+        manifest.schema_version = MANIFEST_SCHEMA_VERSION;
+        manifest.ownership = InstanceOwnership::Owned;
+        manifest.remote = None;
+    } else if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
         return Err(CommandError::new(
             CommandErrorCode::CorruptedData,
             format!(
@@ -462,6 +529,16 @@ pub(crate) fn read_manifest(path: &Path) -> Result<InstanceManifest, CommandErro
         ));
     }
     Ok(manifest)
+}
+
+pub(crate) fn ensure_owned(manifest: &InstanceManifest) -> Result<(), CommandError> {
+    if manifest.ownership == InstanceOwnership::Joined {
+        return Err(CommandError::new(
+            CommandErrorCode::PermissionDenied,
+            "Joined instances are controlled by their owner",
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn write_manifest(
@@ -565,6 +642,29 @@ mod tests {
     }
 
     #[test]
+    fn interrupted_sync_publish_restores_the_previous_instance() {
+        let root = test_root("sync-recovery");
+        let created = create_managed(&root, input("Recover sync")).unwrap();
+        let metadata = metadata_directory(&root, &created.id).unwrap();
+        let content = PathBuf::from(&created.location.path);
+        fs::write(content.join("old.txt"), "old").unwrap();
+        fs::copy(
+            metadata.join(MANIFEST_FILE),
+            metadata.join(SYNC_BACKUP_MANIFEST),
+        )
+        .unwrap();
+        fs::write(metadata.join(SYNC_PUBLISH_FILE), []).unwrap();
+        fs::rename(&content, metadata.join(SYNC_BACKUP_DIRECTORY)).unwrap();
+        fs::create_dir_all(&content).unwrap();
+        fs::write(content.join("new.txt"), "new").unwrap();
+
+        list_from(&root).unwrap();
+
+        assert!(content.join("old.txt").is_file() && !content.join("new.txt").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn missing_managed_content_directory_is_restored_during_listing() {
         let root = test_root("missing-content");
         let created = create_managed(&root, input("Recoverable")).unwrap();
@@ -638,6 +738,49 @@ mod tests {
         .unwrap();
 
         assert_eq!(list_from(&root).unwrap()[0].name, "After");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn joined_instances_reject_owner_only_settings_changes() {
+        let root = test_root("joined-update");
+        let mut created = create_managed(&root, input("Joined")).unwrap();
+        created.ownership = InstanceOwnership::Joined;
+        let metadata = metadata_directory(&root, &created.id).unwrap();
+        write_manifest(&metadata, &created).unwrap();
+
+        let error = update_at(
+            &root,
+            UpdateInstanceInput {
+                id: created.id.clone(),
+                name: "Changed".into(),
+                memory_mb: 4096,
+                java_args: None,
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(error.code, CommandErrorCode::PermissionDenied));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn duplicating_a_joined_instance_creates_an_owned_copy() {
+        let root = test_root("joined-copy");
+        let mut source = create_managed(&root, input("Joined")).unwrap();
+        source.ownership = InstanceOwnership::Joined;
+        source.remote = Some(crate::contracts::RemoteInstance {
+            peer_id: "peer".into(),
+            instance_id: "inst-owner".into(),
+            revision: "revision".into(),
+            last_synced_at: "2026-01-01T00:00:00Z".into(),
+        });
+        let metadata = metadata_directory(&root, &source.id).unwrap();
+        write_manifest(&metadata, &source).unwrap();
+
+        let copy = duplicate_at(&root, &source.id).unwrap();
+
+        assert!(copy.ownership == InstanceOwnership::Owned && copy.remote.is_none());
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -4,13 +4,14 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { toast } from 'sonner';
-import { Copy, Trash2, Settings2, FolderOpen, MoreHorizontal } from 'lucide-react';
+import { Copy, Share2, Trash2, Settings2, FolderOpen, MoreHorizontal } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import { useAppStore } from '~/usecase/store/appStore';
 import { instanceService } from '~/usecase/service/instance';
 import ConfirmDialog from '~/components/commons/ConfirmDialog';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
+import ShareInstanceDialog from '~/components/Sharing/ShareInstanceDialog';
 import {
   DropdownMenu,
   DropdownMenuItem,
@@ -22,6 +23,7 @@ import {
 
 const InstanceMenu = ({ instance, size = 'icon-sm', variant = 'ghost' }: InstanceMenuProps) => {
   const navigate = useNavigate();
+  const [shareOpen, setShareOpen] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const deleteInstance = useAppStore((s) => s.deleteInstance);
   const duplicateInstance = useAppStore((s) => s.duplicateInstance);
@@ -62,17 +64,27 @@ const InstanceMenu = ({ instance, size = 'icon-sm', variant = 'ghost' }: Instanc
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenuGroup>
-            <DropdownMenuItem onClick={() => navigate(`/instance/${instance.id}?tab=settings`)}>
-              <Settings2 />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={openFolder}>
-              <FolderOpen />
-              Open folder
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
+          {instance.ownership === 'owned' && (
+            <>
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => navigate(`/instance/${instance.id}?tab=settings`)}>
+                  <Settings2 />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={openFolder}>
+                  <FolderOpen />
+                  Open folder
+                </DropdownMenuItem>
+                {instance.gameId === 'valheim' && (
+                  <DropdownMenuItem onClick={() => setShareOpen(true)}>
+                    <Share2 />
+                    Share
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuGroup>
             <DropdownMenuItem onClick={duplicate}>
               <Copy />
@@ -88,6 +100,7 @@ const InstanceMenu = ({ instance, size = 'icon-sm', variant = 'ghost' }: Instanc
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ShareInstanceDialog open={shareOpen} instance={instance} onOpenChange={setShareOpen} />
       <ConfirmDialog
         destructive
         onConfirm={remove}

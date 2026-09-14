@@ -23,6 +23,7 @@ const ConfigTab = ({ instance }: InstanceTabProps) => {
   const [saving, setSaving] = React.useState(false);
   const [content, setContent] = React.useState('');
   const [dirty, setDirty] = React.useState(false);
+  const readOnly = instance.ownership === 'joined';
 
   const openFile = React.useCallback(
     async (file: ConfigFile) => {
@@ -121,10 +122,12 @@ const ConfigTab = ({ instance }: InstanceTabProps) => {
             </span>
           </button>
         ))}
-        <Button size="sm" variant="ghost" onClick={openDirectory} className="mt-1 justify-start">
-          <FolderOpen data-icon="inline-start" />
-          Open folder
-        </Button>
+        {!readOnly && (
+          <Button size="sm" variant="ghost" onClick={openDirectory} className="mt-1 justify-start">
+            <FolderOpen data-icon="inline-start" />
+            Open folder
+          </Button>
+        )}
       </div>
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
@@ -135,18 +138,23 @@ const ConfigTab = ({ instance }: InstanceTabProps) => {
             </Badge>
           )}
           <span className="flex-1" />
-          <Button size="sm" onClick={save} disabled={!dirty || saving}>
-            {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
-            Save
-          </Button>
+          {readOnly ? (
+            <Badge variant="secondary">Owner controlled</Badge>
+          ) : (
+            <Button size="sm" onClick={save} disabled={!dirty || saving}>
+              {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
+              Save
+            </Button>
+          )}
         </div>
         <Textarea
           value={content}
           onChange={edit}
           spellCheck={false}
           disabled={!active}
-          aria-label="Configuration file content"
+          readOnly={readOnly}
           className="min-h-[360px] resize-y font-mono text-xs leading-relaxed"
+          aria-label={readOnly ? 'Configuration file content, read only' : 'Configuration file content'}
         />
       </div>
     </div>

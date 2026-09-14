@@ -74,7 +74,9 @@ pub fn write_config_file(
             "Configuration file exceeds the 2 MB limit",
         ));
     }
-    let (_, root, game_id) = instance_root(&app, &instance_id)?;
+    let (metadata, root, game_id) = instance_root(&app, &instance_id)?;
+    let manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
+    instances::ensure_owned(&manifest)?;
     let file = config_path(&root, game_id, &path)?;
     if !file.is_file() {
         return Err(CommandError::new(
@@ -97,7 +99,9 @@ pub fn write_config_file(
 
 #[tauri::command]
 pub fn config_directory(app: AppHandle, instance_id: String) -> Result<String, CommandError> {
-    let (_, root, game_id) = instance_root(&app, &instance_id)?;
+    let (metadata, root, game_id) = instance_root(&app, &instance_id)?;
+    let manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
+    instances::ensure_owned(&manifest)?;
     let relative = config_roots(game_id)
         .iter()
         .find(|path| Path::new(path).extension().is_none())

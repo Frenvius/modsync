@@ -22,6 +22,7 @@ import {
 
 interface ModListItemProps {
   mod: InstalledMod;
+  readOnly?: boolean;
   onRemove: (projectId: string) => void;
   onRepair: (projectId: string) => void;
   onUpdate: (projectId: string) => void;
@@ -29,7 +30,7 @@ interface ModListItemProps {
   onToggle: (projectId: string, enabled: boolean) => void;
 }
 
-const ModListItem = ({ mod, onRemove, onRepair, onUpdate, onToggle, onChangeVersion }: ModListItemProps) => {
+const ModListItem = ({ mod, readOnly, onRemove, onRepair, onUpdate, onToggle, onChangeVersion }: ModListItemProps) => {
   const navigate = useNavigate();
 
   return (
@@ -70,48 +71,55 @@ const ModListItem = ({ mod, onRemove, onRepair, onUpdate, onToggle, onChangeVers
       <TableCell className="text-center">
         <Switch
           size="sm"
+          disabled={readOnly}
           checked={mod.enabled}
           onCheckedChange={(enabled) => onToggle(mod.projectId, enabled)}
           aria-label={`${mod.enabled ? 'Disable' : 'Enable'} ${mod.name}`}
         />
       </TableCell>
       <TableCell className="text-right">
-        {mod.updateAvailable && mod.provider !== ProviderId.Local && (
+        {!readOnly && mod.updateAvailable && mod.provider !== ProviderId.Local && (
           <Button size="icon-xs" variant="ghost" aria-label={`Update ${mod.name}`} onClick={() => onUpdate(mod.projectId)}>
             <ArrowUp />
           </Button>
         )}
-        {mod.status === UpdateStatus.Damaged && mod.provider !== ProviderId.Local && (
+        {!readOnly && mod.status === UpdateStatus.Damaged && mod.provider !== ProviderId.Local && (
           <Button size="icon-xs" variant="ghost" aria-label={`Repair ${mod.name}`} onClick={() => onRepair(mod.projectId)}>
             <RotateCcw />
           </Button>
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="icon-xs" variant="ghost" aria-label={`${mod.name} actions`}>
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            {mod.provider !== ProviderId.Local && (
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => navigate(`/project/${encodeURIComponent(mod.projectId)}`)}>
-                  <ExternalLink />
-                  View details
+        {(!readOnly || mod.provider !== ProviderId.Local) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon-xs" variant="ghost" aria-label={`${mod.name} actions`}>
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {mod.provider !== ProviderId.Local && (
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={() => navigate(`/project/${encodeURIComponent(mod.projectId)}`)}>
+                    <ExternalLink />
+                    View details
+                  </DropdownMenuItem>
+                  {!readOnly && (
+                    <DropdownMenuItem onClick={() => onChangeVersion(mod.projectId)}>
+                      <GitBranch />
+                      Change version
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuGroup>
+              )}
+              {!readOnly && mod.provider !== ProviderId.Local && <DropdownMenuSeparator />}
+              {!readOnly && (
+                <DropdownMenuItem variant="destructive" onClick={() => onRemove(mod.projectId)}>
+                  <Trash2 />
+                  Remove
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onChangeVersion(mod.projectId)}>
-                  <GitBranch />
-                  Change version
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            )}
-            {mod.provider !== ProviderId.Local && <DropdownMenuSeparator />}
-            <DropdownMenuItem variant="destructive" onClick={() => onRemove(mod.projectId)}>
-              <Trash2 />
-              Remove
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </TableCell>
     </TableRow>
   );

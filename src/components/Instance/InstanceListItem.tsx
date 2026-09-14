@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { Play, Loader2 } from 'lucide-react';
 
+import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { usePlay } from '~/usecase/hooks/usePlay';
 import GameIcon from '~/components/commons/GameIcon';
@@ -29,7 +30,10 @@ const InstanceListItem = ({ instance }: InstanceListItemProps) => {
       className="grid cursor-pointer grid-cols-[auto_minmax(0,2fr)_minmax(0,1fr)_auto_auto_auto_auto_auto] items-center gap-4 rounded-md border border-transparent px-3 py-2 text-sm transition-colors hover:border-border hover:bg-card focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <InstanceIcon size="sm" icon={instance.icon} color={instance.iconColor} />
-      <span className="truncate font-medium">{instance.name}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate font-medium">{instance.name}</span>
+        {instance.ownership === 'joined' && <Badge variant="outline">Joined</Badge>}
+      </span>
       <span className="flex items-center gap-1.5 text-muted-foreground">
         <GameIcon size="sm" gameId={instance.gameId} />
         <span className="truncate">{game.name}</span>

@@ -52,58 +52,69 @@ const SettingsTab = ({ instance }: InstanceTabProps) => {
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>General</CardTitle>
-          <CardDescription>Name and launch behaviour for this instance.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="inst-name">Name</Label>
-            <Input value={name} id="inst-name" onChange={(e) => setName(e.target.value)} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {isMinecraft && (
+      {instance.ownership === 'joined' ? (
         <Card>
           <CardHeader>
-            <CardTitle>Java</CardTitle>
-            <CardDescription>Runtime settings. Defaults are fine for most packs.</CardDescription>
+            <CardTitle>Owner controlled</CardTitle>
+            <CardDescription>Mods, configuration, and instance settings are synchronized from the owner.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="inst-memory">Memory (MB)</Label>
-              <Input
-                step={512}
-                min={1024}
-                type="number"
-                value={memory}
-                id="inst-memory"
-                className="w-40"
-                onChange={(e) => setMemory(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="inst-java">JVM arguments</Label>
-              <Textarea
-                rows={2}
-                id="inst-java"
-                value={javaArgs}
-                className="font-mono text-xs"
-                onChange={(e) => setJavaArgs(e.target.value)}
-              />
-            </div>
-          </CardContent>
         </Card>
-      )}
+      ) : (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>General</CardTitle>
+              <CardDescription>Name and launch behaviour for this instance.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="inst-name">Name</Label>
+                <Input value={name} id="inst-name" onChange={(e) => setName(e.target.value)} />
+              </div>
+            </CardContent>
+          </Card>
 
-      <div className="flex justify-end">
-        <Button onClick={save}>
-          <Save data-icon="inline-start" />
-          Save changes
-        </Button>
-      </div>
+          {isMinecraft && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Java</CardTitle>
+                <CardDescription>Runtime settings. Defaults are fine for most packs.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="inst-memory">Memory (MB)</Label>
+                  <Input
+                    step={512}
+                    min={1024}
+                    type="number"
+                    value={memory}
+                    id="inst-memory"
+                    className="w-40"
+                    onChange={(e) => setMemory(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="inst-java">JVM arguments</Label>
+                  <Textarea
+                    rows={2}
+                    id="inst-java"
+                    value={javaArgs}
+                    className="font-mono text-xs"
+                    onChange={(e) => setJavaArgs(e.target.value)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="flex justify-end">
+            <Button onClick={save}>
+              <Save data-icon="inline-start" />
+              Save changes
+            </Button>
+          </div>
+        </>
+      )}
 
       <Card className="border-destructive/30">
         <CardHeader>

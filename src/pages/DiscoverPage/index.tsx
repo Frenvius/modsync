@@ -44,6 +44,7 @@ const DiscoverPage = () => {
   const setSelectedGame = useAppStore((s) => s.setSelectedGame);
   const instanceId = params.get('instance') ?? undefined;
   const targetInstance = instances.find((i) => i.id === instanceId);
+  const installTarget = targetInstance?.ownership === 'owned' ? targetInstance : undefined;
   const gameId = targetInstance?.gameId ?? selectedGameId;
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState<SearchSort>('relevance');
@@ -125,14 +126,14 @@ const DiscoverPage = () => {
   }, [page, gameId, query, sort, filters]);
 
   const installFromPanel = async (project: Project) => {
-    if (!targetInstance) {
+    if (!installTarget) {
       setDialogProject(project);
       return;
     }
     setInstallingProjectId(project.id);
     try {
-      await installMod(targetInstance.id, project);
-      toast.success(`${project.name} installed to ${targetInstance.name}`);
+      await installMod(installTarget.id, project);
+      toast.success(`${project.name} installed to ${installTarget.name}`);
     } catch (error) {
       toast.error(getErrorMessage(error, `Could not install ${project.name}`));
     } finally {
@@ -399,8 +400,8 @@ const DiscoverPage = () => {
 
       {selectedProject ? (
         <ProjectDetailsPanel
+          instance={installTarget}
           project={selectedProject}
-          instance={targetInstance}
           onClose={() => setSelectedProject(null)}
           installed={installedProjectIds.has(selectedProject.id)}
           installing={installingProjectId === selectedProject.id}

@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Play, Clock, Loader2, Package } from 'lucide-react';
 
 import { cn } from '~/lib/utils';
+import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { usePlay } from '~/usecase/hooks/usePlay';
 import GameIcon from '~/components/commons/GameIcon';
@@ -60,7 +61,10 @@ const InstanceCard = ({ instance, className }: InstanceCardProps) => {
             <GameIcon size="sm" gameId={instance.gameId} className="size-3.5 rounded-[3px] [&>svg]:size-2.5" />
             <span className="truncate">{game.name}</span>
           </span>
-          <VersionBadge className="w-fit" loader={instance.loader} version={instance.gameVersion} />
+          <div className="flex items-center gap-1">
+            <VersionBadge className="w-fit" loader={instance.loader} version={instance.gameVersion} />
+            {instance.ownership === 'joined' && <Badge variant="outline">Joined</Badge>}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <Tooltip>

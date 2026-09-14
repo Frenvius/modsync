@@ -65,6 +65,7 @@ pub async fn launch_instance(
     instance_id: String,
 ) -> Result<InstanceManifest, CommandError> {
     instances::validate_id(&instance_id)?;
+    crate::sharing::sync_before_launch(&app, &instance_id).await;
     {
         let mut running = running_instances().lock().map_err(lock_error)?;
         if !running.insert(instance_id.clone()) {
@@ -104,7 +105,10 @@ pub fn list_java_runtimes() -> Vec<JavaRuntime> {
 pub fn logs_directory(app: AppHandle, instance_id: String) -> Result<String, CommandError> {
     instances::validate_id(&instance_id)?;
     let root = instances::instances_root(&app)?;
-    let directory = instances::metadata_directory(&root, &instance_id)?.join("logs");
+    let metadata = instances::metadata_directory(&root, &instance_id)?;
+    let manifest = instances::read_manifest(&metadata.join("manifest.json"))?;
+    instances::ensure_owned(&manifest)?;
+    let directory = metadata.join("logs");
     fs::create_dir_all(&directory)
         .map_err(|error| CommandError::io("Could not create the process log directory", &error))?;
     Ok(directory.to_string_lossy().into_owned())
