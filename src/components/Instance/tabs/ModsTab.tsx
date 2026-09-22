@@ -3,8 +3,9 @@ import type { ModSortKey, ModsTabProps, ModStatusFilter } from '~/components/Ins
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { cn } from 'cn';
 import { toast } from 'sonner';
-import { Plus, ArrowUp, Package, RefreshCw, FileQuestion } from 'lucide-react';
+import { X, Plus, ArrowUp, Package, RefreshCw, FileQuestion, ClipboardCheck } from 'lucide-react';
 
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -20,6 +21,17 @@ import ChangeVersionDialog from '~/components/Mods/ChangeVersionDialog';
 import { Table, TableRow, TableBody, TableHead, TableHeader } from '~/components/ui/table';
 import { contentService, type UpdateResultItem, type UnmanagedContent } from '~/usecase/service/content';
 import { Select, SelectItem, SelectGroup, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
+
+const UPDATE_OUTCOMES = ['updated', 'update-available', 'up-to-date', 'incompatible', 'failed', 'skipped'] as const;
+
+const UPDATE_OUTCOME_STYLES: Record<(typeof UPDATE_OUTCOMES)[number], string> = {
+  updated: '',
+  skipped: '',
+  'up-to-date': '',
+  incompatible: '',
+  failed: 'text-destructive',
+  'update-available': 'bg-foreground text-background'
+};
 
 const ModsTab = ({ instance, contentType }: ModsTabProps) => {
   const navigate = useNavigate();
@@ -225,17 +237,22 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
       </div>
 
       {updateReport.length > 0 && (
-        <section aria-live="polite" className="flex flex-col gap-2 rounded-lg border bg-card p-3">
-          <h2 className="text-sm font-semibold">Update report</h2>
-          <div className="flex flex-wrap gap-1.5">
-            {(['updated', 'update-available', 'up-to-date', 'incompatible', 'failed', 'skipped'] as const).map((outcome) => {
+        <section aria-live="polite" className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <ClipboardCheck className="size-4 text-muted-foreground" />
+            <h2 className="mr-1 text-sm font-semibold">Update report</h2>
+            {UPDATE_OUTCOMES.map((outcome) => {
               const count = updateReport.filter((item) => item.outcome === outcome).length;
               return count > 0 ? (
-                <Badge key={outcome} variant="secondary" className="capitalize">
+                <Badge key={outcome} variant="secondary" className={cn('h-6 px-2.5 capitalize', UPDATE_OUTCOME_STYLES[outcome])}>
                   {outcome.replaceAll('-', ' ')}: {count}
                 </Badge>
               ) : null;
             })}
+            <span className="flex-1" />
+            <Button size="xs" variant="ghost" aria-label="Dismiss update report" onClick={() => setUpdateReport([])}>
+              <X />
+            </Button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {(
@@ -246,11 +263,8 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
             ).map(({ title, outcome }) => {
               const items = updateReport.filter((item) => item.outcome === outcome);
               return items.length > 0 ? (
-                <div key={outcome} className="flex min-w-0 flex-col gap-1.5">
-                  <h3 className="text-xs font-medium">
-                    {title} ({items.length})
-                  </h3>
-                  <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+                <div key={outcome} className="flex min-w-0 flex-col gap-1.5 rounded-md bg-muted/30 p-2.5">
+                  <ul aria-label={title} className="flex flex-col gap-1 text-xs text-muted-foreground">
                     {items.map((item) => (
                       <li key={item.projectId} className="flex min-w-0 flex-wrap justify-between gap-x-3">
                         <span className="min-w-0 flex-1 truncate text-foreground">{item.name}</span>
@@ -268,7 +282,7 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
           {updateReport
             .filter((item) => item.message && ['failed', 'skipped', 'incompatible'].includes(item.outcome))
             .map((item) => (
-              <p key={item.projectId} className="text-xs text-muted-foreground">
+              <p key={item.projectId} className="border-l-2 border-border pl-2.5 text-xs text-muted-foreground">
                 <strong className="font-medium text-foreground">{item.name}:</strong> {item.message}
               </p>
             ))}
