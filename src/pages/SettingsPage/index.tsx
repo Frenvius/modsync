@@ -1,5 +1,6 @@
 import type { RowProps, SectionBodyProps } from './types';
-import type { AppSettings } from '~/domain/interfaces/settings.interface';
+import type { GameId } from '~/domain/enums/provider.enum';
+import type { LaunchMode, AppSettings } from '~/domain/interfaces/settings.interface';
 
 import { useSearchParams } from 'react-router-dom';
 
@@ -16,8 +17,9 @@ import { projectService } from '~/usecase/service/project';
 import { filesystemService } from '~/usecase/service/filesystem';
 import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '~/components/ui/card';
+import { Select, SelectItem, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
-import { SETTINGS_SECTIONS } from './constants';
+import { STEAM_GAMES, SETTINGS_SECTIONS, LAUNCH_MODE_LABELS } from './constants';
 
 const SettingsPage = () => {
   const [params, setParams] = useSearchParams();
@@ -61,6 +63,11 @@ const SettingsPage = () => {
 };
 
 const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
+  const setLaunchMode = (gameId: GameId, launchMode: LaunchMode) =>
+    patch({
+      gamePaths: settings.gamePaths.map((gamePath) => (gamePath.gameId === gameId ? { ...gamePath, launchMode } : gamePath))
+    });
+
   const browseGamePath = async (gameId: AppSettings['gamePaths'][number]['gameId']) => {
     try {
       const path = await filesystemService.chooseDirectory();
@@ -80,7 +87,9 @@ const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
       <Card>
         <CardHeader>
           <CardTitle>Games</CardTitle>
-          <CardDescription>Where each game is installed. Detected automatically when possible.</CardDescription>
+          <CardDescription>
+            Where each game is installed, and how it starts. Steam keeps the overlay and its screenshot key working.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {settings.gamePaths.map((gp) => {
@@ -101,6 +110,20 @@ const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
                   <Badge variant="outline" className="text-muted-foreground">
                     Missing
                   </Badge>
+                )}
+                {STEAM_GAMES.includes(gp.gameId) && (
+                  <Select value={gp.launchMode} onValueChange={(value) => setLaunchMode(gp.gameId, value as LaunchMode)}>
+                    <SelectTrigger size="sm" className="w-28" aria-label={`Launch mode for ${game.name}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(LAUNCH_MODE_LABELS) as Array<LaunchMode>).map((mode) => (
+                        <SelectItem key={mode} value={mode}>
+                          {LAUNCH_MODE_LABELS[mode]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
                 <Button size="sm" variant="outline" onClick={() => browseGamePath(gp.gameId)}>
                   <FolderOpen data-icon="inline-start" />

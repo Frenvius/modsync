@@ -19,6 +19,7 @@ use super::{
 const BASE_URL: &str = "https://thunderstore.io";
 const CACHE_SECONDS: i64 = 30 * 60;
 const MAX_CHUNK_BYTES: u64 = 32 * 1024 * 1024;
+const BATCH_CONCURRENCY: usize = 4;
 
 #[derive(Clone, Deserialize, Serialize)]
 struct Package {
@@ -187,14 +188,8 @@ pub async fn versions(
 ) -> Result<Vec<ProjectVersion>, CommandError> {
     let (community, owner, name) = split_id(external_id)?;
     let (items, _) = scan(app, community, |package| {
-        (package.owner == owner && package.name == name).then(|| {
-            package
-                .versions
-                .into_iter()
-                .filter(|version| version.is_active)
-                .map(|version| map_version(community, &owner, &name, version))
-                .collect::<Vec<_>>()
-        })
+        (package.owner == owner && package.name == name)
+            .then(|| package_versions(community, package).1)
     })
     .await?;
     let mut versions = items.into_iter().next().ok_or_else(|| {
@@ -207,6 +202,65 @@ pub async fn versions(
         }
     }
     Ok(versions)
+}
+
+pub async fn versions_batch(
+    external_ids: &[&str],
+) -> Result<Vec<(String, Vec<ProjectVersion>)>, CommandError> {
+    let mut items = Vec::with_capacity(external_ids.len());
+    let mut failure = None;
+    for chunk in external_ids.chunks(BATCH_CONCURRENCY) {
+        let mut pending = tokio::task::JoinSet::new();
+        for external_id in chunk {
+            let (community, owner, name) = split_id(external_id)?;
+            let community = community.to_string();
+            pending.spawn(async move {
+                let result = latest_version(&community, &owner, &name).await;
+                (format!("{community}:{owner}:{name}"), result)
+            });
+        }
+        while let Some(Ok((external_id, result))) = pending.join_next().await {
+            match result {
+                Ok(version) => items.push((external_id, vec![version])),
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
+            }
+        }
+    }
+    match failure {
+        Some(error) if items.is_empty() => Err(error),
+        _ => Ok(items),
+    }
+}
+
+async fn latest_version(
+    community: &str,
+    owner: &str,
+    name: &str,
+) -> Result<ProjectVersion, CommandError> {
+    let details = http::get_json::<PackageDetails>(http::client()?.get(format!(
+        "{BASE_URL}/api/experimental/package/{owner}/{name}/"
+    )))
+    .await?;
+    if !details.latest.is_active {
+        return Err(CommandError::new(
+            CommandErrorCode::NotFound,
+            "Thunderstore package has no active version",
+        ));
+    }
+    Ok(map_version(community, owner, name, details.latest))
+}
+
+fn package_versions(community: &str, package: Package) -> (String, Vec<ProjectVersion>) {
+    let external_id = format!("{community}:{}:{}", package.owner, package.name);
+    let versions = package
+        .versions
+        .into_iter()
+        .filter(|version| version.is_active)
+        .map(|version| map_version(community, &package.owner, &package.name, version))
+        .collect();
+    (external_id, versions)
 }
 
 pub async fn categories(
@@ -631,6 +685,43 @@ mod tests {
         let version = map_version("valheim", &details.owner, &details.name, details.latest);
         assert_eq!(project.id, "thunderstore:valheim:RandyKnapp:EpicLoot");
         assert_eq!(version.dependencies.len(), 1);
+    }
+
+    #[test]
+    fn package_versions_returns_active_versions_for_batch_lookup() {
+        let package: Package = serde_json::from_str(
+            r#"{
+                "name":"EpicLoot",
+                "full_name":"RandyKnapp-EpicLoot",
+                "owner":"RandyKnapp",
+                "date_updated":"2026-09-13T07:12:07Z",
+                "versions":[
+                    {
+                        "full_name":"RandyKnapp-EpicLoot-0.14.5",
+                        "description":"Loot",
+                        "version_number":"0.14.5",
+                        "download_url":"https://example.com/EpicLoot.zip",
+                        "is_active":true,
+                        "date_created":"2026-09-13T07:12:05Z"
+                    },
+                    {
+                        "full_name":"RandyKnapp-EpicLoot-0.14.4",
+                        "description":"Loot",
+                        "version_number":"0.14.4",
+                        "download_url":"https://example.com/EpicLoot-old.zip",
+                        "is_active":false,
+                        "date_created":"2026-09-12T07:12:05Z"
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let (id, versions) = package_versions("valheim", package);
+
+        assert_eq!(id, "valheim:RandyKnapp:EpicLoot");
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].number, "0.14.5");
     }
 
     #[test]

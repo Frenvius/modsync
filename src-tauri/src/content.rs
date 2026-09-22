@@ -810,6 +810,15 @@ async fn check_updates_at(
             .enumerate()
             .filter_map(|(index, installed)| (installed.provider == provider).then_some(index))
             .collect::<Vec<_>>();
+        let thunderstore_versions = if provider == crate::catalog::ProviderId::Thunderstore {
+            let project_ids = indices
+                .iter()
+                .map(|&index| manifest.mods[index].project_id.clone())
+                .collect::<Vec<_>>();
+            Some(providers::resolve_thunderstore_versions(&project_ids).await)
+        } else {
+            None
+        };
         for batch in indices.chunks(20) {
             for &index in batch {
                 let installed = &manifest.mods[index];
@@ -842,9 +851,17 @@ async fn check_updates_at(
                     continue;
                 }
 
-                let result = providers::resolve_versions(app, &project_id)
-                    .await
-                    .and_then(|versions| select_version(manifest, versions, None));
+                let result = match &thunderstore_versions {
+                    Some(Ok(versions)) => versions.get(&project_id).cloned().ok_or_else(|| {
+                        CommandError::new(
+                            CommandErrorCode::NotFound,
+                            "Thunderstore package not found",
+                        )
+                    }),
+                    Some(Err(error)) => Err(error.clone()),
+                    None => providers::resolve_versions(app, &project_id).await,
+                }
+                .and_then(|versions| select_version(manifest, versions, None));
                 match result {
                     Ok(version) => {
                         let has_update =
@@ -947,13 +964,7 @@ async fn resolve_plan(
     let mut plan = Vec::new();
 
     while let Some((project_id, version_hint)) = queue.pop_front() {
-        let replacing = replace
-            && installed.get(project_id.as_str()).is_some_and(|item| {
-                project_id == input.project_id
-                    || version_hint.as_ref().is_some_and(|hint| {
-                        item.version_id != *hint && item.installed_version != *hint
-                    })
-            });
+        let replacing = replace && project_id == input.project_id;
         if (installed.contains_key(project_id.as_str()) && !replacing)
             || !seen.insert(project_id.clone())
         {
@@ -988,15 +999,12 @@ async fn resolve_plan(
         }
         for dependency in &version.dependencies {
             match dependency.r#type {
-                DependencyType::Required => queue.push_back((
-                    dependency.project_id.clone(),
-                    dependency.version_range.clone(),
-                )),
-                DependencyType::Optional if optional.contains(&dependency.project_id) => queue
-                    .push_back((
-                        dependency.project_id.clone(),
-                        dependency.version_range.clone(),
-                    )),
+                DependencyType::Required => {
+                    queue.push_back((dependency.project_id.clone(), None));
+                }
+                DependencyType::Optional if optional.contains(&dependency.project_id) => {
+                    queue.push_back((dependency.project_id.clone(), None));
+                }
                 DependencyType::Incompatible
                     if installed.contains_key(dependency.project_id.as_str())
                         || seen.contains(&dependency.project_id) =>

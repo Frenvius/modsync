@@ -215,6 +215,20 @@ pub(crate) async fn resolve_project_versions(
     Ok((project, versions))
 }
 
+pub(crate) async fn resolve_thunderstore_versions(
+    project_ids: &[String],
+) -> Result<std::collections::HashMap<String, Vec<ProjectVersion>>, CommandError> {
+    let external_ids = project_ids
+        .iter()
+        .map(|id| external_id(ProviderId::Thunderstore, id))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(thunderstore::versions_batch(&external_ids)
+        .await?
+        .into_iter()
+        .map(|(id, versions)| (project_id(ProviderId::Thunderstore, id), versions))
+        .collect())
+}
+
 pub(crate) async fn resolve_versions(
     app: &AppHandle,
     project_id: &str,

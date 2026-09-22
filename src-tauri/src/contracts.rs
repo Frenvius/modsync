@@ -125,6 +125,16 @@ pub struct GamePathSetting {
     pub path: String,
     pub game_id: GameId,
     pub detected: bool,
+    #[serde(default)]
+    pub launch_mode: LaunchMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LaunchMode {
+    #[default]
+    Steam,
+    Direct,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -150,7 +160,7 @@ pub enum CommandErrorCode {
     ProviderUnavailable,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandError {
     pub code: CommandErrorCode,
@@ -286,6 +296,7 @@ mod tests {
                 path: ".minecraft".into(),
                 game_id: GameId::Minecraft,
                 detected: true,
+                launch_mode: LaunchMode::Direct,
             }],
         };
         let json = serde_json::to_string(&manifest).unwrap();

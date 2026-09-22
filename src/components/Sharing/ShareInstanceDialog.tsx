@@ -106,7 +106,7 @@ const ShareInstanceDialog = ({ open, instance, onOpenChange }: ShareInstanceDial
               </p>
             )}
             <p className="text-sm text-muted-foreground">
-              The code grants temporary read-only access over an encrypted peer-to-peer connection. It expires when sharing stops.
+              The code stays linked to this instance. Stopping sharing takes it offline without changing the code.
             </p>
             <Button onClick={() => void start()} disabled={loading || status.active}>
               {loading ? (

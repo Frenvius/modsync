@@ -9,10 +9,10 @@ const STORAGE_KEY = 'modsync.settings.v1';
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
   gamePaths: [
-    { path: '', detected: false, gameId: GameId.Minecraft },
-    { path: '', detected: false, gameId: GameId.Valheim },
-    { path: '', detected: false, gameId: GameId.VintageStory },
-    { path: '', detected: false, gameId: GameId.LethalCompany }
+    { path: '', detected: false, launchMode: 'steam', gameId: GameId.Minecraft },
+    { path: '', detected: false, launchMode: 'steam', gameId: GameId.Valheim },
+    { path: '', detected: false, launchMode: 'steam', gameId: GameId.VintageStory },
+    { path: '', detected: false, launchMode: 'steam', gameId: GameId.LethalCompany }
   ]
 };
 

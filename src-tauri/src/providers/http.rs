@@ -71,7 +71,7 @@ pub async fn send(request: RequestBuilder) -> Result<reqwest::Response, CommandE
         match next_request.send().await {
             Ok(response) if response.status().is_success() => return Ok(response),
             Ok(response) if retryable_status(response.status()) && attempt < RETRIES => {
-                tokio::time::sleep(Duration::from_millis(300 * (attempt as u64 + 1))).await;
+                tokio::time::sleep(retry_delay(response.status(), attempt)).await;
             }
             Ok(response) => return Err(status_error(response.status())),
             Err(error) if attempt < RETRIES && (error.is_timeout() || error.is_connect()) => {
@@ -84,6 +84,15 @@ pub async fn send(request: RequestBuilder) -> Result<reqwest::Response, CommandE
         CommandErrorCode::Network,
         "Could not reach provider",
     ))
+}
+
+fn retry_delay(status: StatusCode, attempt: usize) -> Duration {
+    let base = if status == StatusCode::TOO_MANY_REQUESTS {
+        1200
+    } else {
+        300
+    };
+    Duration::from_millis(base * (1 << attempt))
 }
 
 fn retryable_status(status: StatusCode) -> bool {

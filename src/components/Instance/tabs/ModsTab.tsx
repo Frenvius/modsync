@@ -237,6 +237,34 @@ const ModsTab = ({ instance, contentType }: ModsTabProps) => {
               ) : null;
             })}
           </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {(
+              [
+                { title: 'Updates available', outcome: 'update-available' },
+                { title: 'Updated', outcome: 'updated' }
+              ] as const
+            ).map(({ title, outcome }) => {
+              const items = updateReport.filter((item) => item.outcome === outcome);
+              return items.length > 0 ? (
+                <div key={outcome} className="flex min-w-0 flex-col gap-1.5">
+                  <h3 className="text-xs font-medium">
+                    {title} ({items.length})
+                  </h3>
+                  <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    {items.map((item) => (
+                      <li key={item.projectId} className="flex min-w-0 flex-wrap justify-between gap-x-3">
+                        <span className="min-w-0 flex-1 truncate text-foreground">{item.name}</span>
+                        <span className="shrink-0 font-mono tabular-nums">
+                          {item.fromVersion}
+                          {item.toVersion ? ` to ${item.toVersion}` : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null;
+            })}
+          </div>
           {updateReport
             .filter((item) => item.message && ['failed', 'skipped', 'incompatible'].includes(item.outcome))
             .map((item) => (

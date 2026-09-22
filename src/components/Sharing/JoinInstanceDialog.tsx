@@ -78,7 +78,7 @@ const JoinInstanceDialog = ({ open, onOpenChange }: JoinInstanceDialogProps) => 
             <Link aria-hidden="true" className="size-5 text-primary" />
             Join shared instance
           </DialogTitle>
-          <DialogDescription>Paste the temporary code from the Valheim instance owner.</DialogDescription>
+          <DialogDescription>Paste the share code from the Valheim instance owner.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={submit} className="flex flex-col gap-4">

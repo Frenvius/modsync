@@ -28,7 +28,9 @@ const MAX_MANIFEST_BYTES: usize = 16 * 1024 * 1024;
 const MAX_SHARED_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_SHARED_FILES: usize = 20_000;
 const MAX_TOTAL_SHARED_BYTES: u64 = 32 * 1024 * 1024 * 1024;
+const MAX_SYNC_ATTEMPTS: usize = 3;
 const REMOTE_FILE: &str = "remote.json";
+const SHARE_SECRET_FILE: &str = ".sharing-secret";
 const SYNC_INCOMPLETE_FILE: &str = ".sync-incomplete";
 const SYNC_PUBLISH_FILE: &str = ".sync-publish";
 const SYNC_BACKUP_MANIFEST: &str = ".sync-manifest-backup";
@@ -130,6 +132,7 @@ struct OwnerClient {
     link: RemoteLink,
 }
 
+#[derive(Clone, Copy)]
 struct SyncContext<'a> {
     app: &'a AppHandle,
     client: &'a OwnerClient,
@@ -171,7 +174,7 @@ pub async fn start_sharing(
             "Stop the active sharing session before sharing another instance",
         ));
     }
-    let access_secret = hex(&SecretKey::generate().to_bytes());
+    let access_secret = load_or_create_share_secret(&metadata)?;
     let payload = ShareCode {
         version: PROTOCOL_VERSION,
         peer_id: endpoint.node_id().to_string(),
@@ -290,26 +293,35 @@ async fn join_inner(
     input: &JoinInstanceInput,
 ) -> Result<InstanceManifest, CommandError> {
     let link = decode_share_code(&input.code)?;
-    if instances::list_instances(app.clone())
+    let existing = instances::list_instances(app.clone())
         .await?
-        .iter()
-        .any(|instance| {
+        .into_iter()
+        .find(|instance| {
             instance.remote.as_ref().is_some_and(|remote| {
                 remote.peer_id == link.peer_id && remote.instance_id == link.instance_id
             })
-        })
-    {
-        return Err(CommandError::new(
-            CommandErrorCode::Conflict,
-            "This shared instance has already been joined",
-        ));
-    }
+        });
     let client = OwnerClient::connect(app, link).await?;
     let remote = client.manifest().await?;
     validate_remote_manifest(&remote, &client.link)?;
+    if let Some(current) = existing {
+        let root = instances::instances_root(app)?;
+        let metadata = instances::metadata_directory(&root, &current.id)?;
+        write_remote_link(&metadata, &client.link)?;
+        return sync_remote(
+            SyncContext {
+                app,
+                client: &client,
+                operation_id: &input.operation_id,
+            },
+            current,
+            remote,
+        )
+        .await;
+    }
     let created = create_sync_candidate(app, &remote.instance)?;
     let created_id = created.id.clone();
-    let result = synchronize_into(
+    let result = synchronize_with_retry(
         SyncContext {
             app,
             client: &client,
@@ -367,6 +379,28 @@ async fn sync_inner(
     let client = OwnerClient::connect(app, link).await?;
     let remote = client.manifest().await?;
     validate_remote_manifest(&remote, &client.link)?;
+    sync_remote(
+        SyncContext {
+            app,
+            client: &client,
+            operation_id: &input.operation_id,
+        },
+        current,
+        remote,
+    )
+    .await
+}
+
+async fn sync_remote(
+    context: SyncContext<'_>,
+    current: InstanceManifest,
+    remote: SyncManifest,
+) -> Result<InstanceManifest, CommandError> {
+    let SyncContext {
+        app,
+        client,
+        operation_id,
+    } = context;
     if current
         .remote
         .as_ref()
@@ -376,11 +410,11 @@ async fn sync_inner(
     }
     let staging = create_sync_candidate(app, &remote.instance)?;
     let staging_id = staging.id.clone();
-    let staged = synchronize_into(
+    let staged = synchronize_with_retry(
         SyncContext {
             app,
-            client: &client,
-            operation_id: &input.operation_id,
+            client,
+            operation_id,
         },
         remote,
         staging,
@@ -398,6 +432,30 @@ async fn sync_inner(
         let _ = instances::delete_instance(app.clone(), staging_id);
     }
     result
+}
+
+async fn synchronize_with_retry(
+    context: SyncContext<'_>,
+    mut remote: SyncManifest,
+    local: InstanceManifest,
+) -> Result<InstanceManifest, CommandError> {
+    for attempt in 0..MAX_SYNC_ATTEMPTS {
+        match synchronize_into(context, remote.clone(), local.clone()).await {
+            Ok(manifest) => return Ok(manifest),
+            Err(error)
+                if attempt + 1 < MAX_SYNC_ATTEMPTS
+                    && matches!(
+                        error.code,
+                        CommandErrorCode::Conflict | CommandErrorCode::CorruptedData
+                    ) =>
+            {
+                remote = context.client.manifest().await?;
+                validate_remote_manifest(&remote, &context.client.link)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!()
 }
 
 async fn synchronize_into(
@@ -946,7 +1004,9 @@ fn build_manifest(session: &OwnerSession) -> Result<SyncManifest, CommandError> 
             insert_shared_file(&content_root, &path, &mut files)?;
         }
     }
-    collect_config_files(&content_root, Path::new("BepInEx/config"), 0, &mut files)?;
+    for directory in ["BepInEx/config", "BepInEx/plugins", "BepInEx/patchers"] {
+        collect_directory_files(&content_root, Path::new(directory), 0, &mut files)?;
+    }
     if files.len() > MAX_SHARED_FILES {
         return Err(CommandError::new(
             CommandErrorCode::InvalidInput,
@@ -969,15 +1029,32 @@ fn build_manifest(session: &OwnerSession) -> Result<SyncManifest, CommandError> 
     instance.location.kind = InstanceLocationKind::Managed;
     instance.remote = None;
     instance.ownership = InstanceOwnership::Owned;
-    let revision_source =
-        serde_json::to_vec(&(PROTOCOL_VERSION, &instance, &files)).map_err(serialization_error)?;
-    let revision = hex(&Sha256::digest(revision_source));
+    let revision = calculate_revision(&instance, &files)?;
     Ok(SyncManifest {
         version: PROTOCOL_VERSION,
         revision,
         instance,
         files,
     })
+}
+
+fn calculate_revision(
+    instance: &InstanceManifest,
+    files: &[SharedFile],
+) -> Result<String, CommandError> {
+    let mut stable = instance.clone();
+    stable.updated_at.clear();
+    stable.last_played = None;
+    stable.playtime_minutes = 0;
+    stable.last_operation_id = None;
+    for installed in &mut stable.mods {
+        installed.update_available = false;
+        installed.missing_dependency = None;
+        installed.latest_compatible_version.clear();
+    }
+    let source =
+        serde_json::to_vec(&(PROTOCOL_VERSION, stable, files)).map_err(serialization_error)?;
+    Ok(hex(&Sha256::digest(source)))
 }
 
 fn insert_shared_file(
@@ -1011,7 +1088,7 @@ fn insert_shared_file(
     Ok(())
 }
 
-fn collect_config_files(
+fn collect_directory_files(
     root: &Path,
     relative: &Path,
     depth: usize,
@@ -1037,7 +1114,7 @@ fn collect_config_files(
         }
         let child = relative.join(entry.file_name());
         if kind.is_dir() {
-            collect_config_files(root, &child, depth + 1, output)?;
+            collect_directory_files(root, &child, depth + 1, output)?;
         } else if kind.is_file() {
             insert_shared_file(root, &child, output)?;
         }
@@ -1274,6 +1351,28 @@ fn read_remote_link(metadata: &Path) -> Result<RemoteLink, CommandError> {
     })
 }
 
+fn load_or_create_share_secret(metadata: &Path) -> Result<String, CommandError> {
+    let path = metadata.join(SHARE_SECRET_FILE);
+    match fs::read(&path) {
+        Ok(bytes) => {
+            let secret = <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| {
+                CommandError::new(
+                    CommandErrorCode::CorruptedData,
+                    "Saved sharing access is corrupted",
+                )
+            })?;
+            Ok(hex(&secret))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let secret = SecretKey::generate().to_bytes();
+            atomic_write(&path, &secret)
+                .map_err(|error| CommandError::io("Could not save sharing access", &error))?;
+            Ok(hex(&secret))
+        }
+        Err(error) => Err(CommandError::io("Could not read sharing access", &error)),
+    }
+}
+
 fn load_or_create_key(app: &AppHandle) -> Result<SecretKey, CommandError> {
     let directory = app
         .path()
@@ -1431,5 +1530,55 @@ mod tests {
     #[test]
     fn access_secrets_compare_without_early_content_exit() {
         assert!(constant_time_eq(&"a".repeat(64), &"a".repeat(64)));
+    }
+
+    #[test]
+    fn sharing_secret_survives_session_restarts() {
+        let directory = std::env::temp_dir().join(format!(
+            "modsync-sharing-secret-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+
+        let first = load_or_create_share_secret(&directory).unwrap();
+        let second = load_or_create_share_secret(&directory).unwrap();
+
+        assert_eq!(first, second);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn sharing_revision_ignores_launch_history() {
+        let mut instance: InstanceManifest = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 2,
+            "id": "owner",
+            "name": "Valheim",
+            "icon": "gamepad",
+            "iconColor": "blue",
+            "description": "",
+            "gameId": "valheim",
+            "gameVersion": "default",
+            "loader": "bepinex",
+            "loaderVersion": "5.4.23.3",
+            "memoryMb": 0,
+            "location": { "path": "", "kind": "managed" },
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:00Z",
+            "lastPlayed": null,
+            "playtimeMinutes": 0,
+            "mods": [],
+            "ownership": "owned"
+        }))
+        .unwrap();
+        let before = calculate_revision(&instance, &[]).unwrap();
+
+        instance.updated_at = "2026-01-02T00:00:00Z".into();
+        instance.last_played = Some("2026-01-02T00:00:00Z".into());
+        instance.playtime_minutes = 42;
+
+        assert_eq!(before, calculate_revision(&instance, &[]).unwrap());
+        instance.loader_version = "5.4.24.0".into();
+        assert_ne!(before, calculate_revision(&instance, &[]).unwrap());
     }
 }

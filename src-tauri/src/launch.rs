@@ -12,7 +12,7 @@ use sha1::{Digest, Sha1};
 use tauri::{AppHandle, Emitter};
 
 use crate::catalog::{GameId, LoaderId};
-use crate::contracts::{CommandError, CommandErrorCode, InstanceManifest};
+use crate::contracts::{CommandError, CommandErrorCode, InstanceManifest, LaunchMode};
 use crate::{instances, persistence::atomic_write, providers, settings};
 
 const VERSION_MANIFEST_URL: &str =
@@ -23,8 +23,14 @@ const MAX_PROCESS_LOG_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PROCESS_LOG_LINES: usize = 5_000;
 
 struct ProcessLaunch {
-    child: Child,
+    child: Option<Child>,
+    watch: Option<String>,
     cleanup: Vec<CleanupFile>,
+}
+
+struct BepInExTarget {
+    executable: &'static str,
+    steam_app_id: &'static str,
 }
 
 #[derive(Debug)]
@@ -148,13 +154,14 @@ async fn launch(app: &AppHandle, instance_id: &str) -> Result<InstanceManifest, 
         .game_paths
         .into_iter()
         .find(|entry| entry.game_id == manifest.game_id && !entry.path.is_empty())
-        .map(|entry| PathBuf::from(entry.path))
         .ok_or_else(|| {
             CommandError::new(
                 CommandErrorCode::NotFound,
                 "Configure the game installation folder in Settings before launching",
             )
         })?;
+    let launch_mode = configured.launch_mode;
+    let configured = PathBuf::from(&configured.path);
     let root = PathBuf::from(&manifest.location.path);
     if !root.is_dir() {
         return Err(CommandError::new(
@@ -183,10 +190,36 @@ async fn launch(app: &AppHandle, instance_id: &str) -> Result<InstanceManifest, 
             )
             .await?
         }
-        GameId::LethalCompany => launch_bepinex(&configured, &root, "Lethal Company.exe")?,
-        GameId::Valheim => launch_bepinex(&configured, &root, valheim_executable())?,
+        GameId::LethalCompany => launch_bepinex(
+            &configured,
+            &root,
+            BepInExTarget {
+                steam_app_id: "1966720",
+                executable: "Lethal Company.exe",
+            },
+            launch_mode,
+        )?,
+        GameId::Valheim => launch_bepinex(
+            &configured,
+            &root,
+            BepInExTarget {
+                steam_app_id: "892970",
+                executable: valheim_executable(),
+            },
+            launch_mode,
+        )?,
         GameId::VintageStory => launch_vintage_story(&configured, &root)?,
     };
+
+    if process.watch.is_some() {
+        emit_log(
+            app,
+            &metadata,
+            instance_id,
+            LogLevel::Info,
+            "Started through Steam; the game output is not captured in this mode",
+        )?;
+    }
 
     manifest.last_played = Some(Utc::now().to_rfc3339());
     manifest.updated_at = Utc::now().to_rfc3339();
@@ -307,7 +340,8 @@ async fn launch_minecraft(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     spawn(&mut command, "Could not launch Minecraft").map(|child| ProcessLaunch {
-        child,
+        child: Some(child),
+        watch: None,
         cleanup: Vec::new(),
     })
 }
@@ -586,9 +620,10 @@ fn find_installed_loader_profile(
 fn launch_bepinex(
     game_directory: &Path,
     instance_directory: &Path,
-    executable: &str,
+    target: BepInExTarget,
+    mode: LaunchMode,
 ) -> Result<ProcessLaunch, CommandError> {
-    let executable = game_directory.join(executable);
+    let executable = game_directory.join(target.executable);
     if !executable.is_file() {
         return Err(CommandError::new(
             CommandErrorCode::NotFound,
@@ -618,12 +653,20 @@ fn launch_bepinex(
                 "BepInEx Doorstop bootstrap is missing; repair the loader before launching",
             )
         })?;
-    let cleanup = vec![install_launch_file(
+    let modern = doorstop_major(instance_directory) >= 4;
+    let mut cleanup = vec![install_launch_file(
         &fs::read(&bootstrap)
             .map_err(|error| CommandError::io("Could not read the Doorstop bootstrap", &error))?,
         &game_directory.join(bootstrap.file_name().unwrap_or_default()),
     )?];
-    let (enabled_argument, target_argument) = if doorstop_major(instance_directory) >= 4 {
+    if matches!(mode, LaunchMode::Steam) {
+        cleanup.push(install_launch_file(
+            doorstop_config(&preloader, modern).as_bytes(),
+            &game_directory.join("doorstop_config.ini"),
+        )?);
+        return launch_through_steam(target, cleanup);
+    }
+    let (enabled_argument, target_argument) = if modern {
         ("--doorstop-enabled", "--doorstop-target-assembly")
     } else {
         ("--doorstop-enable", "--doorstop-target")
@@ -640,12 +683,109 @@ fn launch_bepinex(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     match spawn(&mut command, "Could not launch the game") {
-        Ok(child) => Ok(ProcessLaunch { child, cleanup }),
+        Ok(child) => Ok(ProcessLaunch {
+            cleanup,
+            watch: None,
+            child: Some(child),
+        }),
         Err(error) => {
             restore_launch_files(cleanup);
             Err(error)
         }
     }
+}
+
+fn doorstop_config(preloader: &Path, modern: bool) -> String {
+    let target = preloader.display();
+    if modern {
+        format!("[General]\nenabled=true\ntarget_assembly={target}\n")
+    } else {
+        format!("[UnityDoorstop]\nenabled=true\ntargetAssembly={target}\n")
+    }
+}
+
+fn launch_through_steam(
+    target: BepInExTarget,
+    cleanup: Vec<CleanupFile>,
+) -> Result<ProcessLaunch, CommandError> {
+    let mut command = match steam_client() {
+        Ok(command) => command,
+        Err(error) => {
+            restore_launch_files(cleanup);
+            return Err(error);
+        }
+    };
+    command.args(["-applaunch", target.steam_app_id]);
+    match spawn(&mut command, "Could not start the game through Steam") {
+        Ok(_) => Ok(ProcessLaunch {
+            cleanup,
+            child: None,
+            watch: Some(target.executable.to_owned()),
+        }),
+        Err(error) => {
+            restore_launch_files(cleanup);
+            Err(error)
+        }
+    }
+}
+
+#[cfg(windows)]
+fn steam_client() -> Result<Command, CommandError> {
+    settings::steam_root()
+        .map(|root| root.join("steam.exe"))
+        .filter(|path| path.is_file())
+        .map(Command::new)
+        .ok_or_else(|| {
+            CommandError::new(
+                CommandErrorCode::NotFound,
+                "Steam was not found; switch this game to direct launch in Settings",
+            )
+        })
+}
+
+#[cfg(not(windows))]
+fn steam_client() -> Result<Command, CommandError> {
+    Ok(Command::new("steam"))
+}
+
+fn wait_for_external_process(name: &str) {
+    let started = std::time::Instant::now();
+    while !process_is_running(name) {
+        if started.elapsed() > std::time::Duration::from_secs(180) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+    while process_is_running(name) {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
+}
+
+#[cfg(windows)]
+fn process_is_running(name: &str) -> bool {
+    let mut command = Command::new("tasklist");
+    command.args(["/FI", &format!("IMAGENAME eq {name}"), "/NH"]);
+    query_process(&mut command, |output| {
+        output.to_lowercase().contains(&name.to_lowercase())
+    })
+}
+
+#[cfg(not(windows))]
+fn process_is_running(name: &str) -> bool {
+    let mut command = Command::new("pgrep");
+    command.arg("-f").arg(name);
+    query_process(&mut command, |output| !output.trim().is_empty())
+}
+
+fn query_process(command: &mut Command, matches: impl Fn(&str) -> bool) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    command.output().is_ok_and(|output| {
+        matches(&String::from_utf8_lossy(&output.stdout)) && output.status.success()
+    })
 }
 
 fn doorstop_major(instance_directory: &Path) -> u32 {
@@ -722,7 +862,8 @@ fn launch_vintage_story(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     spawn(&mut command, "Could not launch Vintage Story").map(|child| ProcessLaunch {
-        child,
+        child: Some(child),
+        watch: None,
         cleanup: Vec::new(),
     })
 }
@@ -733,9 +874,13 @@ fn monitor_process(
     instance_id: String,
     process: ProcessLaunch,
 ) -> Result<(), CommandError> {
-    let ProcessLaunch { mut child, cleanup } = process;
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
+    let ProcessLaunch {
+        mut child,
+        watch,
+        cleanup,
+    } = process;
+    let stdout = child.as_mut().and_then(|child| child.stdout.take());
+    let stderr = child.as_mut().and_then(|child| child.stderr.take());
     std::thread::Builder::new()
         .name(format!("modsync-process-{instance_id}"))
         .spawn(move || {
@@ -761,19 +906,26 @@ fn monitor_process(
                     stderr,
                 ));
             }
-            let status = child.wait();
+            let status = child.as_mut().map(Child::wait);
+            if let Some(name) = &watch {
+                wait_for_external_process(name);
+            }
             for reader in readers {
                 let _ = reader.join();
             }
-            let message = match status {
-                Ok(status) if status.success() => "Game process exited".to_owned(),
-                Ok(status) => format!("Game process exited with {status}"),
-                Err(ref error) => format!("Could not wait for the game process: {error}"),
-            };
-            let level = if status.is_ok_and(|value| value.success()) {
-                LogLevel::Info
-            } else {
-                LogLevel::Error
+            let (level, message) = match status {
+                None => (LogLevel::Info, "Game process exited".to_owned()),
+                Some(Ok(status)) if status.success() => {
+                    (LogLevel::Info, "Game process exited".to_owned())
+                }
+                Some(Ok(status)) => (
+                    LogLevel::Error,
+                    format!("Game process exited with {status}"),
+                ),
+                Some(Err(error)) => (
+                    LogLevel::Error,
+                    format!("Could not wait for the game process: {error}"),
+                ),
             };
             let line = LogLine {
                 message,
@@ -1411,6 +1563,23 @@ mod tests {
     fn java_version_parser_handles_legacy_and_modern_versions() {
         assert_eq!(java_major("1.8.0_402"), Some(8));
         assert_eq!(java_major("21.0.2"), Some(21));
+    }
+
+    #[test]
+    fn doorstop_config_matches_the_installed_bootstrap_generation() {
+        let preloader = Path::new("C:/instances/one/BepInEx/core/BepInEx.Preloader.dll");
+
+        let modern = doorstop_config(preloader, true);
+        let legacy = doorstop_config(preloader, false);
+
+        assert!(modern.contains("[General]"));
+        assert!(
+            modern.contains("target_assembly=C:/instances/one/BepInEx/core/BepInEx.Preloader.dll")
+        );
+        assert!(legacy.contains("[UnityDoorstop]"));
+        assert!(
+            legacy.contains("targetAssembly=C:/instances/one/BepInEx/core/BepInEx.Preloader.dll")
+        );
     }
 
     #[test]

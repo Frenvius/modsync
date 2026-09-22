@@ -5,7 +5,8 @@ use tauri::{AppHandle, Manager};
 
 use crate::catalog::GameId;
 use crate::contracts::{
-    CommandError, CommandErrorCode, GamePathSetting, SettingsManifest, MANIFEST_SCHEMA_VERSION,
+    CommandError, CommandErrorCode, GamePathSetting, LaunchMode, SettingsManifest,
+    MANIFEST_SCHEMA_VERSION,
 };
 use crate::persistence::atomic_write;
 
@@ -62,6 +63,7 @@ fn default_game_paths() -> Vec<GamePathSetting> {
         GamePathSetting {
             game_id,
             detected,
+            launch_mode: LaunchMode::default(),
             path: path
                 .filter(|path| path.is_dir())
                 .map_or_else(String::new, |path| path.to_string_lossy().into_owned()),
@@ -123,6 +125,15 @@ fn steam_game_path(game: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(windows)]
+pub fn steam_root() -> Option<PathBuf> {
+    steam_registry_path()
+        .or_else(|| {
+            std::env::var_os("ProgramFiles(x86)").map(|path| PathBuf::from(path).join("Steam"))
+        })
+        .filter(|path| path.is_dir())
 }
 
 #[cfg(windows)]
