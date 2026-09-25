@@ -1,0 +1,90 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Tauri app
+        run: bun run build
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      - name: Create release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: 'ModSync v${{ steps.version.outputs.version }}'
+          generate_release_notes: true
+          files: |
+            src-tauri/target/release/bundle/msi/ModSync_${{ steps.version.outputs.version }}_x64_en-US.msi
+            src-tauri/target/release/bundle/msi/ModSync_${{ steps.version.outputs.version }}_x64_en-US.msi.zip
+
+      - name: Update updater endpoint
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP="ModSync_${VERSION}_x64_en-US.msi.zip"
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pub_date "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            --arg url "https://github.com/Frenvius/modsync/releases/download/v${VERSION}/${ZIP}" \
+            --arg signature "$(cat "src-tauri/target/release/bundle/msi/${ZIP}.sig")" \
+            '{version: $version, pub_date: $pub_date, url: $url, signature: $signature}' \
+            > "$RUNNER_TEMP/updater-endpoint.json"
+          cat "$RUNNER_TEMP/updater-endpoint.json"
+
+      - name: Commit updater endpoint
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          for i in 1 2 3; do
+            git fetch origin master || { sleep 2; continue; }
+            git checkout -f -B master FETCH_HEAD
+            cp "$RUNNER_TEMP/updater-endpoint.json" public/updater-endpoint.json
+            git add public/updater-endpoint.json
+            git diff --cached --quiet && exit 0
+            git commit -m "chore: update updater endpoint for v${{ steps.version.outputs.version }}"
+            git push origin HEAD:master && exit 0
+            sleep 2
+          done
+          echo "Failed to push updater endpoint after 3 attempts" >&2
+          exit 1
