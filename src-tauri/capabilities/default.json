@@ -16,6 +16,7 @@
     "mcp-bridge:default",
     "opener:allow-open-path",
     "opener:allow-open-url",
-    "opener:allow-default-urls"
+    "opener:allow-default-urls",
+    "updater:default"
   ]
 }

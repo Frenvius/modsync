@@ -57,16 +57,19 @@ jobs:
 
       - name: Update updater endpoint
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ZIP="ModSync_${VERSION}_x64_en-US.msi.zip"
 
           jq -n \
             --arg version "$VERSION" \
+            --arg notes "$(gh release view "v${VERSION}" --json body -q .body)" \
             --arg pub_date "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
             --arg url "https://github.com/Frenvius/modsync/releases/download/v${VERSION}/${ZIP}" \
             --arg signature "$(cat "src-tauri/target/release/bundle/msi/${ZIP}.sig")" \
-            '{version: $version, pub_date: $pub_date, url: $url, signature: $signature}' \
+            '{version: $version, notes: $notes, pub_date: $pub_date, url: $url, signature: $signature}' \
             > "$RUNNER_TEMP/updater-endpoint.json"
           cat "$RUNNER_TEMP/updater-endpoint.json"
 

@@ -11,6 +11,7 @@ import { Toaster } from '~/components/ui/sonner';
 import { useAppStore } from '~/usecase/store/appStore';
 import EmptyState from '~/components/commons/EmptyState';
 import { DownloadStatus } from '~/domain/enums/provider.enum';
+import { useUpdaterStore } from '~/usecase/store/updaterStore';
 import CreateInstanceDialog from '~/components/CreateInstance';
 import { browserService, getExternalWebUrl } from '~/usecase/service/browser';
 
@@ -25,6 +26,10 @@ const Layout = () => {
   React.useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  React.useEffect(() => {
+    if (import.meta.env.PROD) void useUpdaterStore.getState().check();
+  }, []);
 
   React.useEffect(() => {
     const openWebLink = (event: MouseEvent) => {

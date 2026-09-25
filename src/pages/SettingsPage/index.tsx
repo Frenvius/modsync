@@ -19,6 +19,7 @@ import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import { Card, CardTitle, CardHeader, CardContent, CardDescription } from '~/components/ui/card';
 import { Select, SelectItem, SelectValue, SelectContent, SelectTrigger } from '~/components/ui/select';
 
+import AboutSection from './AboutSection';
 import { STEAM_GAMES, SETTINGS_SECTIONS, LAUNCH_MODE_LABELS } from './constants';
 
 const SettingsPage = () => {
@@ -81,6 +82,8 @@ const SectionBody = ({ patch, section, settings }: SectionBodyProps) => {
       toast.error(getErrorMessage(error, 'Could not select the game folder'));
     }
   };
+
+  if (section === 'About') return <AboutSection />;
 
   if (section === 'Games') {
     return (

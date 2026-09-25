@@ -9,6 +9,8 @@ import GameIcon from '~/components/commons/GameIcon';
 import { useAppStore } from '~/usecase/store/appStore';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuContent, DropdownMenuTrigger } from '~/components/ui/dropdown-menu';
 
+import UpdateIndicator from './UpdateIndicator';
+
 const Titlebar = () => {
   useLocation();
   const navigate = useNavigate();
@@ -84,6 +86,8 @@ const Titlebar = () => {
       </div>
 
       <div className="flex-1" />
+
+      <UpdateIndicator />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
