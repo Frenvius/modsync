@@ -1,6 +1,7 @@
 {
-  "version": "2.0.0",
-  "pub_date": "2026-09-25T19:57:52Z",
-  "url": "https://github.com/Frenvius/modsync/releases/download/v2.0.0/ModSync_2.0.0_x64_en-US.msi.zip",
-  "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUb0hDMFdJcWVWSHpBSTF2WEV6Zm5Mc0JsRTNEc2JibFZPTkIrdk1DZkR5TVdMdWVzdEZWUmR4ejcraHFlRVFrK2ZaMGdjU1JOaGJVamRMS2xWdEtwN25kV2dLNktRbFFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzY2MjY2CWZpbGU6TW9kU3luY18yLjAuMF94NjRfZW4tVVMubXNpLnppcAo3dzdxMzEvSHYzdmpyQzhIc2JNRnNMdVNET1Z4NlhIc1hPdzF3eHJCZFRUWjR4WlFLRkdzZWcxUXpDNnduWWJzWDQxTnZxb2k4UlllTzNRemFYRS9Ddz09Cg=="
+  "version": "2.0.1",
+  "notes": "**Full Changelog**: https://github.com/Frenvius/modsync/compare/v2.0.0...v2.0.1",
+  "pub_date": "2026-09-25T20:24:24Z",
+  "url": "https://github.com/Frenvius/modsync/releases/download/v2.0.1/ModSync_2.0.1_x64_en-US.msi.zip",
+  "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUb0hDMFdJcWVWSDhJMVI1cWZEaGNVQXJsQlFWQUJJLzJCeG9ycFJvYlBSU3dvTm82QlprQ1V6OVUvdis1a1dEUEVtYnRvRlliUlVGZHFLcm9nNXZNcWovRWhuLzR3Ynd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzY3ODUxCWZpbGU6TW9kU3luY18yLjAuMV94NjRfZW4tVVMubXNpLnppcApzR0wyMjBwdUVRZWZ4NTYyMmErY2pKcGM5bkxIUlF6WDdYS2tia0VGOEhSZFExWE5EZFU0QkZVeWVleGltNmt5M2pJVDRKb0hXamk4V09pcjFydGlBQT09Cg=="
 }
