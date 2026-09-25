@@ -9,12 +9,20 @@ mod persistence;
 mod providers;
 mod settings;
 mod sharing;
+mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(|app| {
+            if !cfg!(debug_assertions) {
+                updater::check_on_startup(app.handle());
+            }
+            Ok(())
+        });
 
     #[cfg(debug_assertions)]
     let builder = builder.plugin(

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ModSync",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "identifier": "com.modsync.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -36,8 +36,20 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "createUpdaterArtifacts": "v1Compatible",
+    "windows": {
+      "wix": {
+        "upgradeCode": "A5631A7E-4E1A-56B5-AEF2-5E266F007A7F"
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFGOTVBNzIyMTYyRDFDRTgKUldUb0hDMFdJcWVWSDRZNmJBd1BYRlJQN1hSdktoY1RGRDBVbHhPSjlOTWx1dHVycHdMZVBseWIK",
+      "endpoints": ["https://raw.githubusercontent.com/Frenvius/modsync/master/public/updater-endpoint.json"]
     }
   }
 }
