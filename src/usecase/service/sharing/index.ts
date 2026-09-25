@@ -40,6 +40,11 @@ class Service {
     return invoke<SharingStatus>('start_sharing', { instanceId });
   }
 
+  async ownerOnline(instanceId: string): Promise<boolean> {
+    requireDesktop();
+    return invoke<boolean>('check_owner_online', { instanceId });
+  }
+
   async stop(instanceId: string): Promise<void> {
     requireDesktop();
     await invoke('stop_sharing', { instanceId });

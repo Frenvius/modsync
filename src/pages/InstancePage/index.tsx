@@ -21,6 +21,7 @@ import { getErrorMessage } from '~/usecase/util/getErrorMessage';
 import VersionsTab from '~/components/Instance/tabs/VersionsTab';
 import SettingsTab from '~/components/Instance/tabs/SettingsTab';
 import { useAppStore, useInstance } from '~/usecase/store/appStore';
+import SharingStatusBadge from '~/components/Sharing/SharingStatusBadge';
 import { Tabs, TabsList, TabsContent, TabsTrigger } from '~/components/ui/tabs';
 
 import { CONTENT_TAB_LABELS } from './constants';
@@ -96,6 +97,7 @@ const InstancePage = () => {
               {instance.mods.length} mods
             </Badge>
             {instance.ownership === 'joined' && <Badge variant="outline">Joined - read only</Badge>}
+            <SharingStatusBadge instance={instance} />
           </div>
         </div>
         <div className="flex items-center gap-2">

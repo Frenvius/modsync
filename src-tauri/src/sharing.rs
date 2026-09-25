@@ -29,6 +29,7 @@ const MAX_SHARED_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_SHARED_FILES: usize = 20_000;
 const MAX_TOTAL_SHARED_BYTES: u64 = 32 * 1024 * 1024 * 1024;
 const MAX_SYNC_ATTEMPTS: usize = 3;
+const OWNER_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 const REMOTE_FILE: &str = "remote.json";
 const SHARE_SECRET_FILE: &str = ".sharing-secret";
 const SYNC_INCOMPLETE_FILE: &str = ".sync-incomplete";
@@ -212,6 +213,23 @@ pub async fn stop_sharing(instance_id: String) -> Result<(), CommandError> {
     }
     *session = None;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn check_owner_online(app: AppHandle, instance_id: String) -> Result<bool, CommandError> {
+    instances::validate_id(&instance_id)?;
+    let root = instances::instances_root(&app)?;
+    let metadata = instances::metadata_directory(&root, &instance_id)?;
+    let link = read_remote_link(&metadata)?;
+    let node = NodeId::from_str(&link.peer_id).map_err(|_| {
+        CommandError::new(
+            CommandErrorCode::CorruptedData,
+            "Remote instance link contains an invalid owner",
+        )
+    })?;
+    let endpoint = endpoint(&app).await?;
+    let probe = tokio::time::timeout(OWNER_PROBE_TIMEOUT, endpoint.connect(node, ALPN)).await;
+    Ok(matches!(probe, Ok(Ok(_))))
 }
 
 #[tauri::command]

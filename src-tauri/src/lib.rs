@@ -65,7 +65,8 @@ pub fn run() {
             sharing::stop_sharing,
             sharing::get_sharing_status,
             sharing::join_shared_instance,
-            sharing::sync_joined_instance
+            sharing::sync_joined_instance,
+            sharing::check_owner_online
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
